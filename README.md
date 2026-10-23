@@ -27,7 +27,7 @@ Stenny comes as source code, not as a finished app. You build it on your own Mac
 
 ### The easy way: let Claude Code do it
 
-1. Download this repository (green **Code** button ▸ **Download ZIP**, then unzip it), or clone it with git.
+1. **[Download Stenny.zip](https://github.com/synqora/stenny/releases/latest/download/Stenny.zip)** (the newest version) and double-click it to unzip. Or clone this repository with git.
 2. Open the Terminal app, go into the folder and start [Claude Code](https://claude.com/claude-code):
    ```bash
    cd ~/Downloads/stenny
