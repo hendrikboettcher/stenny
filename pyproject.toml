@@ -1,0 +1,27 @@
+[project]
+name = "stenny"
+version = "0.3.0"
+description = "Stenny: transcribe lectures locally with Whisper into clean Markdown in an Obsidian vault"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+    "mlx-whisper>=0.4.3",
+    "numpy>=2",
+    "pypdf>=6.21.1",
+]
+
+[project.optional-dependencies]
+api = ["anthropic>=1.0"]
+
+[project.scripts]
+stenny = "stenny.cli:main"
+# the old name, kept for a while so existing scripts and habits keep working
+lecture = "stenny.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["uv_build>=0.13.0,<0.14.0"]
+build-backend = "uv_build"

@@ -1,0 +1,57 @@
+# Stenny configuration. `stenny init --vault <folder>` copies it to ~/Lectures Data/_System/config.toml.
+# Paths may use ~. Nothing personal is hardcoded in the code; everything lives here.
+
+vault = "CHANGE-ME"                          # the folder transcripts go to, e.g. your Obsidian vault
+lectures_dir = "Lectures"                    # inside the vault; the tool never writes elsewhere
+# data_dir = "~/Lectures Data"               # audio, segments.json, raw output, logs: everything outside the vault
+keep_audio = true                            # false = don't archive audio (the original file is never deleted)
+
+[transcription]
+model = "mlx-community/whisper-large-v3-turbo"
+
+[llm]
+backend = "claude-code"      # claude-code (subscription, `claude -p`) | api (Anthropic API key) | none
+model = "claude-haiku-5-5"   # model for claude-code
+api_model = "claude-haiku-5-5"
+summary = true               # write the AI summary (… (summary).md)
+
+[processing]
+priority = "low"             # normal | low (nice + utility QoS) | background (heavily throttled)
+require_ac_for_queue = true  # queued jobs (`stenny add --later`) wait for AC power
+night_only = false           # true = queued jobs run only between night_start and night_end
+night_start = "01:00"
+night_end = "07:00"
+
+[app]
+# Stenny's pause/resume shortcut, from anywhere. Modifiers: cmd, shift, ctrl, opt; then one key as printed
+# on your keyboard (or space, f1–f20). The default suits German keyboards (Ü is right of P); on other
+# keyboards pick something else, e.g. "cmd+shift+p" or "ctrl+opt+space". Restart Stenny after changing it.
+pause_shortcut = "cmd+shift+ü"
+
+[live]
+# device = "MacBook Air Microphone"   # microphone for `stenny live` (see `stenny devices`);
+                                       # unset = the system's input device. Stenny has its own picker.
+# provisional = false  # true: the live draft also shows the sentence being spoken (italics), replaced seconds later; costs battery
+# backup = "auto"   # second microphone recorded alongside, used only where the main one sent nothing
+                    # (e.g. while you use the iPhone): "auto" = the Mac's own microphone, "off", or a name
+
+# Talks and events (Stenny: Start Lecture ▸ Talk or Event…, or `stenny live --event "Title"`): not courses.
+# They go to their own vault folder; default: "Recordings" next to lectures_dir.
+# [recordings]
+# folder = "Recordings"
+# languages = ["en", "de", "fr"]           # detected per recording among these
+
+# One table per course. language: a fixed code ("fr", "de", "en", …), "auto" (one language per lecture,
+# detected among `languages`) or "mixed" (detected per ~25 s chunk among `languages`).
+# aliases: short names for the command line (`--course calc`); calendar: extra words that identify the
+# course in calendar event titles. Replace these examples with your own courses.
+[courses."Calculus"]
+language = "en"
+tags = ["maths"]
+aliases = ["calc"]
+
+[courses."International Economics"]
+language = "mixed"
+languages = ["fr", "en", "de"]
+tags = ["economics"]
+aliases = ["ie"]
