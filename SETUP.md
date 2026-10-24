@@ -338,7 +338,7 @@ Summarise for the user, short:
 - An iPhone nearby (same Apple ID) can be the microphone (*Microphone ▸*), placed closer to the lecturer.
 - Slides: drop the PDF into the lecture's folder.
 - **Ask the lecturer first.** Many universities need the lecturer's consent before a lecture is recorded. Keep recordings and transcripts to themselves.
-- Docs: https://stenny.hendrikboettcher.com/docs/quickstart/ (recording, microphones, slides, studying with Claude, troubleshooting).
+- Docs: https://stenny.eu/docs/quickstart/ (recording, microphones, slides, studying with Claude, troubleshooting).
 
 End with this, in your own words: **Stenny is made to be adapted.** It's open source, and it now lives in this folder on their Mac. Whenever they want something changed, they can come back: open this folder in Claude Code (or this same chat) and just say what they want, for example "add a new course", "next semester I take these courses", "change my pause shortcut", "the transcript misheard this name", or an idea for a new feature. Claude Code reads the project's notes (CLAUDE.md) and can change Stenny for them; the changes stay on their Mac.
 

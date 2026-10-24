@@ -54,7 +54,7 @@ enum MenuBarImage {
     }
 }
 
-/// The figure from stenny.hendrikboettcher.com: head, body, arms (one holding a pen), legs.
+/// The figure from stenny.eu: head, body, arms (one holding a pen), legs.
 enum StennyFigure {
     static func path() -> NSBezierPath {
         let p = NSBezierPath(ovalIn: NSRect(x: 49, y: 11, width: 22, height: 22))

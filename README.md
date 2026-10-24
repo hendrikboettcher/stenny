@@ -8,7 +8,7 @@ Stenny records your lectures on a Mac and turns them into clean, searchable tran
 - **Made for studying with Claude:** the files are named, numbered and linked so that a Claude project can read a whole course at once.
 - **Your Mac stays usable:** heavy work runs at low priority and can wait until the Mac is plugged in.
 
-Website and docs: [stenny.hendrikboettcher.com](https://stenny.hendrikboettcher.com/docs/quickstart/)
+Website and docs: [stenny.eu](https://stenny.eu/docs/quickstart/)
 
 > **Ask before you record.** Many universities need the lecturer's consent before a lecture is recorded. Check your university's rules and keep recordings and transcripts to yourself.
 
