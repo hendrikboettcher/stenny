@@ -1,6 +1,10 @@
 # Setting up Stenny (instructions for Claude Code)
 
-**For the person reading this:** you don't have to do anything here yourself. Open this folder in Claude Code and type `follow SETUP.md`. Claude Code will go through the steps below with you, explain each one, and ask you whenever it needs a decision or your password.
+**For the person reading this:** you don't have to do anything here yourself. Paste this sentence into Claude Code:
+
+> Install Stenny on my Mac by following https://github.com/hendrikboettcher/stenny/blob/main/SETUP.md
+
+(If you already downloaded and unzipped Stenny, open that folder in Claude Code and type `follow SETUP.md` instead.) Claude Code will go through the steps below with you, explain each one, and ask you whenever it needs a decision or your password.
 
 ---
 
@@ -21,6 +25,24 @@ How to work:
 
 Start by greeting the user and giving a three-line overview: Stenny records lectures from the menu bar, transcribes them on this Mac (nothing is uploaded), and saves text files that Claude can study with. Setup takes about 15–30 minutes, depending on what's already installed; most of it is waiting for downloads, and you'll only need them for a few clicks and questions.
 
+## 0. Get Stenny onto the Mac
+
+Skip this step if the current folder already contains Stenny (`SETUP.md`, `pyproject.toml` and `app/` are here): the user downloaded it themselves.
+
+Otherwise the user gave you only the link, and you fetch Stenny yourself. Stenny runs from its folder for good, so it needs a permanent place. Ask with options: "`~/Applications/stenny` (Recommended)" / "Somewhere else".
+
+First look whether it's already there (an earlier attempt): `ls ~/Applications/stenny/SETUP.md 2>/dev/null`. If it is, ask "Use the existing folder (Recommended)" / "Replace it with the newest version"; replace only by moving the old folder to the Trash first.
+
+Download the newest version and unzip it (it unpacks into a folder called `stenny`); this needs no git and no developer tools:
+
+```bash
+mkdir -p ~/Applications
+curl -fL -o /tmp/Stenny.zip https://github.com/hendrikboettcher/stenny/releases/latest/download/Stenny.zip
+unzip -q /tmp/Stenny.zip -d ~/Applications && rm /tmp/Stenny.zip
+```
+
+**Check:** `ls ~/Applications/stenny/SETUP.md` exists. From now on, "this folder" means `~/Applications/stenny`: run every command there (`cd ~/Applications/stenny && …`), even if your session started somewhere else, and continue with the copy of this file in it (it matches the downloaded version). Tell the user where Stenny lives, and that this is the folder to open in Claude Code later when they want to change something.
+
 ## 1. Check the Mac
 
 Stenny needs a Mac with Apple Silicon (M1 or newer), macOS 14.4 or newer and about 5 GB of free disk space.
@@ -35,7 +57,7 @@ df -h ~ | tail -1                 # "Avail" should be at least 5G
 
 *If it fails:* on an Intel Mac (`x86_64`) Stenny can't run (its transcription engine needs Apple Silicon): tell the user kindly and stop. If macOS is older, they can update it in System Settings ▸ General ▸ Software Update and come back. (If it's new enough but an update is waiting there, mention it, but it's not needed for Stenny.) If the disk is too full, help them see what's big (`du -sh ~/Downloads ~/Movies ~/Desktop 2>/dev/null`), but don't delete anything yourself.
 
-**Where the folder lives:** Stenny runs from this folder, so it must stay where it is after setup. If it's in Downloads or on the Desktop, suggest moving it to a permanent place first, for example `~/Applications/stenny` (`mkdir -p ~/Applications && mv "<this folder>" ~/Applications/stenny`). If you move it, tell the user to reopen Claude Code in the new place (`cd ~/Applications/stenny && claude`, then `follow SETUP.md` again; finished steps will pass their checks quickly).
+**Where the folder lives:** Stenny runs from this folder, so it must stay where it is after setup (step 0 already put it in a permanent place). If it's in Downloads or on the Desktop, suggest moving it to a permanent place first, for example `~/Applications/stenny` (`mkdir -p ~/Applications && mv "<this folder>" ~/Applications/stenny`). If you move it, tell the user to reopen Claude Code in the new place (`cd ~/Applications/stenny && claude`, then `follow SETUP.md` again; finished steps will pass their checks quickly).
 
 ## 2. Apple's Command Line Tools and Homebrew
 

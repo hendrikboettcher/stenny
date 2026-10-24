@@ -27,19 +27,22 @@ Stenny comes as source code, not as a finished app. You build it on your own Mac
 
 ### The easy way: let Claude Code do it
 
-1. **[Download Stenny.zip](https://github.com/synqora/stenny/releases/latest/download/Stenny.zip)** (the newest version) and double-click it to unzip. Or clone this repository with git.
-2. Open the Terminal app, go into the folder and start [Claude Code](https://claude.com/claude-code):
-   ```bash
-   cd ~/Downloads/stenny
-   claude
-   ```
-3. Type `follow SETUP.md`.
+Paste this sentence into [Claude Code](https://claude.com/claude-code) (in the Claude desktop app's Code tab, or in the terminal):
 
-Claude Code checks your Mac, installs what's missing, builds the menu bar app, asks where your transcripts should go and which courses you take, downloads the Whisper model, makes a test recording with you and helps you set up a Claude project per course. It explains each step and asks before anything important. [SETUP.md](SETUP.md) is the exact script it follows; you can read it first.
+```
+Install Stenny on my Mac by following https://github.com/hendrikboettcher/stenny/blob/main/SETUP.md
+```
+
+That's all. Claude Code downloads Stenny to `~/Applications/stenny`, checks your Mac, installs what's missing, builds the menu bar app, asks where your transcripts should go and which courses you take, downloads the Whisper model, makes a test recording with you and helps you set up a Claude project per course. It explains each step and asks before anything important. [SETUP.md](SETUP.md) is the exact script it follows; you can read it first.
+
+Already downloaded [Stenny.zip](https://github.com/hendrikboettcher/stenny/releases/latest/download/Stenny.zip)? Unzip it, open the folder in Claude Code and type `follow SETUP.md`.
 
 ### By hand
 
 ```bash
+# 0. Download Stenny.zip (link above), unzip it into ~/Applications, then:
+cd ~/Applications/stenny
+
 # 1. Tools (Homebrew from https://brew.sh if you don't have it)
 xcode-select --install          # Apple's Command Line Tools, if missing
 brew install uv ffmpeg
