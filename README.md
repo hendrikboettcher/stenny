@@ -186,7 +186,7 @@ At the default low priority Stenny runs at about 8× realtime. While recording, 
 ```bash
 uv run pytest                          # tests, no model download needed
 uv run stenny live --course calc --file sample.m4a --speed 3   # try live mode without a microphone
-app/build.sh --no-install              # build the app into app/build/ only
+app/build.sh --no-install              # build the app into app/build.noindex/ only
 uv run python bench/run_bench.py --help
 ```
 

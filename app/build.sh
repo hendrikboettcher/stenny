@@ -2,7 +2,7 @@
 # Builds Stenny.app (no Xcode needed, Command Line Tools only) and installs it to /Applications
 # (or ~/Applications, see the end).
 #   app/build.sh               build, sign, install
-#   app/build.sh --no-install  only build and sign (app/build/Stenny.app)
+#   app/build.sh --no-install  only build and sign (app/build.noindex/Stenny.app)
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -13,16 +13,19 @@ if ! xcrun --find swift >/dev/null 2>&1; then
     exit 1
 fi
 
-APP="build/Stenny.app"
+# ".noindex" keeps Spotlight from listing the build copy next to the installed Stenny
+BUILD="build.noindex"
+APP="$BUILD/Stenny.app"
+rm -rf build  # older versions built here
 swift build -c release
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$(swift build -c release --show-bin-path)/Stenny" "$APP/Contents/MacOS/Stenny"
 # app icon: drawn by make-icon.swift (the website's stick figure)
-swift make-icon.swift build/AppIcon.iconset
-iconutil -c icns build/AppIcon.iconset -o "$APP/Contents/Resources/AppIcon.icns"
-rm -rf build/AppIcon.iconset
+swift make-icon.swift "$BUILD/AppIcon.iconset"
+iconutil -c icns "$BUILD/AppIcon.iconset" -o "$APP/Contents/Resources/AppIcon.icns"
+rm -rf "$BUILD/AppIcon.iconset"
 # the recorder runs as a child of Stenny, so it shares Stenny's microphone permission
 cp "$(swift build -c release --show-bin-path)/stenny-rec" "$APP/Contents/MacOS/stenny-rec"
 
