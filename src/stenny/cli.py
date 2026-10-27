@@ -196,7 +196,7 @@ PROJECT_TEXT = """Lecture transcripts for this course are on my Mac, readable wi
 - Overview (every lecture with its topics): _Course Files/{course} (overview).md
 - Single lectures: {course}/<date>/{course} <date>.md
 
-Read them whenever a question is about what was said in the lectures, and cite as "Lecture N [h:mm:ss]".
+Read them whenever a question is explicitly about what was said in the lectures, and cite as "Lecture N [h:mm:ss]".
 They are automatic transcripts: names and technical terms may be misheard, so prefer the spellings in the
 project files. Don't change any of these files, with one exception:
 
