@@ -158,7 +158,7 @@ Now build the app (1–3 minutes the first time) and install it to /Applications
 app/build.sh
 ```
 
-The first time, macOS may ask whether `codesign` may use the key "Stenny Dev": the user enters their Mac (login) password and clicks **Always Allow**.
+With the certificate from `make-cert.sh`, signing asks for nothing (it lets `codesign` use the key). Only after the manual Keychain Access fallback does macOS ask whether `codesign` may use the key "Stenny Dev": tell the user before the build to enter their Mac (login) password and click **Always Allow**, not *Allow*. *Allow* counts for one use only, so it would ask twice now (the app and its recorder are signed separately) and again on every rebuild.
 
 **Check:** the output ends with `✅ Installed: <path>/Stenny.app` (remember that path: steps 10 and later open the app from there) and `✅ Signed with "Stenny Dev"` appears (or the ad-hoc warning, if you skipped the certificate). Don't open the app yet; that's step 11.
 
