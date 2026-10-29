@@ -174,7 +174,9 @@ enum StennyCLI {
     /// Starts `stenny live --course <name>` in the background. It keeps running on its own;
     /// this app only talks to it through the socket. Output goes to live.log.
     /// `event`: `course` is the title of a talk or event (`stenny live --event`), not a configured course.
-    static func startLive(course: String, event: Bool = false, device: String?, draft: Bool = true) throws {
+    /// `onExit` gets the recorder's exit status once it ends, however it ends.
+    static func startLive(course: String, event: Bool = false, device: String?, draft: Bool = true,
+                          onExit: @escaping @Sendable (Int32) -> Void) throws {
         guard let exe = executable else {
             throw NSError(domain: "Stenny", code: 1, userInfo: [NSLocalizedDescriptionKey:
                 "The `stenny` command was not found. Install it with `uv tool install -e .` in the project folder."])
@@ -190,6 +192,13 @@ enum StennyCLI {
         process.standardOutput = log
         process.standardError = log
         process.standardInput = FileHandle.nullDevice
+        process.terminationHandler = { onExit($0.terminationStatus) }
         try process.run()
+    }
+
+    /// The last line the recorder wrote to live.log, e.g. why it quit right after starting.
+    static func lastLogLine() -> String? {
+        guard let text = try? String(contentsOfFile: logPath, encoding: .utf8) else { return nil }
+        return text.split(whereSeparator: \.isNewline).last.map { $0.trimmingCharacters(in: .whitespaces) }
     }
 }

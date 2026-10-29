@@ -210,12 +210,24 @@ final class LectureController: NSObject {
         guard status == nil, !starting else { return }
         AppLog.write("start \(event ? "event" : "course") \(course)")
         do {
-            try StennyCLI.startLive(course: course, event: event, device: microphone, draft: liveDraft)
+            try StennyCLI.startLive(course: course, event: event, device: microphone, draft: liveDraft) { code in
+                Task { @MainActor in self.recorderExited(code) }
+            }
             starting = true
             refresh()
         } catch {
             show(error.localizedDescription)
         }
+    }
+
+    /// Still "Starting …" when the recorder ended: it never came up, so say why instead of waiting forever.
+    private func recorderExited(_ code: Int32) {
+        guard starting else { return }
+        starting = false
+        let reason = StennyCLI.lastLogLine() ?? "exit status \(code)"
+        AppLog.write("recorder quit while starting: \(reason)")
+        refresh()
+        show("The recording didn't start.\n\n\(reason)")
     }
 
     @objc private func toggleDraft() {
