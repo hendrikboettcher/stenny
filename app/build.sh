@@ -50,7 +50,6 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>NSMicrophoneUsageDescription</key><string>Stenny records lectures you start from its menu. Audio stays on this Mac; pausing turns the microphone off.</string>
     <!-- No Dock icon, no app menu: menu bar only -->
     <key>LSUIElement</key><true/>
-    <key>NSHumanReadableCopyright</key><string>Built with Claude</string>
     <key>NSHighResolutionCapable</key><true/>
 </dict>
 </plist>

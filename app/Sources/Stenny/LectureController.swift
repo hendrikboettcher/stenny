@@ -441,15 +441,12 @@ final class LectureController: NSObject {
 
         let quitItem = NSMenuItem()
         configure(quitItem, title: "Quit Stenny", symbol: "power", action: #selector(quit))
-        let creditItem = NSMenuItem(title: "Built with Claude", action: nil, keyEquivalent: "")
-        creditItem.isEnabled = false
 
         [statusLineItem, levelItem, .separator(),
          suggestItem, startItem, pauseItem, stopItem, .separator(),
          micItem, draftItem, .separator(),
          openItem, .separator(),
-         quitItem, .separator(),
-         creditItem].forEach(menu.addItem)
+         quitItem].forEach(menu.addItem)
         statusItem.menu = menu
         refresh()
     }

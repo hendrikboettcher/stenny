@@ -194,4 +194,4 @@ See [CLAUDE.md](CLAUDE.md) for the architecture and the rules the code follows.
 
 ## License
 
-[MIT](LICENSE). Built with Claude.
+[MIT](LICENSE).
