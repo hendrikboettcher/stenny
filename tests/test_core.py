@@ -38,7 +38,7 @@ def test_split_at_pauses_cuts_in_silence_and_respects_max_length():
 
 
 def test_mark_dropped_keeps_everything_but_flags_junk():
-    segs = [seg(0, "Bonjour."), seg(2, "Merci."), seg(4, "Merci."), seg(6, "Merci."),
+    segs = [seg(0, "Bonjour."), seg(2, "D'accord."), seg(4, "D'accord."), seg(6, "D'accord."),
             seg(8, "bla", no_speech_prob=0.9, avg_logprob=-1.5), seg(10, "Bolzano-Weierstrass, suite de Cauchy, Riemann.")]
     out = mark_dropped(segs, prompt="Bolzano-Weierstrass, suite de Cauchy, Riemann.")
     assert len(out) == len(segs)
@@ -48,7 +48,7 @@ def test_mark_dropped_keeps_everything_but_flags_junk():
 def test_retry_sparse_replaces_dots_with_real_text_and_keeps_original_in_raw():
     audio = np.random.default_rng(2).normal(0, 0.1, 30 * SAMPLE_RATE).astype(np.float32)
     segs = [{"start": 0.0, "end": 27.0, "text": "...", "no_speech_prob": 0.0, "avg_logprob": -1.0},
-            {"start": 27.0, "end": 29.0, "text": "Merci.", "no_speech_prob": 0.0, "avg_logprob": -0.3}]
+            {"start": 27.0, "end": 29.0, "text": "D'accord.", "no_speech_prob": 0.0, "avg_logprob": -0.3}]
     calls = []
 
     def fake(clip, start):
@@ -59,7 +59,7 @@ def test_retry_sparse_replaces_dots_with_real_text_and_keeps_original_in_raw():
     assert len(calls) >= 3 and all(c < 27 for c in calls)        # only the sparse stretch, in short pieces
     assert out[0]["dropped"] == "almost empty, re-transcribed"
     kept = [s for s in mark_dropped(out) if not s["dropped"]]
-    assert kept[-1]["text"] == "Merci." and all(s.get("retry") for s in kept[:-1])
+    assert kept[-1]["text"] == "D'accord." and all(s.get("retry") for s in kept[:-1])
     assert retry_sparse([segs[1]], audio, fake) == [segs[1]]      # normal segments untouched
 
 
@@ -379,3 +379,21 @@ def test_whisper_subtitle_credits_are_dropped_but_real_speech_stays():
     for speech in ["Die Untertitel im Film waren schlecht, aber der Inhalt war gut.",
                    "Le ZDF est une chaîne publique allemande.", "Subtitles help when the audio is bad."]:
         assert drop_reason(seg(speech), [], None) is None, speech
+
+
+def test_whisper_stock_phrases_are_dropped_or_cut():
+    from stenny.textproc import drop_reason
+    seg = lambda text, lang="fr": {"text": text, "no_speech_prob": 0.0, "avg_logprob": -0.6, "language": lang,
+                                   "start": 0.0, "end": 1.0}
+    for filler in ["Vielen Dank.", "Vielen Dank. Vielen Dank.", " Thank you.", "Merci.", "– Sous-titrage FR –",
+                   "Thanks for watching!"]:
+        assert drop_reason(seg(filler), [], None) == "stock phrase", filler
+    for speech in ["Vielen Dank für die Frage, das ist wichtig.", "Thank you, that's a good point.",
+                   "Merci pour vos réponses."]:
+        assert drop_reason(seg(speech), [], None) is None, speech
+    out = mark_dropped([seg("Vielen Dank. Le bonheur national."), seg("Thank you, that's it.", "en"),
+                        seg("Vielen Dank, das war's.", "de")])
+    assert [s["text"].strip() for s in out] == ["Le bonheur national.", "Thank you, that's it.",
+                                                "Vielen Dank, das war's."]
+    assert out[0]["raw_text"] == "Vielen Dank. Le bonheur national."  # the raw output keeps what Whisper wrote
+    assert "raw_text" not in out[1] and "raw_text" not in out[2]

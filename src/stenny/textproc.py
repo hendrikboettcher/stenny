@@ -78,6 +78,41 @@ def is_subtitle_credit(text: str) -> bool:
     return len(text.split()) <= 15 and bool(SUBTITLE_CREDITS.search(text))
 
 
+# Stock phrases Whisper writes over room noise, learned from the ends of subtitled videos ("Vielen Dank.",
+# "Thank you."). Loudness and Whisper's own scores can't tell them from speech (measured on real lectures),
+# so they are matched by text: a segment that is nothing else is dropped, and inside a segment a phrase in
+# another language than the segment's is cut ("Vielen Dank" in a French lecture). "*": any language.
+FILLERS = {
+    "de": r"vielen dank|danke( schön| sehr)?|danke fürs zuschauen|bis zum nächsten mal|tschüss",
+    "en": r"thank you( (very|so) much)?( for watching)?|thanks( for watching)?|bye( bye)?",
+    "fr": r"merci( beaucoup)?( d'avoir regardé)?|au revoir",
+    "*": r"sous-titrage( (fr|st' ?501|société radio-canada))?",
+}
+_FILLER = {lang: re.compile(rf"(?<![\w'])(?:{pat})(?![\w'])[\s.,!?…–-]*", re.IGNORECASE)
+           for lang, pat in FILLERS.items()}
+_LEFTOVER = re.compile(r"^[\s.,!?…–-]*$")
+
+
+def is_filler(text: str) -> bool:
+    """Only stock phrases, in any language ("Vielen Dank. Vielen Dank.")."""
+    found = 0
+    for pattern in _FILLER.values():
+        text, n = pattern.subn(" ", text)
+        found += n
+    return found > 0 and bool(_LEFTOVER.match(text))
+
+
+def cut_foreign_fillers(text: str, language: str | None) -> str:
+    """The text without stock phrases of other languages than `language`, which is what Whisper
+    transcribed it as. Phrases in that language stay: "Thank you" in an English sentence may be real."""
+    if not language:
+        return text
+    for lang, pattern in _FILLER.items():
+        if lang != language:
+            text = pattern.sub("", text)
+    return re.sub(r"\s{2,}", " ", text).strip()
+
+
 def is_prompt_echo(text: str, prompt: str | None) -> bool:
     """On near-silent audio Whisper sometimes just repeats its prompt (the glossary)."""
     if not prompt or len(text) < 12:
@@ -99,6 +134,8 @@ def drop_reason(seg: dict, previous: list[dict], prompt: str | None) -> str | No
         return "prompt echo"
     if is_subtitle_credit(text):
         return "subtitle credit"
+    if is_filler(text):
+        return "stock phrase"
     if len(previous) >= 2 and all(p["text"].strip() == text for p in previous[-2:]):
         return "repetition"
     return None
@@ -111,6 +148,10 @@ def mark_dropped(segments: list[dict], prompt: str | None = None) -> list[dict]:
     out = []
     for seg in segments:
         reason = seg.get("dropped") or drop_reason(seg, kept, prompt)
+        if reason is None:
+            text = cut_foreign_fillers(seg["text"], seg.get("language"))
+            if text != seg["text"].strip():
+                seg = {**seg, "text": " " + text, "raw_text": seg.get("raw_text", seg["text"])}
         out.append({**seg, "dropped": reason})
         if reason is None:
             kept.append(seg)
