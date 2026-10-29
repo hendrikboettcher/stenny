@@ -284,9 +284,9 @@ Tell the user where to look: **Stenny's icon in the menu bar** (top right of the
 - **Notifications** (right away).
 - **Microphone** (the first time a recording starts, step 12).
 
-Then two settings, one click path each:
-- Notification style, so the *Start Recording* button stays on screen: **System Settings ▸ Notifications ▸ Stenny ▸ Alert Style ▸ Persistent** (on macOS 14 it's called *Alerts*). Recommended.
-- Start with the Mac: **System Settings ▸ General ▸ Login Items ▸ + ▸ Stenny**. Recommended, so the notification works without thinking of it.
+Then one setting, so the *Start Recording* button stays on screen: **System Settings ▸ Notifications ▸ Stenny ▸ Alert Style ▸ Persistent** (on macOS 14 it's called *Alerts*). Recommended.
+
+Stenny opens at login by itself, so the notification works without thinking of it; macOS may show a short notice that a login item was added. Tell the user in one sentence, and that they can turn it off in **System Settings ▸ General ▸ Login Items**; Stenny won't add itself back.
 
 To show the notification once: quit Stenny (its menu ▸ *Quit Stenny*), then `open "<path>/Stenny.app" --args --test-notification`.
 
