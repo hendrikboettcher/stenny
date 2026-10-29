@@ -3,6 +3,7 @@
 import os
 import re
 import tomllib
+import unicodedata
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -100,9 +101,12 @@ class Config:
         return self.data_dir / "_Recordings" / course.name if course.is_event else self.data_dir / course.name
 
     def course(self, name: str) -> Course:
-        key = name.casefold()
+        # macOS can hand over arguments decomposed ("o" + combining ¨), while config.toml has "ö"
+        def fold(s: str) -> str:
+            return unicodedata.normalize("NFC", s).casefold()
+        key = fold(name)
         for course in self.courses.values():
-            if key == course.name.casefold() or key in (a.casefold() for a in course.aliases):
+            if key == fold(course.name) or key in (fold(a) for a in course.aliases):
                 return course
         known = ", ".join(self.courses) or "none"
         raise ConfigError(f"Unknown course '{name}'. Configured courses: {known}. "
