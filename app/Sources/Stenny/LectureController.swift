@@ -235,6 +235,52 @@ final class LectureController: NSObject {
         AppLog.write("notified: \(message)")
     }
 
+    // MARK: Feedback
+
+    @objc private func sendFeedback() {
+        let alert = NSAlert()
+        alert.messageText = "Send feedback"
+        alert.informativeText = "What works, what doesn't, what you'd want. It goes straight to the person who makes Stenny."
+        let stack = NSStackView(frame: NSRect(x: 0, y: 0, width: 340, height: 196))
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 8
+        let scroll = NSTextView.scrollableTextView()
+        let message = scroll.documentView as! NSTextView
+        message.font = .systemFont(ofSize: NSFont.systemFontSize)
+        message.isRichText = false
+        scroll.borderType = .bezelBorder
+        let contact = NSTextField(frame: NSRect(x: 0, y: 0, width: 340, height: 24))
+        contact.placeholderString = "Your email, if you'd like a reply (optional)"
+        let attach = NSButton(checkboxWithTitle: "Include Stenny's version, this Mac's model and the last lines of Stenny's log",
+                              target: nil, action: nil)
+        attach.lineBreakMode = .byWordWrapping
+        [scroll, contact, attach].forEach { view in
+            stack.addArrangedSubview(view)
+            view.widthAnchor.constraint(equalToConstant: 340).isActive = true
+        }
+        scroll.heightAnchor.constraint(equalToConstant: 120).isActive = true
+        alert.accessoryView = stack
+        alert.addButton(withTitle: "Send")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = message
+        NSApp.activate()
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let text = message.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return show("Your message was empty, so nothing was sent.") }
+        let reply = contact.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let details = attach.state == .on
+        Task.detached {
+            let failure = await StennyCLI.sendFeedback(text, contact: reply, includeDetails: details)
+            await MainActor.run {
+                guard let failure else { return self.show("Thank you! Your feedback was sent.") }
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+                self.show("\(failure)\n\nYour message is on the clipboard, so it isn't lost.")
+            }
+        }
+    }
+
     // MARK: Courses
 
     @objc private func addCourse() {
@@ -631,6 +677,8 @@ final class LectureController: NSObject {
         micMenu.delegate = self
         configure(draftItem, title: "Live Transcript While Recording", symbol: "text.append", action: #selector(toggleDraft))
 
+        let feedbackItem = NSMenuItem()
+        configure(feedbackItem, title: "Send Feedback…", symbol: "bubble.left", action: #selector(sendFeedback))
         let updateItem = NSMenuItem()
         configure(updateItem, title: "Check for Updates…", symbol: "arrow.down.circle", action: #selector(checkForUpdates))
         let quitItem = NSMenuItem()
@@ -640,7 +688,7 @@ final class LectureController: NSObject {
          suggestItem, startItem, pauseItem, stopItem, .separator(),
          micItem, draftItem, .separator(),
          openItem, .separator(),
-         updateItem, quitItem].forEach(menu.addItem)
+         feedbackItem, updateItem, quitItem].forEach(menu.addItem)
         statusItem.menu = menu
         refresh()
     }

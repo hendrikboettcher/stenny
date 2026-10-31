@@ -197,6 +197,35 @@ enum StennyCLI {
         return out
     }
 
+    /// Posts to stenny.eu, where the same endpoint serves the website's form. Details go only if the user ticked
+    /// the box. Returns what went wrong, or nil.
+    static func sendFeedback(_ message: String, contact: String, includeDetails: Bool) async -> String? {
+        var body: [String: String] = ["source": "app", "message": message, "contact": contact]
+        if includeDetails {
+            let info = ProcessInfo.processInfo
+            var size = 0
+            sysctlbyname("hw.model", nil, &size, nil, 0)
+            var model = [CChar](repeating: 0, count: size)
+            sysctlbyname("hw.model", &model, &size, nil, 0)
+            body["version"] = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+            body["system"] = "\(String(cString: model)), \(info.physicalMemory / (1 << 30)) GB, \(info.operatingSystemVersionString)"
+            let log = (try? String(contentsOf: dataDir.appendingPathComponent("stenny.log"), encoding: .utf8)) ?? ""
+            body["log"] = log.split(whereSeparator: \.isNewline).suffix(40).joined(separator: "\n")
+        }
+        var request = URLRequest(url: URL(string: "https://stenny.eu/api/feedback")!, timeoutInterval: 20)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if (response as? HTTPURLResponse)?.statusCode == 200 { return nil }
+            let reply = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            return reply?["error"] as? String ?? "The feedback didn't go through."
+        } catch {
+            return "Couldn't reach stenny.eu. Check your internet connection and try again."
+        }
+    }
+
     struct UpdateCheck: Sendable {
         let current: String
         let latest: String

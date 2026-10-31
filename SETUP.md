@@ -307,9 +307,15 @@ Say clearly: **✅ Setup is finished.** Then, short:
 
 **Stenny is made to be built on.** It's open source and lives in this folder. Whenever they want something different, they can reopen this chat (or this folder in Claude Code) and ask in plain language: "add a course", "change my pause shortcut", or a new feature. Changing the menu bar app itself needs Apple's Command Line Tools, which Claude Code can set up then. An update replaces the folder and keeps the old one next to it, so their changes can be carried over.
 
-**Feedback is very welcome:** *Report a problem* at https://stenny.eu.
+**Feedback is very welcome:** Stenny's icon ▸ *Send Feedback…*, or the form at https://stenny.eu.
 
-Write a short setup report: Mac model (`sysctl -n hw.model`), memory, macOS version, Stenny version, and any step that needed a workaround. No names, courses or file paths. Show it and offer to open it as a report for the author: "Open it (Recommended)" / "Keep it to myself". If yes, open `https://github.com/hendrikboettcher/stenny/issues/new?title=Setup%20report&body=<the report, URL-encoded>`; they need a GitHub account to send it. Otherwise leave it.
+Write a short setup report: Mac model (`sysctl -n hw.model`), memory, macOS version, Stenny version, and any step that needed a workaround. No names, courses or file paths. Show it and offer to send it to Stenny's author: "Send it (Recommended)" / "Keep it to myself". If yes, send exactly what you showed them:
+
+```bash
+uv run --no-project --python 3.12 python -c 'import json,sys; print(json.dumps({"source": "setup", "message": sys.argv[1]}))' "<the report>" | curl -fsS -X POST https://stenny.eu/api/feedback -H "Content-Type: application/json" -d @-
+```
+
+If it prints `{"ok":true}`, say it was sent; otherwise say it didn't go through and go on.
 
 ## Troubleshooting
 
