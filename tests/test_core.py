@@ -397,3 +397,13 @@ def test_whisper_stock_phrases_are_dropped_or_cut():
                                                 "Vielen Dank, das war's."]
     assert out[0]["raw_text"] == "Vielen Dank. Le bonheur national."  # the raw output keeps what Whisper wrote
     assert "raw_text" not in out[1] and "raw_text" not in out[2]
+
+
+def test_nonsense_from_near_silence_is_dropped_but_misheard_speech_stays():
+    from stenny.textproc import drop_reason
+
+    assert drop_reason(seg(0, " Ladies keep krypton", avg_logprob=-7.4), [], None).startswith("nonsense")
+    assert drop_reason(seg(0, " Do you want to try and change", avg_logprob=-2.56), [], None) is None
+    assert drop_reason(seg(0, " You", avg_logprob=-0.97), [], None) == "stock phrase"
+    assert drop_reason(seg(0, " You see the point?", avg_logprob=-0.2), [], None) is None
+    assert not [s for s in mark_dropped([seg(0, " ayım", avg_logprob=-5.2)]) if not s["dropped"]]

@@ -35,7 +35,7 @@ pause_shortcut = "cmd+shift+ü"
 # backup = "auto"   # second microphone recorded alongside, used only where the main one sent nothing
                     # (e.g. while you use the iPhone): "auto" = the Mac's own microphone, "off", or a name
 
-# Talks and events (Stenny: Start Lecture ▸ Talk or Event…, or `stenny live --event "Title"`): not courses.
+# Talks and events (Stenny: Start Lecture ▸ Other…, or `stenny live --event "Title"`): not courses.
 # They go to their own vault folder; default: "Recordings" next to lectures_dir.
 # [recordings]
 # folder = "Recordings"

@@ -59,6 +59,12 @@ def split_at_pauses(audio: np.ndarray, max_len: float = 28.0, min_len: float = 1
     return [(a, b) for a, b in chunks if b - a > sample_rate // 10]
 
 
+# Near-silence boosted to speech level (engine.normalize) makes Whisper invent words at very low confidence, while
+# no_speech_prob stays at 0 ("та ayım Ladies keep krypton"). On 58,000 words of real lectures this score marked
+# 83 words, nearly all of them nonsense; from -2.5 up there is misheard speech, so the line stays well below that.
+NONSENSE_LOGPROB = -3.0
+
+
 def is_hallucination(seg: dict) -> bool:
     """Whisper's standard 'probably no speech here' signal."""
     return seg.get("no_speech_prob", 0) > 0.6 and seg.get("avg_logprob", 0) < -1.0
@@ -128,6 +134,10 @@ def drop_reason(seg: dict, previous: list[dict], prompt: str | None) -> str | No
         return "empty"
     if is_hallucination(seg):
         return "no speech"
+    if seg.get("avg_logprob", 0) < NONSENSE_LOGPROB:
+        return "nonsense (very low confidence)"
+    if text.rstrip(".!?… ").casefold() == "you":  # Whisper's favourite word for silence
+        return "stock phrase"
     if seg.get("compression_ratio", 0) > 2.4:  # Whisper's own threshold for "stuck in a loop"
         return "repetition loop"
     if is_prompt_echo(text, prompt):

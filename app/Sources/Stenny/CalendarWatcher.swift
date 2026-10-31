@@ -57,7 +57,7 @@ final class CalendarWatcher {
     }
 
     /// Title of an event that is on now (or within `lead`) and belongs to no course, e.g. a guest talk:
-    /// the suggested title for "Talk or Event…".
+    /// the suggested title for "Other…".
     func otherEvent(now: Date = Date()) async -> String? {
         guard hasAccess else { return nil }
         _ = await current(now: now)  // fills the title → course cache for the events around now

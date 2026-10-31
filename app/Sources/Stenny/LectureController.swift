@@ -335,7 +335,7 @@ final class LectureController: NSObject {
 
     private func askForEventTitle(_ suggestion: String) {
         let alert = NSAlert()
-        alert.messageText = "Record a talk or event"
+        alert.messageText = "Record something else"
         alert.informativeText = "It gets its own folder in Recordings, next to your lectures."
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
         field.stringValue = suggestion
@@ -660,7 +660,7 @@ final class LectureController: NSObject {
             coursesMenu.addItem(item)
         }
         coursesMenu.addItem(.separator())
-        let event = NSMenuItem(title: "Talk or Event…", action: #selector(startEvent), keyEquivalent: "")
+        let event = NSMenuItem(title: "Other…", action: #selector(startEvent), keyEquivalent: "")
         event.target = self
         event.image = NSImage(systemSymbolName: "person.wave.2", accessibilityDescription: nil)
         coursesMenu.addItem(event)
