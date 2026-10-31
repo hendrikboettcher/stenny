@@ -6,11 +6,13 @@ import subprocess
 import sys
 import time
 from datetime import datetime
+from importlib.metadata import version as package_version
 from pathlib import Path
 
 from . import config as config_mod
 from . import jobs
 from .config import ConfigError, Course
+from .paths import tool
 
 EXAMPLE = Path(__file__).resolve().parents[2] / "config.example.toml"
 ICLOUD_INBOX = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/Lectures"
@@ -357,7 +359,7 @@ def cmd_check(args) -> None:
     samples = d.get("recorded_samples") or (pcm.stat().st_size // 2 if pcm.exists() else 0)
     opus = pcm.with_name(pcm.name.replace(".live.pcm", ".opus"))
     if not samples and opus.exists():  # after the final pass only the archived .opus remains
-        probe = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
+        probe = subprocess.run([tool("ffprobe"), "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
                                 str(opus)], capture_output=True, text=True)
         samples = int(float(probe.stdout or 0) * SAMPLE_RATE)
     spans = [tuple(s) for s in d["spans"]]
@@ -434,6 +436,26 @@ def cmd_schedule(args) -> None:
         print("Removed." if jobs.uninstall_agent() else "No schedule installed.")
 
 
+def cmd_update(args) -> None:
+    from .live.control import is_running
+    from . import update
+
+    try:
+        if args.check:
+            print(json.dumps(update.check()))
+            return
+        if is_running():
+            sys.exit("A recording or its final transcript is running. Update when it's finished.")
+        result = update.check()
+        if not result["update_available"]:
+            print(f"Stenny {result['current']} is the newest version.")
+            return
+        backup = update.update()
+    except update.UpdateError as e:
+        sys.exit(str(e))
+    print(f"Updated to Stenny {result['latest']}. The old folder is kept at {backup}.")
+
+
 def cmd_watch(args) -> None:
     """v0 workflow: watch a folder (default iCloud Drive/Lectures) and queue/process new recordings."""
     cfg = load_config()
@@ -470,6 +492,7 @@ def cmd_watch(args) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(prog="stenny", description="Transcribe lectures locally into your Obsidian vault.")
+    ap.add_argument("--version", action="version", version=f"stenny {package_version('stenny')}")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("add", help="transcribe audio file(s) into the vault")
@@ -577,6 +600,10 @@ def main() -> None:
     p = sub.add_parser("schedule", help="install/remove the launchd agent that runs the queue")
     p.add_argument("action", choices=["install", "uninstall"])
     p.set_defaults(func=cmd_schedule)
+
+    p = sub.add_parser("update", help="install the newest release of Stenny (your courses and transcripts stay)")
+    p.add_argument("--check", action="store_true", help="only print whether a newer version exists, as JSON")
+    p.set_defaults(func=cmd_update)
 
     p = sub.add_parser("watch", help="watch a folder (default: iCloud Drive/Lectures) and queue new recordings")
     p.add_argument("--inbox", type=Path, default=ICLOUD_INBOX)

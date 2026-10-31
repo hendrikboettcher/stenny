@@ -15,6 +15,7 @@ import subprocess
 import time
 from pathlib import Path
 
+from ..paths import bundled, tool
 from ..textproc import SAMPLE_RATE
 
 
@@ -45,7 +46,7 @@ def builtin_input_device() -> str | None:
 
 
 def input_devices() -> list[str]:
-    p = subprocess.run(["ffmpeg", "-hide_banner", "-f", "avfoundation", "-list_devices", "true", "-i", ""],
+    p = subprocess.run([tool("ffmpeg"), "-hide_banner", "-f", "avfoundation", "-list_devices", "true", "-i", ""],
                        capture_output=True, text=True)
     text = p.stderr.split("audio devices:", 1)[-1]
     return re.findall(r"\[\d+\] (.+)", text)
@@ -74,7 +75,7 @@ class FfmpegSource:
         self._log.write(f"--- start {time.strftime('%H:%M:%S')}\n".encode())
         self._log.flush()
         self._proc = subprocess.Popen(
-            ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "level+warning", *self._cmd(),
+            [tool("ffmpeg"), "-nostdin", "-hide_banner", "-loglevel", "level+warning", *self._cmd(),
              "-f", "s16le", "-ac", "1", "-ar", str(SAMPLE_RATE), "-flush_packets", "1", "-"],
             stdout=self._out, stderr=self._log, stdin=subprocess.DEVNULL)
 
@@ -119,7 +120,7 @@ class MicSource(FfmpegSource):
 
 def find_recorder() -> str | None:
     """The native recorder (app/Sources/stenny-rec), bundled in Stenny.app."""
-    candidates = [os.environ.get("STENNY_REC"), "/Applications/Stenny.app/Contents/MacOS/stenny-rec",
+    candidates = [os.environ.get("STENNY_REC"), bundled("stenny-rec"),
                   str(Path(__file__).resolve().parents[3] / "app/.build/release/stenny-rec")]
     return next((c for c in candidates if c and os.access(c, os.X_OK)), None)
 

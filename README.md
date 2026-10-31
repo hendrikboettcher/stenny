@@ -33,24 +33,25 @@ Paste this sentence into [Claude Code](https://claude.com/claude-code) (in the C
 Install Stenny on my Mac by following https://github.com/hendrikboettcher/stenny/blob/main/SETUP.md
 ```
 
-That's all. Claude Code downloads Stenny to `~/Applications/stenny`, checks your Mac, installs what's missing, builds the menu bar app, asks where your transcripts should go and which courses you take, downloads the Whisper model, makes a test recording with you and helps you set up a Claude project per course. It explains each step and asks before anything important. [SETUP.md](SETUP.md) is the exact script it follows; you can read it first.
+That's all. Claude Code downloads Stenny to `~/Applications/stenny`, checks your Mac, installs what's missing and the menu bar app, asks where your transcripts should go and which courses you take, downloads the Whisper model, makes a test recording with you and helps you set up a Claude project per course. It explains each step and asks before anything important. [SETUP.md](SETUP.md) is the exact script it follows; you can read it first.
 
-Already downloaded [Stenny.zip](https://github.com/hendrikboettcher/stenny/releases/latest/download/Stenny.zip)? Unzip it, open the folder in Claude Code and type `follow SETUP.md`.
+The app is signed with the author's own certificate, not one from Apple, so macOS refuses a copy downloaded in a browser. Claude Code's download doesn't have that problem. To get a new version later: Stenny's menu ▸ *Check for Updates…* (or `stenny update`).
 
 ### By hand
 
 ```bash
-# 0. Download Stenny.zip (link above), unzip it into ~/Applications, then:
+# 0. Download the code without a browser, so macOS doesn't block the app:
+mkdir -p ~/Applications
+curl -fL -o /tmp/Stenny.zip https://github.com/hendrikboettcher/stenny/releases/latest/download/Stenny.zip
+ditto -x -k /tmp/Stenny.zip ~/Applications
 cd ~/Applications/stenny
 
-# 1. Tools (Homebrew from https://brew.sh if you don't have it)
-xcode-select --install          # Apple's Command Line Tools, if missing
-brew install uv ffmpeg
+# 1. Tools
+curl -LsSf https://astral.sh/uv/install.sh | sh
 uv tool install -e . --python 3.12   # puts `stenny` on your PATH (~/.local/bin)
 
 # 2. Menu bar app
-app/make-cert.sh                # once: a signing certificate, so macOS remembers Stenny's permissions
-app/build.sh                    # builds Stenny.app and installs it to /Applications (or ~/Applications)
+app/install.sh --no-open        # installs the finished Stenny.app to /Applications (or ~/Applications)
 
 # 3. Settings
 stenny init --vault "~/Documents/My Vault"    # any folder works; Obsidian is optional
@@ -68,18 +69,18 @@ See `config.example.toml` for every setting. The AI step uses the `claude` comma
 
 **Start:** click Stenny's stick figure in the menu bar ▸ *Start Lecture* ▸ your course. If your calendar has the lecture, Stenny offers it at the top of the menu from 10 minutes before, and a notification asks *Record this lecture?* with a **Start Recording** button. It never starts by itself.
 
-**While recording:** the stick figure turns into a red dot with the time; click it for the menu. The live draft appears in the transcript file about 10 seconds behind the lecturer (*Open Transcript*). The open menu shows a level meter: green is fine, orange means the microphone is too far away.
+**While recording:** the stick figure turns into a dot with the time; click it for the menu. The live draft appears in the transcript file about 10 seconds behind the lecturer (*Open Transcript*). The open menu shows a level meter: green is fine, orange means the microphone is too far away.
 
 **Pause:** press **⌘⇧Ü** (the default; choose your own with `[app] pause_shortcut` in the config). While paused, the microphone is really off and nothing is recorded.
 
-**Stop:** click the red dot ▸ *Stop & Make Final Transcript*. On power, the whole recording is transcribed again at full quality (a 3-hour lecture takes about 20–25 minutes) and replaces the draft. On battery it waits until you plug in.
+**Stop:** click the dot ▸ *Stop & Make Final Transcript*. On power, the whole recording is transcribed again at full quality (a 3-hour lecture takes about 20–25 minutes) and replaces the draft. On battery it waits until you plug in.
 
 **Keep the lid open while recording.** A closed MacBook on battery sleeps and records nothing.
 
 **Other things you can do:**
 - **Use your iPhone as the microphone** (*Microphone ▸*, via Continuity) and put it closer to the lecturer. The Mac's own microphone records as a backup and fills the gaps when you use the phone.
 - **Add the slides** (a PDF dropped into the lecture folder, or `--slides deck.pdf`): better spelling of names and terms, and headings that link to the slide pages.
-- **Talks and events** that aren't courses: *Start Lecture ▸ Talk or Event…*. They go to their own `Recordings` folder.
+- **Talks and events** that aren't courses: *Start Lecture ▸ Other…*. They go to their own `Recordings` folder.
 - **Recordings from elsewhere** (Voice Memos, a file): `stenny add recording.m4a --course "Calculus"`.
 
 ### From the terminal
@@ -186,7 +187,10 @@ At the default low priority Stenny runs at about 8× realtime. While recording, 
 ```bash
 uv run pytest                          # tests, no model download needed
 uv run stenny live --course calc --file sample.m4a --speed 3   # try live mode without a microphone
-app/build.sh --no-install              # build the app into app/build.noindex/ only
+stenny course add "Name" -l en        # or Stenny's menu: Start Lecture ▸ Add Course…
+app/make-cert.sh                       # once: a signing certificate, so macOS remembers permissions across builds
+app/build.sh                           # build the app and install it (needs Apple's Command Line Tools; --no-install: only build)
+app/release.sh                         # dist/Stenny.zip for a release (--publish: also tag and upload it)
 uv run python bench/run_bench.py --help
 ```
 

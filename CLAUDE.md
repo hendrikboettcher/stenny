@@ -42,7 +42,9 @@ src/stenny/
                   pause/resume, spans → lecture time), control.py (Unix socket JSON API)
 app/              Swift menu bar app (SwiftPM + build.sh): starts `stenny live`, pause shortcut (`[app] pause_shortcut`,
                   read via `stenny app-settings`, default ⌘⇧Ü), status via socket; make-cert.sh: signing certificate;
-                  also builds `stenny-rec`, the native microphone recorder bundled in Stenny.app
+                  also builds `stenny-rec`, the native microphone recorder bundled in Stenny.app;
+                  build-ffmpeg.sh: the LGPL ffmpeg/ffprobe bundled there; install.sh: installs the built app;
+                  release.sh: the release zip, which holds the signed app at app/build.noindex/Stenny.app
 tests/            pytest, no model downloads needed
 bench/            engine benchmark scripts
 ```
@@ -61,6 +63,7 @@ Vault output: `<vault>/<lectures_dir>/<Course>/<YYYY-MM-DD>/<Course> <YYYY-MM-DD
 - **Microphone capture goes through `stenny-rec` (AVAudioEngine), never through Python** and not through ffmpeg's avfoundation input, which silently dropped ~1 s every ~8 s. Check every change to live mode with `stenny check`.
 - **The backup microphone only fills "no input" gaps** of the main one (final pass, `fill_from_backup`); never mix it into audio the main microphone delivered. It stops on pause like the main one. Its text is marked `backup` in segments and paragraphs.
 - **Pause means the microphone is off:** while paused, the audio source is stopped; never record or buffer paused audio.
+- **The recording comes first (`resources.py`):** low memory costs the live draft, low disk the backup microphone, and a final pass waits for memory like it waits for power. A process that dies mustn't lose a lecture: `stenny recover` queues its final pass, and Stenny starts recording again without the draft.
 - Live timestamps are lecture-clock time (pauses included); keep `spans`/`pauses` in session.json consistent with that.
 - **Keep README.md, SETUP.md and config.example.toml current** in the same commit as a change to a feature, a command, a setting or a storage location.
 - Don't install large dependencies (>100 MB) or persistent system config (launchd agents) without asking the user.
@@ -75,4 +78,7 @@ uv run stenny courses                 # list configured courses
 uv run python bench/run_bench.py       # engine benchmark
 uv run stenny live --course "<name>" --file sample.m4a --speed 3   # test live mode without a microphone
 app/build.sh                           # build + install the menu bar app (--no-install: only build)
+uv run stenny course add "<name>" -l en  # or `course hide`; config.toml stays as text, comments intact
+uv run stenny recover                  # queue the final pass of recordings whose process died
+app/release.sh                         # release zip; --publish tags and uploads it. Push and release together
 ```

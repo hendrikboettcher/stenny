@@ -9,6 +9,7 @@ from pathlib import Path
 
 import numpy as np
 
+from .paths import tool
 from .textproc import SAMPLE_RATE
 
 AUDIO_EXTS = {".m4a", ".mp3", ".wav", ".aac", ".mp4", ".mov", ".ogg", ".opus", ".flac", ".webm", ".qta", ".aiff"}
@@ -22,7 +23,7 @@ def input_args(path: Path) -> list[str]:
 
 
 def load(path: Path) -> np.ndarray:
-    cmd = ["ffmpeg", "-nostdin", "-loglevel", "error", *input_args(path), "-f", "s16le", "-ac", "1",
+    cmd = [tool("ffmpeg"), "-nostdin", "-loglevel", "error", *input_args(path), "-f", "s16le", "-ac", "1",
            "-ar", str(SAMPLE_RATE), "-"]
     p = subprocess.run(cmd, capture_output=True)
     if p.returncode != 0:
@@ -32,7 +33,7 @@ def load(path: Path) -> np.ndarray:
 
 def recorded_at(path: Path) -> datetime:
     """Recording start: container creation_time (Voice Memos, most recorders), else file birth time."""
-    p = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format_tags=creation_time", "-of", "json",
+    p = subprocess.run([tool("ffprobe"), "-v", "error", "-show_entries", "format_tags=creation_time", "-of", "json",
                         str(path)], capture_output=True, text=True)
     try:
         stamp = json.loads(p.stdout)["format"]["tags"]["creation_time"]
@@ -66,7 +67,7 @@ def device_from_tags(tags: dict) -> str | None:
 
 def recording_device(path: Path) -> str | None:
     """Device/app that recorded `path`, from its metadata (None when the file doesn't say)."""
-    p = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format_tags:stream_tags", "-of", "json",
+    p = subprocess.run([tool("ffprobe"), "-v", "error", "-show_entries", "format_tags:stream_tags", "-of", "json",
                         str(path)], capture_output=True, text=True)
     try:
         data = json.loads(p.stdout)
@@ -89,7 +90,7 @@ def archive(src: Path, dest: Path, bitrate: str = "32k") -> Path:
         shutil.copy2(src, dest)
         return dest
     tmp = dest.with_name(f".{dest.name}.tmp.opus")
-    subprocess.run(["ffmpeg", "-nostdin", "-loglevel", "error", "-y", *input_args(src), "-ac", "1",
+    subprocess.run([tool("ffmpeg"), "-nostdin", "-loglevel", "error", "-y", *input_args(src), "-ac", "1",
                     "-c:a", "libopus", "-b:a", bitrate, "-application", "voip", str(tmp)], check=True)
     tmp.replace(dest)
     return dest

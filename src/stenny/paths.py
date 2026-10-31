@@ -24,3 +24,17 @@ SOCKET = SYSTEM_DIR / "live.sock"
 LEGACY_CONFIG_DIR = Path.home() / ".config/lecture"
 LEGACY_STATE_DIR = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "lecture"
 LEGACY_AUDIO_DIR = Path.home() / "Lectures Audio"
+
+
+def bundled(name: str) -> str | None:
+    """A helper program inside the installed Stenny.app (your own copy first, on a shared Mac)."""
+    for apps in (Path.home() / "Applications", Path("/Applications")):
+        program = apps / "Stenny.app/Contents/MacOS" / name
+        if os.access(program, os.X_OK):
+            return str(program)
+    return None
+
+
+def tool(name: str) -> str:
+    """ffmpeg or ffprobe: the one shipped with Stenny.app, else whatever is on the PATH (a developer's Mac)."""
+    return bundled(name) or name

@@ -165,6 +165,37 @@ enum StennyCLI {
         return out
     }
 
+    struct UpdateCheck: Sendable {
+        let current: String
+        let latest: String
+        let available: Bool
+    }
+
+    /// `stenny update --check`; nil if it couldn't be checked (no internet, GitHub down).
+    static func checkForUpdate() -> UpdateCheck? {
+        guard let d = json(["update", "--check"]) as? [String: Any],
+              let current = d["current"] as? String, let latest = d["latest"] as? String else { return nil }
+        return UpdateCheck(current: current, latest: latest, available: d["update_available"] as? Bool ?? false)
+    }
+
+    /// Runs `stenny update` on its own, since it closes this app to replace it. `onFailure` gets the reason.
+    static func runUpdate(onFailure: @escaping @Sendable (String) -> Void) {
+        guard let exe = executable else { return onFailure("The `stenny` command was not found.") }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: exe)
+        process.arguments = ["update"]
+        process.environment = environment
+        let errors = Pipe()
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = errors
+        process.terminationHandler = { finished in
+            guard finished.terminationStatus != 0 else { return }
+            let text = String(data: errors.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            onFailure(text.isEmpty ? "Exit status \(finished.terminationStatus)." : text)
+        }
+        do { try process.run() } catch { onFailure(error.localizedDescription) }
+    }
+
     /// Microphones ffmpeg can record from, and the system's current input device.
     static func devices() -> (devices: [String], systemDefault: String?) {
         guard let d = json(["devices", "--json"]) as? [String: Any] else { return ([], nil) }

@@ -28,6 +28,11 @@ iconutil -c icns "$BUILD/AppIcon.iconset" -o "$APP/Contents/Resources/AppIcon.ic
 rm -rf "$BUILD/AppIcon.iconset"
 # the recorder runs as a child of Stenny, so it shares Stenny's microphone permission
 cp "$(swift build -c release --show-bin-path)/stenny-rec" "$APP/Contents/MacOS/stenny-rec"
+# the audio tools, if built (build-ffmpeg.sh, for releases); without them Stenny uses the ones on the PATH
+for tool in ffmpeg ffprobe; do
+    [[ -x "$BUILD/tools/$tool" ]] && cp "$BUILD/tools/$tool" "$APP/Contents/MacOS/$tool"
+done
+VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' ../pyproject.toml)"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -42,8 +47,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <!-- New installs show notifications as Alerts, so Start Recording / Not now are always visible -->
     <key>NSUserNotificationAlertStyle</key><string>alert</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>1.0</string>
-    <key>CFBundleVersion</key><string>1</string>
+    <key>CFBundleShortVersionString</key><string>$VERSION</string>
+    <key>CFBundleVersion</key><string>$VERSION</string>
     <key>CFBundleDevelopmentRegion</key><string>en</string>
     <key>LSMinimumSystemVersion</key><string>14.4</string>
     <key>NSCalendarsFullAccessUsageDescription</key><string>Stenny looks for the lecture that's on now in your calendar, so you can start recording it with one click. Nothing is changed or sent anywhere.</string>
@@ -73,19 +78,4 @@ if (( ! INSTALL )); then
     exit 0
 fi
 
-# Install to /Applications, or to ~/Applications when this account may not write there (a standard user)
-# or another account's Stenny is installed there (a shared Mac): never replace someone else's copy.
-# Then unregister the copy in the build folder, so macOS only knows one Stenny.
-DEST=/Applications
-if [[ ! -w /Applications ]] || [[ -e /Applications/Stenny.app && ! -O /Applications/Stenny.app ]]; then
-    DEST="$HOME/Applications"
-    mkdir -p "$DEST"
-    echo "ℹ️  /Applications/Stenny.app belongs to another account (or /Applications isn't writable): installing to ~/Applications"
-fi
-pkill -u "$(id -u)" -f "Stenny.app/Contents/MacOS/Stenny" || true
-rm -rf "$DEST/Stenny.app"
-cp -R "$APP" "$DEST/"
-LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
-"$LSREGISTER" -u "$APP" 2>/dev/null || true
-"$LSREGISTER" -f "$DEST/Stenny.app"
-echo "✅ Installed: $DEST/Stenny.app"
+./install.sh --no-open

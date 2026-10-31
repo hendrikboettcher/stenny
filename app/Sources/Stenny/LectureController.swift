@@ -283,6 +283,53 @@ final class LectureController: NSObject {
     }
 
 
+    @objc private func checkForUpdates() {
+        Task.detached {
+            let result = StennyCLI.checkForUpdate()
+            await MainActor.run { self.showUpdate(result) }
+        }
+    }
+
+    private func showUpdate(_ result: StennyCLI.UpdateCheck?) {
+        let alert = NSAlert()
+        NSApp.activate()
+        guard let result else {
+            alert.messageText = "Couldn't check for updates"
+            alert.informativeText = "Check your internet connection and try again."
+            alert.runModal()
+            return
+        }
+        guard result.available else {
+            alert.messageText = "Stenny is up to date"
+            alert.informativeText = "You have the newest version, \(result.current)."
+            alert.runModal()
+            return
+        }
+        alert.messageText = "Stenny \(result.latest) is available"
+        alert.informativeText = "You have \(result.current). Stenny closes and reopens by itself; your courses and transcripts stay as they are."
+        alert.addButton(withTitle: "Update")
+        alert.addButton(withTitle: "Not Now")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        guard status == nil else {
+            let busy = NSAlert()
+            busy.messageText = "Stenny is working on a recording"
+            busy.informativeText = "Update once the recording and its final transcript are finished."
+            busy.runModal()
+            return
+        }
+        AppLog.write("updating from \(result.current) to \(result.latest)")
+        // On success this app is closed and replaced, so only a failure ever gets back here
+        StennyCLI.runUpdate { failure in
+            Task { @MainActor in
+                let failed = NSAlert()
+                failed.messageText = "The update didn't work"
+                failed.informativeText = failure
+                NSApp.activate()
+                failed.runModal()
+            }
+        }
+    }
+
     @objc private func quit() {
         NSApp.terminate(nil)
     }
@@ -439,6 +486,8 @@ final class LectureController: NSObject {
         micMenu.delegate = self
         configure(draftItem, title: "Live Transcript While Recording", symbol: "text.append", action: #selector(toggleDraft))
 
+        let updateItem = NSMenuItem()
+        configure(updateItem, title: "Check for Updates…", symbol: "arrow.down.circle", action: #selector(checkForUpdates))
         let quitItem = NSMenuItem()
         configure(quitItem, title: "Quit Stenny", symbol: "power", action: #selector(quit))
 
@@ -446,7 +495,7 @@ final class LectureController: NSObject {
          suggestItem, startItem, pauseItem, stopItem, .separator(),
          micItem, draftItem, .separator(),
          openItem, .separator(),
-         quitItem].forEach(menu.addItem)
+         updateItem, quitItem].forEach(menu.addItem)
         statusItem.menu = menu
         refresh()
     }
