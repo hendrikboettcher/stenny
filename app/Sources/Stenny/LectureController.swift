@@ -173,6 +173,89 @@ final class LectureController: NSObject {
         refresh()
     }
 
+    // MARK: Courses
+
+    @objc private func addCourse() {
+        let alert = NSAlert()
+        alert.messageText = "Add a course"
+        alert.informativeText = "Mixed is for lecturers who switch languages within a lecture. Auto is for one language per lecture, but not always the same one."
+        let stack = NSStackView(frame: NSRect(x: 0, y: 0, width: 280, height: 90))
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 8
+        let name = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+        name.placeholderString = "Course name, e.g. Microeconomics"
+        let language = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 280, height: 26))
+        let languages = [("English", "en"), ("German", "de"), ("French", "fr"), ("Mixed", "mixed"), ("Auto", "auto")]
+        language.addItems(withTitles: languages.map(\.0))
+        let short = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+        short.placeholderString = "Short name (optional), e.g. micro"
+        [name, language, short].forEach { view in
+            stack.addArrangedSubview(view)
+            view.widthAnchor.constraint(equalToConstant: 280).isActive = true
+        }
+        alert.accessoryView = stack
+        alert.addButton(withTitle: "Add Course")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = name
+        NSApp.activate()
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let course = name.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let alias = short.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        var args = ["course", "add", course, "--language", languages[language.indexOfSelectedItem].1]
+        if !alias.isEmpty { args += ["--alias", alias] }
+        Task.detached {
+            let result = StennyCLI.run(args)
+            await MainActor.run {
+                guard let result, result.ok else {
+                    self.show(result?.errors.trimmingCharacters(in: .whitespacesAndNewlines) ?? "The `stenny` command was not found.")
+                    return
+                }
+                self.offerProject(course)
+            }
+        }
+    }
+
+    /// Recommended, never required: Stenny works the same without a Claude project.
+    private func offerProject(_ course: String) {
+        let alert = NSAlert()
+        alert.messageText = "\(course) is in your menu"
+        alert.informativeText = "Want a Claude project for it, so its chats read these transcripts? In the Claude desktop app: "
+            + "Projects ▸ New project, name it, Instructions ▸ paste ▸ Save."
+        alert.addButton(withTitle: "Copy Project Instructions")
+        alert.addButton(withTitle: "Not Now")
+        NSApp.activate()
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        Task.detached {
+            let result = StennyCLI.run(["project-instructions", "--course", course])
+            await MainActor.run {
+                guard let result, result.ok else { return self.show("Couldn't get the instructions.") }
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(result.output, forType: .string)
+            }
+        }
+    }
+
+    @objc private func hideCourse(_ sender: NSMenuItem) {
+        guard let course = sender.representedObject as? String else { return }
+        let alert = NSAlert()
+        alert.messageText = "Hide \(course)?"
+        alert.informativeText = "It leaves this menu and calendar matching. Its transcripts and glossary stay where they are. "
+            + "To bring it back, add a course with the same name."
+        alert.addButton(withTitle: "Hide Course")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate()
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        Task.detached {
+            let result = StennyCLI.run(["course", "hide", course])
+            await MainActor.run {
+                if result?.ok != true {
+                    self.show(result?.errors.trimmingCharacters(in: .whitespacesAndNewlines) ?? "The `stenny` command was not found.")
+                }
+            }
+        }
+    }
+
     // MARK: Actions
 
     @objc private func startCourse(_ sender: NSMenuItem) {
@@ -504,7 +587,7 @@ final class LectureController: NSObject {
         coursesMenu.removeAllItems()
         let courses = StennyCLI.courses()
         if courses.isEmpty {
-            let item = NSMenuItem(title: "No courses in ~/Lectures Data/_System/config.toml", action: nil, keyEquivalent: "")
+            let item = NSMenuItem(title: "No courses yet", action: nil, keyEquivalent: "")
             item.isEnabled = false
             coursesMenu.addItem(item)
         }
@@ -519,6 +602,24 @@ final class LectureController: NSObject {
         event.target = self
         event.image = NSImage(systemSymbolName: "person.wave.2", accessibilityDescription: nil)
         coursesMenu.addItem(event)
+        coursesMenu.addItem(.separator())
+        let add = NSMenuItem(title: "Add Course…", action: #selector(addCourse), keyEquivalent: "")
+        add.target = self
+        add.image = NSImage(systemSymbolName: "plus", accessibilityDescription: nil)
+        coursesMenu.addItem(add)
+        if !courses.isEmpty {
+            let hide = NSMenuItem(title: "Hide Course", action: nil, keyEquivalent: "")
+            hide.image = NSImage(systemSymbolName: "eye.slash", accessibilityDescription: nil)
+            let list = NSMenu()
+            for course in courses {
+                let item = NSMenuItem(title: course, action: #selector(hideCourse(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = course
+                list.addItem(item)
+            }
+            hide.submenu = list
+            coursesMenu.addItem(hide)
+        }
     }
 
     private func reloadMicrophones() {

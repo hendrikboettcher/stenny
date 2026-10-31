@@ -111,13 +111,27 @@ def cmd_courses(args) -> None:
     cfg = load_config()
     if args.json:  # for Stenny
         print(json.dumps([{"name": c.name, "language": c.language, "aliases": c.aliases}
-                          for c in cfg.courses.values()], ensure_ascii=False))
+                          for c in cfg.visible_courses.values()], ensure_ascii=False))
         return
     print(f"Config: {cfg.path}\nLectures: {cfg.lectures_root}\n")
     for c in cfg.courses.values():
         langs = c.language if c.fixed_language else f"{c.language} {c.languages}"
         aliases = f"  aliases: {', '.join(c.aliases)}" if c.aliases else ""
-        print(f"- {c.name}: {langs}{aliases}")
+        print(f"- {c.name}: {langs}{aliases}{'  (hidden)' if c.hidden else ''}")
+
+
+def cmd_course(args) -> None:
+    from .courses import add, hide
+
+    cfg = load_config()
+    try:
+        if args.action == "add":
+            languages = args.languages.split(",") if args.languages else None
+            print(add(cfg, args.name, args.language, languages, args.alias))
+        else:
+            print(hide(cfg, args.name))
+    except ConfigError as e:
+        sys.exit(str(e))
 
 
 def check_slides(path: Path | None) -> None:
@@ -182,7 +196,7 @@ def cmd_match_course(args) -> None:
     from .config import course_for_title
 
     cfg = load_config()
-    out = [{"title": t, "course": (c := course_for_title(cfg.courses, t)) and c.name} for t in args.titles]
+    out = [{"title": t, "course": (c := course_for_title(cfg.visible_courses, t)) and c.name} for t in args.titles]
     if args.json:
         print(json.dumps(out, ensure_ascii=False))
         return
@@ -600,6 +614,17 @@ def main() -> None:
     p = sub.add_parser("schedule", help="install/remove the launchd agent that runs the queue")
     p.add_argument("action", choices=["install", "uninstall"])
     p.set_defaults(func=cmd_schedule)
+
+    p = sub.add_parser("course", help="add a course, or hide one from the menu and calendar matching")
+    actions = p.add_subparsers(dest="action", required=True)
+    a = actions.add_parser("add", help="add a course (or bring a hidden one back)")
+    a.add_argument("name")
+    a.add_argument("--language", "-l", default="auto", help="a code (en, de, fr, …), mixed or auto")
+    a.add_argument("--languages", help="for mixed or auto: the languages to detect among, e.g. fr,de")
+    a.add_argument("--alias", help="a short name for the terminal and calendar matching")
+    h = actions.add_parser("hide", help="hide a course; its transcripts, glossary and settings stay")
+    h.add_argument("name")
+    p.set_defaults(func=cmd_course)
 
     p = sub.add_parser("update", help="install the newest release of Stenny (your courses and transcripts stay)")
     p.add_argument("--check", action="store_true", help="only print whether a newer version exists, as JSON")

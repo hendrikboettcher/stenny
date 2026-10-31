@@ -165,6 +165,23 @@ enum StennyCLI {
         return out
     }
 
+    /// Runs `stenny <args>`: its exit status and what it printed, or nil if the tool isn't there.
+    static func run(_ args: [String]) -> (ok: Bool, output: String, errors: String)? {
+        guard let exe = executable else { return nil }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: exe)
+        process.arguments = args
+        process.environment = environment
+        let out = Pipe(), err = Pipe()
+        process.standardOutput = out
+        process.standardError = err
+        do { try process.run() } catch { return nil }
+        let output = out.fileHandleForReading.readDataToEndOfFile()
+        let errors = err.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return (process.terminationStatus == 0, String(decoding: output, as: UTF8.self), String(decoding: errors, as: UTF8.self))
+    }
+
     struct UpdateCheck: Sendable {
         let current: String
         let latest: String

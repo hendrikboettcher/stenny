@@ -30,6 +30,7 @@ class Course:
     aliases: list[str] = field(default_factory=list)
     calendar: list[str] = field(default_factory=list)  # extra words that identify it in calendar event titles
     kind: str = "lecture"           # "lecture" (a configured course) | "event" (a talk or event, see Config.event)
+    hidden: bool = False            # out of the menu and calendar matching; everything else still works
 
     @property
     def is_event(self) -> bool:
@@ -75,6 +76,10 @@ class Config:
     event_languages: list[str] = field(default_factory=lambda: ["en", "de", "fr"])
     pause_shortcut: str = DEFAULT_PAUSE_SHORTCUT  # Stenny's global pause/resume shortcut, see parse_shortcut
     path: Path | None = None
+
+    @property
+    def visible_courses(self) -> dict[str, Course]:
+        return {name: c for name, c in self.courses.items() if not c.hidden}
 
     @property
     def lectures_root(self) -> Path:
@@ -207,7 +212,7 @@ def load(path: Path | None = None) -> Config:
             languages = c.get("languages") or ([language] if language not in LANGUAGE_MODES else ["fr", "de", "en"])
             courses[name] = Course(name=name, language=language, languages=languages,
                                    tags=c.get("tags", []), aliases=c.get("aliases", []),
-                                   calendar=c.get("calendar", []))
+                                   calendar=c.get("calendar", []), hidden=c.get("hidden", False))
         return Config(
             vault=_path(data["vault"]),
             lectures_dir=data.get("lectures_dir", "Lectures"),

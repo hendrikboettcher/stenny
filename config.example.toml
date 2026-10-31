@@ -44,7 +44,8 @@ pause_shortcut = "cmd+shift+ü"
 # One table per course. language: a fixed code ("fr", "de", "en", …), "auto" (one language per lecture,
 # detected among `languages`) or "mixed" (detected per ~25 s chunk among `languages`).
 # aliases: short names for the command line (`--course calc`); calendar: extra words that identify the
-# course in calendar event titles. Replace these examples with your own courses.
+# course in calendar event titles; hidden = true takes it out of the menu and calendar matching (Stenny's
+# Hide Course does that, nothing is deleted). Replace these examples with your own courses.
 [courses."Calculus"]
 language = "en"
 tags = ["maths"]
