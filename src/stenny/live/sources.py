@@ -45,11 +45,25 @@ def builtin_input_device() -> str | None:
     return None
 
 
+def virtual_devices() -> set[str]:
+    """Audio devices apps install for themselves (Microsoft Teams Audio): they hear no room."""
+    out = subprocess.run(["system_profiler", "SPAudioDataType"], capture_output=True, text=True).stdout
+    current, virtual = None, set()
+    for line in out.splitlines():
+        if m := re.match(r"^ {8}(\S.*):$", line):
+            current = m.group(1)
+        elif "Transport: Virtual" in line:
+            virtual.add(current)
+    return virtual
+
+
 def input_devices() -> list[str]:
+    """Real microphones only. A virtual device can still be used by naming it: `[live] device` in the config."""
     p = subprocess.run([tool("ffmpeg"), "-hide_banner", "-f", "avfoundation", "-list_devices", "true", "-i", ""],
                        capture_output=True, text=True)
     text = p.stderr.split("audio devices:", 1)[-1]
-    return re.findall(r"\[\d+\] (.+)", text)
+    virtual = virtual_devices()
+    return [d for d in re.findall(r"\[\d+\] (.+)", text) if d not in virtual]
 
 
 class FfmpegSource:
