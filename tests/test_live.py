@@ -7,6 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
+from stenny import resources
 from stenny.config import Config, Course
 from stenny.live import session as live_session
 from stenny.live.session import LiveSession
@@ -352,3 +353,59 @@ def test_switching_the_microphone_ends_the_gap_and_keeps_recording(tmp_path, mon
     assert len(gaps) == 1 and 7.9 <= gaps[0][0] <= 8.2 and 11.9 <= gaps[0][1] <= 12.6
     assert any(seg["start"] >= 12.5 for seg in s.segments)          # transcribed from the new microphone
     assert LiveInfo.load(s.session_path).microphone == "MacBook Air Microphone"
+
+
+def fake_resources(monkeypatch, disk=10 * resources.GB, pressure=resources.PRESSURE_NORMAL):
+    state = {"disk": disk, "pressure": pressure}
+    monkeypatch.setattr(resources, "free_disk", lambda path: state["disk"])
+    monkeypatch.setattr(resources, "memory_pressure", lambda: state["pressure"])
+    monkeypatch.setattr(live_session, "RESOURCE_CHECK", 0.0)
+    return state
+
+
+def test_low_memory_pauses_the_draft_but_never_the_recording(tmp_path, monkeypatch):
+    state = fake_resources(monkeypatch)
+    monkeypatch.setattr(live_session, "DRAFT_RESUME", 0.0)
+    mic = FakeMic()
+    released = []
+
+    def script(s):
+        wait_until(lambda: mic.t >= 10)
+        state["pressure"] = 2
+        wait_until(lambda: s.draft_paused and s.warning)
+        s.engine.release = lambda: released.append(True)
+        before = len(s.segments)
+        wait_until(lambda: mic.t >= 25)
+        s.seen = before, len(s.segments), s.recorded
+        state["pressure"] = 1
+        wait_until(lambda: not s.draft_paused)
+        wait_until(lambda: mic.t >= 45)
+        s.command("stop")
+
+    s = run_session(tmp_path, monkeypatch, mic, script=script)
+    before, during, recorded = s.seen
+    assert during - before <= 2                      # at most what was on its way when memory ran low
+    assert recorded / SAMPLE_RATE >= 24              # the recording went on
+    assert s.recorded / SAMPLE_RATE >= 44
+    assert len(s.segments) > during                  # and the draft came back
+    assert released == [True]
+    assert not s.warning
+
+
+def test_low_disk_stops_the_backup_and_a_full_disk_ends_cleanly(tmp_path, monkeypatch):
+    state = fake_resources(monkeypatch)
+    mic = FakeMic()
+    backup = FakeBackup(mic)
+
+    def script(s):
+        wait_until(lambda: mic.t >= 8)
+        state["disk"] = resources.DISK_LOW - 1
+        wait_until(lambda: s.disk_low)
+        assert s.warning == "Disk almost full" and not s.backup.running
+        wait_until(lambda: mic.t >= 14)
+        state["disk"] = resources.DISK_FULL - 1
+
+    s = run_session(tmp_path, monkeypatch, mic, backup=backup, script=script)
+    assert s.state == "stopping" and "disk is full" in s.final_note
+    assert s.recorded / SAMPLE_RATE >= 13
+    assert s.session_path.exists()

@@ -37,6 +37,17 @@ class MlxEngine:
         )
         return [{k: s[k] for k in SEGMENT_KEYS if k in s} | {"language": language} for s in result["segments"]]
 
+    def release(self) -> None:
+        """Hand the model's memory back; the next transcription loads it again."""
+        import gc
+
+        import mlx.core as mx
+        from mlx_whisper.transcribe import ModelHolder
+
+        ModelHolder.model = ModelHolder.model_path = None
+        gc.collect()
+        mx.clear_cache()
+
     def quick(self, audio: np.ndarray, language: str, prompt: str | None = None) -> tuple[str, float]:
         """Rough text of a short clip, fast: for the live draft's provisional line, replaced by the real
         transcription seconds later. Whisper always encodes a 30 s window (~2.5 s on an M4 Air, however short

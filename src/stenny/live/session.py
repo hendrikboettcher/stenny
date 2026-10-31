@@ -22,7 +22,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .. import language
+from .. import language, resources
 from ..config import Config, Course
 from ..pipeline import ensure_glossary, lecture_time, log
 from ..render import Lecture, time_sections, transcript_md
@@ -51,6 +51,8 @@ RETRY = 3.0        # seconds between reconnect attempts
 
 
 BACKUP_RETRY = 30.0  # seconds between restarts of a backup recorder that stopped
+RESOURCE_CHECK = 10.0  # seconds between looks at free disk and memory
+DRAFT_RESUME = 120.0   # seconds of normal memory before a draft paused for memory goes on
 
 
 def rms(block: np.ndarray) -> float:
@@ -122,7 +124,7 @@ class LiveSession:
         self.vault = Vault(cfg.root_for(course))
         self.glossary = ensure_glossary(self.vault, course)
         self.prompt = self.glossary.prompt()
-        self.source_label = f"live {self.started_at:%Y-%m-%d %H:%M}"
+        self.source_label = f"live {self.started_at:%Y-%m-%d %H:%M:%S}"
         self.folder = self.vault.lecture_dir(course.name, f"{self.started_at:%Y-%m-%d}", source=self.source_label)
         self.files = self.vault.files(course.name, self.folder)
         self.transcript_path = self.files.target("transcript")
@@ -160,6 +162,12 @@ class LiveSession:
         self.lock = threading.RLock()
         self.render_lock = threading.Lock()  # the worker and the control thread both re-render the draft
         self.final_note = ""
+        self.warning = ""                 # shown in the menu while it applies: disk or memory running out
+        self.next_resource_check = time.monotonic() + RESOURCE_CHECK
+        self.disk_low = False             # the backup microphone stays off from here on
+        self.draft_paused = False         # memory is low: record only, the final pass covers the gap
+        self.memory_normal_since: float | None = None
+        self.model_released = False
 
     # --- time ----------------------------------------------------------------
 
@@ -204,8 +212,11 @@ class LiveSession:
                     self._poll()
                     if self.state != "recording":
                         continue
-                    if self.backup:
+                    if self.backup and not self.disk_low:
                         self.backup.poll()
+                    self._watch_resources()
+                    if self.state != "recording":
+                        continue
                     if self.source.finished and not self.source.restartable:
                         log("Input ended." + (f" ({self.source.error()})" if self.source.error() else ""))
                         self._stop_locked()
@@ -336,6 +347,39 @@ class LiveSession:
             self.retry_at = time.monotonic() + RETRY
             self.last_growth = time.monotonic()
 
+    def _watch_resources(self) -> None:
+        """Whatever runs out, the recording comes first: memory costs the draft, disk costs the backup
+        microphone, and a really full disk ends the recording while it can still be saved."""
+        if time.monotonic() < self.next_resource_check:
+            return
+        self.next_resource_check = time.monotonic() + RESOURCE_CHECK
+        free = resources.free_disk(self.pcm_path.parent)
+        if free < resources.DISK_FULL:
+            log(f"Only {free // resources.MB} MB free: stopping, so what was recorded can be saved")
+            self.warning = ""
+            self.final_note = "stopped early: the disk is full"
+            self._stop_locked()
+            return
+        if free < resources.DISK_LOW and not self.disk_low:
+            log(f"Only {free // resources.MB} MB free: backup microphone off")
+            self.disk_low = True
+            if self.backup:
+                self.backup.stop()
+        pressure = resources.memory_pressure()
+        if pressure > resources.PRESSURE_NORMAL:
+            self.memory_normal_since = None
+            if self.draft and not self.draft_paused:
+                log("Memory is low: live draft paused, the recording goes on and the final pass covers it")
+                self.draft_paused = True
+                self.provisional = None
+        elif self.draft_paused:
+            self.memory_normal_since = self.memory_normal_since or time.monotonic()
+            if time.monotonic() - self.memory_normal_since >= DRAFT_RESUME:
+                log("Memory is back: live draft goes on")
+                self.draft_paused = False
+        self.warning = "Disk almost full" if self.disk_low else \
+            "Memory is low: recording goes on, live text paused" if self.draft_paused else ""
+
     def _maybe_cut(self) -> None:
         length = sum(len(b) for b in self.buffer) / SAMPLE_RATE
         if length < MIN_CHUNK:
@@ -358,7 +402,7 @@ class LiveSession:
             return
         audio = np.concatenate(self.buffer)
         n = len(audio) if n is None else n
-        if n > SAMPLE_RATE * 0.3 and self.draft:
+        if n > SAMPLE_RATE * 0.3 and self.draft and not self.draft_paused:
             self.work.put((audio[:n], self.lecture_time(self.buffer_start)))
         self.buffer_start += n
         self.buffer = [audio[n:]] if n < len(audio) else []
@@ -370,11 +414,15 @@ class LiveSession:
             try:
                 item = self.work.get(timeout=POLL)
             except queue.Empty:
+                self._release_model_if_paused()
                 self._update_provisional()
                 continue
             if item is None:
                 break
             clip, t = item
+            if self.draft_paused:  # chunks from just before memory ran low
+                continue
+            self.model_released = False
             try:
                 lang = language.pick(clip, self.course, self.engine, self.current_lang, self.lang_override)
                 self.current_lang = lang
@@ -393,9 +441,15 @@ class LiveSession:
             self.provisional = None
         self.render()
 
+    def _release_model_if_paused(self) -> None:
+        if self.draft_paused and not self.model_released and hasattr(self.engine, "release"):
+            self.engine.release()
+            self.model_released = True
+            log("Whisper model unloaded until the draft goes on")
+
     def _update_provisional(self) -> None:
         """Quick text of the chunk being recorded (see PROVISIONAL_MIN), when there is enough new audio."""
-        if not self.provisional_on:
+        if not self.provisional_on or self.draft_paused:
             return
         with self.lock:
             if self.state != "recording" or not self.buffer or self.work.qsize():
@@ -473,7 +527,7 @@ class LiveSession:
             self.span_waiting = True
             self.last_growth = time.monotonic()
             self.source.start(self.pcm_path)
-            if self.backup:
+            if self.backup and not self.disk_low:
                 self.backup.start()
             self.state = "recording"
         log(f"Resumed at {self._fmt(t)}")
@@ -571,7 +625,8 @@ class LiveSession:
                 "draft": self.draft, "level_db": round(self.level_db, 1),
                 "current_pause_s": round(self.now() - self.pauses[-1][0], 1)
                 if self.state == "paused" and self.pauses else 0.0, "input_lost": self.stalled or self.silent,
-                "transcript": str(self.transcript_path), "note": self.final_note,
+                "transcript": str(self.transcript_path), "note": self.final_note, "warning": self.warning,
+                "kind": self.course.kind,
                 "backup": self.backup.source.device if self.backup else None,
                 "microphone": getattr(self.source, "device", None),
             }
@@ -579,7 +634,7 @@ class LiveSession:
     def save(self) -> None:
         """session.json next to the recording: enough to redo the final pass after a crash."""
         with self.lock:
-            data = {"course": self.course.name, "started_at": self.started_at.isoformat(), "folder": self.folder.name,
+            data = {"course": self.course.name, "kind": self.course.kind, "started_at": self.started_at.isoformat(), "folder": self.folder.name,
                     "source": self.source_label, "microphone": getattr(self.source, "microphone", None),
                     "recording": str(self.pcm_path), "state": self.state,
                     "spans": self.spans, "pauses": self.pauses, "lang": self.lang_override,

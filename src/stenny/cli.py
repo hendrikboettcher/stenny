@@ -1,6 +1,7 @@
 """`stenny` command line."""
 
 import argparse
+import contextlib
 import json
 import subprocess
 import sys
@@ -10,7 +11,7 @@ from importlib.metadata import version as package_version
 from pathlib import Path
 
 from . import config as config_mod
-from . import jobs
+from . import jobs, resources
 from .config import ConfigError, Course
 from .paths import tool
 
@@ -264,6 +265,7 @@ def cmd_queue(args) -> None:
             return
         if cfg.night_only and not jobs.in_window(cfg.night_start, cfg.night_end):
             return
+    recover_sessions(cfg)
     jobs.apply_priority(cfg.priority if not args.scheduled else "background")
     with jobs.QueueLock() as lock:
         if lock is None:
@@ -277,6 +279,9 @@ def cmd_queue(args) -> None:
         for p in jobs.pending():
             if args.scheduled and cfg.require_ac_for_queue and not jobs.on_ac_power():
                 log("Unplugged; stopping, remaining jobs wait.")
+                break
+            if args.scheduled and not resources.enough_memory_for_final_pass():
+                log("Not enough free memory now; remaining jobs wait.")
                 break
             try:
                 run_job(p, cfg, engine)
@@ -318,6 +323,11 @@ def cmd_live(args) -> None:
         sys.exit("A live session is already running. Use `stenny status` / `stenny stop`.")
     source = FileSource(args.file, args.speed) if args.file else make_mic(args.device or cfg.live_device, cfg.live_recorder)
     backup = None if args.file else make_backup(args.backup or cfg.live_backup, source)
+    recover_sessions(cfg)
+    cfg.data_dir.mkdir(parents=True, exist_ok=True)
+    if (free := resources.free_disk(cfg.data_dir)) < resources.DISK_TO_START:
+        sys.exit(f"Only {free / resources.GB:.1f} GB free on this Mac. A lecture needs about "
+                 f"{resources.DISK_TO_START / resources.GB:.1f} GB, so free some space first.")
     engine = get_engine(cfg.model)
     session = LiveSession(cfg, course, source, engine, lang=args.lang, draft=cfg.live_draft and not args.no_draft,
                           backup=backup, provisional=cfg.live_provisional)
@@ -329,6 +339,65 @@ def cmd_live(args) -> None:
         finalize(session, cfg, args.final, not args.no_llm, engine)
     finally:
         server.close()
+
+
+def stop_orphan_recorders(*recordings: Path) -> None:
+    """Recorders still writing to these files although the session that started them is gone."""
+    out = subprocess.run(["ps", "-axo", "pid=,command="], capture_output=True, text=True).stdout
+    for line in out.splitlines():
+        pid, _, command = line.strip().partition(" ")
+        if "stenny-rec" in command and any(f"--out {r} " in f"{command} " for r in recordings):
+            subprocess.run(["kill", pid])
+            for _ in range(30):
+                if subprocess.run(["kill", "-0", pid], capture_output=True).returncode:
+                    break
+                time.sleep(0.1)
+
+
+def recover_sessions(cfg) -> list[dict]:
+    """A recording whose process died (macOS killed it, a crash, a restart of the Mac) still has its audio
+    file, but no final pass waiting. Queue one: the transcript comes later, the lecture isn't lost."""
+    from .live.control import is_running
+    from .pipeline import log
+
+    if is_running():
+        return []
+    known = set()
+    for job in [*jobs.QUEUE_DIR.glob("*.json"), *jobs.QUEUE_DIR.glob("*.failed")]:
+        try:
+            known.add(json.loads(job.read_text(encoding="utf-8"))["file"])
+        except (OSError, ValueError, KeyError):
+            continue
+    recovered = []
+    for path in [*cfg.data_dir.glob("*/*.session.json"), *cfg.data_dir.glob("_Recordings/*/*.session.json")]:
+        try:
+            d = json.loads(path.read_text(encoding="utf-8"))
+            pcm = Path(d["recording"])
+        except (OSError, ValueError, KeyError):
+            continue
+        if not pcm.exists() or str(pcm.resolve()) in known:
+            continue
+        backup = d.get("backup")
+        stop_orphan_recorders(pcm, *([Path(backup["recording"])] if backup else []))
+        size = pcm.stat().st_size // 2
+        if not size:
+            continue
+        d.update(recorded_samples=size, state="stopped", pauses=[p for p in d["pauses"] if p[1] is not None])
+        if backup and Path(backup["recording"]).exists():
+            backup["recorded_samples"] = Path(backup["recording"]).stat().st_size // 2
+        path.write_text(json.dumps(d, indent=1), encoding="utf-8")
+        kind = d.get("kind") or ("event" if path.parent.parent.name == "_Recordings" else "lecture")
+        jobs.enqueue(pcm, d["course"], d.get("lang"), True, live=path, kind=kind)
+        log(f"Recovered the recording {pcm.name} of {d['course']}: final pass queued")
+        recovered.append({"course": d["course"], "kind": kind})
+    return recovered
+
+
+def cmd_recover(args) -> None:
+    with contextlib.redirect_stdout(sys.stderr):  # the log lines mustn't get into the JSON
+        recovered = recover_sessions(load_config())
+    if args.json:  # for Stenny
+        print(json.dumps(recovered, ensure_ascii=False))
 
 
 def finalize(session, cfg, policy: str, use_llm: bool, engine) -> None:
@@ -344,10 +413,11 @@ def finalize(session, cfg, policy: str, use_llm: bool, engine) -> None:
         return
     job = jobs.enqueue(session.pcm_path, session.course.name, session.lang_override, use_llm, live=session.session_path,
                        kind=session.course.kind)
-    run_now = policy == "now" or (policy == "auto" and jobs.on_ac_power())
+    on_power = jobs.on_ac_power()
+    run_now = policy == "now" or (policy == "auto" and on_power and resources.enough_memory_for_final_pass())
     if not run_now:
-        why = "on battery" if policy == "auto" else "as requested"
-        session.final_note = f"final pass queued ({why})"
+        why = "as requested" if policy != "auto" else "memory is low" if on_power else "on battery"
+        session.final_note = session.final_note or f"final pass queued ({why})"
         log(f"Live draft kept. Final pass queued {why}: {job.name} — runs with `stenny queue run` "
             "or the schedule (`stenny schedule install`).")
         return
@@ -625,6 +695,10 @@ def main() -> None:
     h = actions.add_parser("hide", help="hide a course; its transcripts, glossary and settings stay")
     h.add_argument("name")
     p.set_defaults(func=cmd_course)
+
+    p = sub.add_parser("recover", help="queue the final pass of recordings whose process died")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_recover)
 
     p = sub.add_parser("update", help="install the newest release of Stenny (your courses and transcripts stay)")
     p.add_argument("--check", action="store_true", help="only print whether a newer version exists, as JSON")

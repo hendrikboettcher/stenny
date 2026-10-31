@@ -33,6 +33,11 @@ final class LectureController: NSObject {
     private var hotKey: GlobalHotKey?
     private var poller: Timer?
     private var starting = false
+    private var lastWarning = ""
+    /// The recording seen at the last poll, to notice one that vanished without being stopped
+    private var running: (course: String, isEvent: Bool, wasRecording: Bool)?
+    private var missedPolls = 0
+    private var restarts: [Date] = []
     private var lastNote = ""
     private var idleMessage = "Ready"
     /// Transcribe while recording (off = record only, transcript after Stop), remembered between launches
@@ -66,6 +71,7 @@ final class LectureController: NSObject {
         self.poller = poller
         poll()
         setUpCalendar()
+        Task.detached { _ = StennyCLI.recover() }  // e.g. the Mac restarted during a recording
     }
 
     private func setShortcut(_ shortcut: Shortcut) {
@@ -165,12 +171,68 @@ final class LectureController: NSObject {
 
     private func update(_ s: StennyCLI.Status?) {
         if let s { starting = false; if !s.note.isEmpty { lastNote = s.note } }
+        watchForVanishedRecording(s)
+        if let warning = s?.warning, warning != lastWarning, !warning.isEmpty { notify(warning) }
+        lastWarning = s?.warning ?? ""
         if status != nil && s == nil {  // the session just ended
             idleMessage = lastNote.isEmpty ? "Ready · last lecture saved" : "Ready · \(lastNote)"
             lastNote = ""
         }
         status = s
         refresh()
+    }
+
+    // MARK: A recording that vanished
+
+    /// A session goes through "stopping" when it ends properly. One that goes from recording to gone was killed
+    /// (macOS short of memory, a crash). Three polls, because a busy session can miss one answer. Recording again
+    /// without the live draft needs far less memory; `stenny recover` decides whether it really was a crash.
+    private func watchForVanishedRecording(_ s: StennyCLI.Status?) {
+        if let s {
+            missedPolls = 0
+            let active = s.state == "recording" || s.state == "paused"
+            running = active ? (s.course, s.isEvent, s.state == "recording") : nil
+            return
+        }
+        guard let vanished = running else { return }
+        missedPolls += 1
+        guard missedPolls >= 3 else { return }
+        running = nil
+        Task.detached {
+            let recovered = StennyCLI.recover()
+            await MainActor.run {
+                if recovered.isEmpty { return }
+                self.handleCrash(course: vanished.course, isEvent: vanished.isEvent, wasRecording: vanished.wasRecording)
+            }
+        }
+    }
+
+    private func handleCrash(course: String, isEvent: Bool, wasRecording: Bool) {
+        restarts = restarts.filter { $0.timeIntervalSinceNow > -600 }
+        AppLog.write("recording of \(course) vanished (restarts lately: \(restarts.count))")
+        guard wasRecording, restarts.count < 3, status == nil, !starting else {
+            notify("The recording of \(course) stopped. What was recorded is saved; its transcript comes later.")
+            return
+        }
+        restarts.append(Date())
+        do {
+            try StennyCLI.startLive(course: course, event: isEvent, device: microphone, draft: false) { code in
+                Task { @MainActor in self.recorderExited(code) }
+            }
+            starting = true
+            refresh()
+            notify("Recording \(course) again after a problem. Nothing recorded is lost; the transcript comes later.")
+        } catch {
+            notify("The recording of \(course) stopped. What was recorded is saved; its transcript comes later.")
+        }
+    }
+
+    private func notify(_ message: String) {
+        let content = UNMutableNotificationContent()
+        content.title = "Stenny"
+        content.body = message
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
+        AppLog.write("notified: \(message)")
     }
 
     // MARK: Courses
@@ -455,7 +517,7 @@ final class LectureController: NSObject {
             // No tint: a tinted template image turns dark on a dark menu bar (unreadable time). Untinted,
             // macOS draws it white on dark and black on light; its own orange mic indicator shows recording.
             button.image = MenuBarImage.make(symbol: "record.circle", text: clock(status!.recorded))
-            statusLineItem.title = "Recording · \(status!.course) · \(status!.words) words"
+            statusLineItem.title = status!.warning.isEmpty ? "Recording · \(status!.course) · \(status!.words) words" : status!.warning
             pauseItem.title = "Pause"
             pauseItem.image = NSImage(systemSymbolName: "pause.fill", accessibilityDescription: nil)
         case "paused":

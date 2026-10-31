@@ -25,6 +25,9 @@ enum StennyCLI {
         let inputLost: Bool
         /// the running recording's main microphone (nil for a file played back in tests)
         let microphone: String?
+        /// disk or memory running out; empty while all is well
+        let warning: String
+        var isEvent: Bool
 
         init?(_ json: [String: Any]) {
             guard json["ok"] as? Bool == true, let state = json["state"] as? String else { return nil }
@@ -39,6 +42,8 @@ enum StennyCLI {
             currentPause = Int(json["current_pause_s"] as? Double ?? 0)
             inputLost = json["input_lost"] as? Bool ?? false
             microphone = json["microphone"] as? String
+            warning = json["warning"] as? String ?? ""
+            isEvent = json["kind"] as? String == "event"
         }
     }
 
@@ -180,6 +185,16 @@ enum StennyCLI {
         let errors = err.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
         return (process.terminationStatus == 0, String(decoding: output, as: UTF8.self), String(decoding: errors, as: UTF8.self))
+    }
+
+    /// Recordings whose process died: `stenny recover` stops their recorder and queues the final pass.
+    static func recover() -> [String: Bool] {
+        guard let list = json(["recover", "--json"]) as? [[String: Any]] else { return [:] }
+        var out: [String: Bool] = [:]
+        for item in list {
+            if let course = item["course"] as? String { out[course] = item["kind"] as? String == "event" }
+        }
+        return out
     }
 
     struct UpdateCheck: Sendable {

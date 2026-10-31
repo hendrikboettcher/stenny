@@ -140,7 +140,13 @@ func startCapture() throws {
         guard n > 0, let samples = converted.int16ChannelData?[0] else { return }
         let data = Data(bytes: samples, count: n * 2)
         framesOut += Int64(n)
-        writeQueue.async { out.write(data) }
+        writeQueue.async {
+            // A full disk: everything written so far is safe, so end here instead of crashing on write
+            do { try out.write(contentsOf: data) } catch {
+                log("writing failed (\(error.localizedDescription)); stopping")
+                exit(4)
+            }
+        }
     }
     try engine.start()
     log("recording \(deviceName ?? "default input") at \(Int(inFormat.sampleRate)) Hz → \(outPath)")
@@ -191,5 +197,22 @@ NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChang
         finish(3)
     }
 }
+
+// If the process that started us dies we keep recording, so the lecture goes on while Stenny (`stenny recover`)
+// takes over within seconds. If nobody does, stop after a while: the microphone must not stay on unnoticed.
+let orphanLimit: TimeInterval = 300
+var orphanedAt: Date?
+let parentWatch = DispatchSource.makeTimerSource(queue: .main)
+parentWatch.schedule(deadline: .now() + 5, repeating: 5)
+parentWatch.setEventHandler {
+    guard getppid() == 1 else { return }
+    let since = orphanedAt ?? Date()
+    orphanedAt = since
+    if Date().timeIntervalSince(since) > orphanLimit {
+        log("the recording's process is gone and nobody took over; stopping")
+        finish(5)
+    }
+}
+parentWatch.resume()
 
 dispatchMain()
