@@ -108,6 +108,7 @@ final class LectureController: NSObject {
                 return
             }
             _ = try? await center.requestAuthorization(options: [.alert, .sound])
+            calendar.exportTitles()
             checkCalendar()
             let timer = Timer(timeInterval: 30, repeats: true) { [weak self] _ in
                 Task { @MainActor in self?.checkCalendar() }
@@ -319,6 +320,7 @@ final class LectureController: NSObject {
                     self.show(result?.errors.trimmingCharacters(in: .whitespacesAndNewlines) ?? "The `stenny` command was not found.")
                     return
                 }
+                self.calendar.reset()
                 self.offerProject(course)
             }
         }
@@ -357,6 +359,7 @@ final class LectureController: NSObject {
         Task.detached {
             let result = StennyCLI.run(["course", "hide", course])
             await MainActor.run {
+                self.calendar.reset()
                 if result?.ok != true {
                     self.show(result?.errors.trimmingCharacters(in: .whitespacesAndNewlines) ?? "The `stenny` command was not found.")
                 }

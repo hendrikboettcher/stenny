@@ -18,7 +18,7 @@ How to work:
 - **Every question has a recommended answer.** Ask one thing at a time. If you have a tool for questions with clickable options (such as AskUserQuestion), use it for every choice: at most four options, your recommendation first and marked "(Recommended)", with a short reason; the user can always type something else. Ask for free text only where nothing can be suggested. Never make the user write long answers.
 - **Always name the app when you open something.** A plain `open <link or file>` lets macOS choose, and on a fresh account that can be any installed app that claims the type. Use `open -a Obsidian …`, `open -a TextEdit …` and so on. Web pages (`open https://…`) may go to the default browser.
 - **Keep the user out of the Terminal.** Run every command yourself. The user only clicks: macOS dialogs, System Settings, the browser, the Claude app. Nothing in this setup needs their Mac password.
-- **Don't change anything** outside this folder, the user's chosen transcripts folder, `~/Lectures Data` and what the steps below install. Don't install a launchd agent unless the user chooses it in step 12.
+- **Don't change anything** outside this folder, the user's chosen transcripts folder, `~/Lectures Data` and what the steps below install. The only background job is the one in step 12.
 - Long commands (downloads) take minutes: run them in the background, say roughly how long they take, and report when they finish.
 
 The setup has three phases. **A** is everything Stenny needs to work. **B** connects the calendar. **C** is recommended, never required: Stenny works without it.
@@ -29,11 +29,11 @@ Start by greeting the user in three lines: Stenny records lectures from the menu
 
 ## 0. Get Stenny onto the Mac
 
-Stenny runs from its folder for good, so it needs a permanent place. If the current folder already contains Stenny (`SETUP.md`, `pyproject.toml` and `app/` are here), use it. Otherwise use `~/Applications/stenny` without asking; the user can move it another day by asking you.
+Stenny runs from its folder for good, so it needs a permanent place. If the current folder already contains Stenny (`SETUP.md`, `pyproject.toml` and `app/` are here), use it. Otherwise use `~/Applications/stenny.noindex` without asking; the user can move it another day by asking you.
 
-First look whether it's already there (an earlier attempt): `ls ~/Applications/stenny/SETUP.md 2>/dev/null`. If it is, ask "Use the existing folder (Recommended)" / "Replace it with the newest version"; replace only by moving the old folder to the Trash first.
+First look whether it's already there (an earlier attempt): `ls ~/Applications/stenny.noindex/SETUP.md 2>/dev/null`. If it is, ask "Use the existing folder (Recommended)" / "Replace it with the newest version"; replace only by moving the old folder to the Trash first.
 
-Download the newest version and unzip it (it unpacks into a folder called `stenny`):
+Download the newest version and unzip it (it unpacks into a folder called `stenny.noindex`; `.noindex` keeps its files out of the user's Spotlight searches, so searching for Stenny finds only the app):
 
 ```bash
 mkdir -p ~/Applications
@@ -41,7 +41,7 @@ curl -fL -o /tmp/Stenny.zip https://github.com/hendrikboettcher/stenny/releases/
 ditto -x -k /tmp/Stenny.zip ~/Applications && rm /tmp/Stenny.zip
 ```
 
-**Check:** `ls ~/Applications/stenny/SETUP.md ~/Applications/stenny/app/build.noindex/Stenny.app` shows both. From now on, "this folder" means `~/Applications/stenny`: run every command there (`cd ~/Applications/stenny && …`), even if your session started somewhere else, and continue with the copy of this file in it (it matches the downloaded version).
+**Check:** `ls ~/Applications/stenny.noindex/SETUP.md ~/Applications/stenny.noindex/app/build.noindex/Stenny.app` shows both. From now on, "this folder" means `~/Applications/stenny.noindex`: run every command there (`cd ~/Applications/stenny.noindex && …`), even if your session started somewhere else, and continue with the copy of this file in it (it matches the downloaded version).
 
 Stenny's app is signed with its author's own certificate, not one from Apple. Say so in one sentence, and that the code is open at github.com/hendrikboettcher/stenny.
 
@@ -68,7 +68,7 @@ With 8 GB of memory (8589934592), tell the user in one sentence that Stenny hasn
 
 *If it fails:* on an Intel Mac (`x86_64`) Stenny can't run: tell the user kindly and stop. If macOS is older, they can update it in System Settings ▸ General ▸ Software Update and come back. If the disk is too full, help them see what's big (`du -sh ~/Downloads ~/Movies ~/Desktop 2>/dev/null`), but don't delete anything yourself.
 
-**Where the folder lives:** it must stay where it is after setup. If it's in Downloads or on the Desktop, move it to `~/Applications/stenny` (`mkdir -p ~/Applications && mv "<this folder>" ~/Applications/stenny`) and go on from there.
+**Where the folder lives:** it must stay where it is after setup. If it's in Downloads or on the Desktop, move it to `~/Applications/stenny.noindex` (`mkdir -p ~/Applications && mv "<this folder>" ~/Applications/stenny.noindex`) and go on from there.
 
 ## 2. Install the `stenny` command
 
@@ -111,7 +111,7 @@ If Stenny is already installed and running, this replaces it; first make sure no
 app/install.sh --no-open
 ```
 
-**Check:** the output ends with `✅ Installed: <path>/Stenny.app` (remember that path). `"<path>/Stenny.app/Contents/MacOS/ffmpeg" -version` prints a version. Don't open the app yet; that's step 10.
+**Check:** the output ends with `✅ Installed: <path>/Stenny.app` (remember that path). `"<path>/Stenny.app/Contents/MacOS/ffmpeg" -version` prints a version. Don't open the app yet; that's step 7.
 
 ## 4. Start the Whisper download
 
@@ -133,47 +133,12 @@ stenny init --vault "<the folder>" --lectures-dir "Lectures"
 
 **Check:** `stenny courses` prints `Lectures: <the folder>/Lectures` and the two example courses. (If a config already exists, `stenny init` refuses: tell the user what's in it, and ask whether to keep it (Recommended, if it has their courses) or start fresh.)
 
-## 6. Courses
-
-Ask for a screenshot or PDF of their timetable, which they can drag into this chat (Recommended), or for the course names. Event titles often contain extras such as "VL", "Lecture", "Übung", a room or lecturer names: turn them into clean course names and ask which ones they're taking.
-
-Then, **one course at a time**, ask with options:
-- **Language** of the lecture. Guess from the course name and offer, for example: "English (Recommended)", "German", "Mixed: German and English", "Other". Explain *mixed* once: for lecturers who switch languages within a lecture.
-- **Short name** for matching calendar events: suggest the abbreviation students actually use (e.g. `micro` for Microeconomics) and "No short name".
-
-Show the final list and ask "Looks right (Recommended)" / "Change something". Then edit `~/Lectures Data/_System/config.toml` to **delete the two example courses** (`Calculus`, `International Economics`) at the end, and add each course:
-
-```bash
-stenny course add "Microeconomics" --language en --alias micro
-stenny course add "Business Communication 2 – French" --language mixed --languages fr,de --alias bizcom
-```
-
-**Check:** `stenny courses` lists exactly their courses with the right languages.
-
-Tell them they can add or hide courses later from Stenny's menu (*Start Lecture ▸ Add Course…*), without you.
-
-## 7. The AI step (the `claude` command)
-
-Stenny adds section headings, a summary and checked fixes for misheard terms, through their Claude subscription and the `claude` command, at no extra cost. You're probably running as that command already; the desktop app doesn't always install it, so check:
-
-```bash
-command -v claude || ls ~/.local/bin/claude 2>/dev/null
-claude auth status 2>/dev/null
-```
-
-- **Installed and `"loggedIn": true`:** go on.
-- **Missing:** ask "Install it (Recommended)" / "Skip the AI step". To install, run Anthropic's installer yourself (no password needed): `curl -fsSL https://claude.ai/install.sh | bash`.
-- **Not signed in:** run `~/.local/bin/claude auth login` in the background. It opens the browser: the user signs in and clicks *Authorize*. Then check again.
-- **Skip:** set `[llm] backend = "none"` in the config. Transcripts work the same, just without headings and summaries.
-
-**Check:** `claude auth status` shows `"loggedIn": true` (or the backend is `"none"`).
-
-## 8. The pause shortcut
+## 6. The pause shortcut
 
 One global keyboard shortcut pauses and resumes the recording from any app.
 
 ```bash
-defaults read com.apple.HIToolbox AppleCurrentKeyboardLayoutInputSourceID
+defaults read com.apple.HIToolbox AppleEnabledInputSources
 ```
 
 Ask with options:
@@ -191,13 +156,7 @@ Format: modifiers `cmd`, `shift`, `ctrl`, `opt`, joined with `+`, then one key a
 
 **Check:** `stenny app-settings` prints their shortcut and `"error": null`.
 
-## 9. Wait for Whisper
-
-**Check:** the download from step 4 ended with `Done: …/models--mlx-community--whisper-large-v3-turbo/…`.
-
-*If it fails:* network errors → just run it again (it resumes). Behind a university proxy/VPN, try another network.
-
-## 10. Open Stenny and allow access
+## 7. Open Stenny and allow access
 
 ```bash
 open "<path from step 3>/Stenny.app"
@@ -211,9 +170,55 @@ Then one setting, so the *Start Recording* button stays on screen: **System Sett
 
 Stenny opens at login by itself; macOS may show a short notice about it. They can turn it off in **System Settings ▸ General ▸ Login Items**.
 
-**Check:** the icon is there; its menu ▸ *Start Lecture* lists their courses. `tail -20 ~/Lectures\ Data/_System/stenny.log` shows `pause shortcut: …` with their shortcut and `hotkey registered`.
+**Check:** the icon is there. `tail -20 ~/Lectures\ Data/_System/stenny.log` shows `pause shortcut: …` with their shortcut and `hotkey registered`.
 
-*If it fails:* no courses in the menu → step 6. No icon → the menu bar may be full (on a MacBook with a notch, icons hide behind it; quit some menu bar apps). Permissions denied by accident → System Settings ▸ Privacy & Security ▸ Microphone / Calendars ▸ turn Stenny on. macOS refuses to open the app → step 0, the part about browsers.
+*If it fails:* no icon → the menu bar may be full (on a MacBook with a notch, icons hide behind it; quit some menu bar apps). Permissions denied by accident → System Settings ▸ Privacy & Security ▸ Microphone / Calendars ▸ turn Stenny on. macOS refuses to open the app → step 0, the part about browsers.
+
+## 8. Courses
+
+Read the titles from the Mac's calendar: `cat ~/Lectures\ Data/_System/calendar-titles.json`. Stenny wrote this file when it opened in the step before (if it isn't there yet, wait a few seconds, and check that they clicked Allow for Calendar). Titles often contain extras such as "VL", "Lecture", "Übung", a room or lecturer names.
+
+- **Titles found:** turn them into clean course names, leave out what clearly isn't a course (meetings, birthdays), and ask which ones they're taking, several selected at once. If there are more than four, ask in groups.
+- **No titles:** just ask them to type their course names. Don't offer anything else, such as screenshots.
+
+Then, **one course at a time**, ask with options:
+- **Language** of the lecture. Guess from the course name and offer, for example: "English (Recommended)", "German", "Mixed: German and English", "Other". Explain *mixed* once: for lecturers who switch languages within a lecture.
+- **Short name** for matching calendar events: suggest the abbreviation students actually use (e.g. `micro` for Microeconomics) and "No short name".
+
+Show the final list and ask "Looks right (Recommended)" / "Change something". Then edit `~/Lectures Data/_System/config.toml` to **delete the two example courses** (`Calculus`, `International Economics`) at the end, and add each course:
+
+```bash
+stenny course add "Microeconomics" --language en --alias micro
+stenny course add "Business Communication 2 – French" --language mixed --languages fr,de --alias bizcom
+```
+
+Then restart Stenny, so it matches calendar events against these courses: `pkill -x Stenny; open "<path from step 3>/Stenny.app"`.
+
+**Check:** `stenny courses` lists exactly their courses with the right languages.
+
+Tell them they can add or hide courses later from Stenny's menu (*Start Lecture ▸ Add Course…*), without you.
+
+## 9. The AI step (the `claude` command)
+
+Stenny adds section headings, a summary and checked fixes for misheard terms, through their Claude subscription and the `claude` command, at no extra cost. You're probably running as that command already; the desktop app doesn't always install it, so check:
+
+```bash
+command -v claude || ls ~/.local/bin/claude 2>/dev/null
+claude auth status 2>/dev/null
+```
+
+- **Installed and `"loggedIn": true`:** go on.
+- **Missing:** ask "Install it (Recommended)" / "Skip the AI step". To install, run Anthropic's installer yourself (no password needed): `curl -fsSL https://claude.ai/install.sh | bash`.
+- **Not signed in:** run `~/.local/bin/claude auth login` in the background. It opens the browser: the user signs in and clicks *Authorize*. Then check again.
+- **Skip:** set `[llm] backend = "none"` in the config. Transcripts work the same, just without headings and summaries.
+
+**Check:** `claude auth status` shows `"loggedIn": true` (or the backend is `"none"`).
+
+## 10. Wait for Whisper
+
+**Check:** the download from step 4 ended with `Done: …/models--mlx-community--whisper-large-v3-turbo/…`.
+
+*If it fails:* network errors → just run it again (it resumes). Behind a university proxy/VPN, try another network.
 
 ## 11. Test recording
 
@@ -226,7 +231,7 @@ say -o /tmp/stenny-test.aiff "This is a short test of Stenny. The lecture today 
 stenny add /tmp/stenny-test.aiff --event "Stenny test" --now
 ```
 
-**Check:** it ends without errors, and a transcript exists: `ls "<vault>/Recordings/Stenny test/"*/`. Show the user the text here in the chat. If the log says the AI step was skipped, go back to step 7.
+**Check:** it ends without errors, and a transcript exists: `ls "<vault>/Recordings/Stenny test/"*/`. Show the user the text here in the chat. If the log says the AI step was skipped, go back to step 9.
 
 **b) Microphone, through the app** (about 30 seconds):
 1. Stenny's icon ▸ *Microphone*: check the right microphone is ticked (recommended: the Mac's own).
@@ -240,29 +245,17 @@ Afterwards, ask "Delete the test recordings (Recommended)" / "Keep them". If del
 
 ## 12. Finish waiting transcripts automatically
 
-On battery, final transcripts wait until the Mac is plugged in. Ask: "Finish them automatically when plugged in (Recommended)" / "I'll start them myself". The first installs a small background job that checks every 15 minutes, only on power; `stenny schedule uninstall` removes it. Only if they choose it:
+On battery or when memory is low, final transcripts wait. Install the small background job that finishes them, without asking; it checks every 10 minutes and only works when the Mac is plugged in:
 
 ```bash
 stenny schedule install
 ```
 
-Tell the user: **Stenny works now.** Two short parts are left.
+Tell the user in one sentence. They can remove it any time by asking in this chat.
 
-# Phase B: Calendar
+## 13. Let Claude read the transcripts
 
-## 13. Calendar
-
-Say this in a sentence or two: Stenny offers lectures from the calendar on this Mac, from 10 minutes before they start, and never starts by itself. If the timetable isn't in the Mac's Calendar, that part won't work well, but recording from the menu still does. Don't teach how to subscribe to or use a calendar.
-
-**Check:** ask for one or two real event titles, or use those from the timetable, and run `stenny match-course "<title>"`. Each must print the right course. If not, add a word that's in the titles to that course as `calendar = ["<word>"]` (or an alias) and check again. If they have no timetable in Calendar, skip this.
-
-# Phase C: Recommended, not required
-
-Stenny works without this. Without a project, any Claude chat with the Filesystem connector can still read the transcripts. Ask for each part: "Set it up (Recommended)" / "Skip".
-
-## 14. Claude projects (one per course)
-
-Each course gets a Claude project whose chats read the newest transcripts from this Mac, cite them ("Lecture 3 [0:12:30]") and keep the course glossary up to date, which makes later transcripts more accurate. You can't create projects or change Claude's settings yourself, so guide the user, one click at a time.
+This is what Stenny is for: Claude answers from what was said in class. You can't change Claude's settings yourself, so guide the user, one click at a time.
 
 **a) Create the folders Claude will read:**
 
@@ -279,23 +272,43 @@ Tell the user both full paths; they'll pick them in a moment.
 
 If the menu looks different, ask the user to describe or screenshot what they see and help from there.
 
-**c) One project per course.** For each course, one at a time:
+**Check:** in a new chat in the Claude desktop app, ask: *"Which folders and files can you see in my Lectures folder?"* Claude should use the Filesystem connector (the first time, it asks: *Allow*). If it says it has no access, go back to b).
+
+Tell the user: **Stenny works now.** Two short parts are left.
+
+# Phase B: Calendar
+
+## 14. Calendar
+
+Say in a sentence or two: Stenny offers lectures from the calendar on this Mac, from 10 minutes before they start, and never starts by itself. If the timetable isn't in the Mac's Calendar, that part won't work, but recording from the menu still does. Don't teach how to subscribe to or use a calendar.
+
+**Check, without asking anything:** for each lecture-like title in `calendar-titles.json`, run `stenny match-course "<title>"`. If one of their courses doesn't match its events, add a word that's in the titles to that course as `calendar = ["<word>"]` and check again. Only tell the user the result, in one line. If there are no titles, skip this.
+
+# Phase C: Recommended, not required
+
+Stenny works without this. Ask for each part: "Set it up (Recommended)" / "Skip".
+
+## 15. Claude projects (one per course)
+
+A project makes each course's chats read the newest transcripts by themselves, cite them ("Lecture 3 [0:12:30]") and keep the course glossary up to date, which makes later transcripts more accurate. You can't create projects yourself, so guide the user, one click at a time.
+
+For each course, one at a time:
 1. Copy the course's instructions for them: `stenny project-instructions --course "<name>" | pbcopy`.
 2. In the Claude desktop app: **Projects ▸ New project**, named after the course.
 3. **Instructions** (*Set project instructions*) ▸ paste (⌘V) ▸ Save.
 4. Optionally add the course's slides, syllabus or reading list as project files.
 
-**Check:** in one of the new projects, start a chat and ask: *"Which folders and files can you see in my Lectures folder?"* Claude should use the Filesystem connector (the first time, it asks: *Allow*). If it says it has no access, go back to b).
+**Check:** in one of the new projects, ask *"What was my last lecture about?"* once a lecture is recorded. Before that, *"Which files can you see in my Lectures folder?"* is enough.
 
-## 15. Obsidian
+## 16. Obsidian
 
 Obsidian (free) shows the transcripts, topics and slides linked together, and the menu's *Open Transcript* opens the live draft there. The files stay plain text in the same folder; nothing moves.
 
-Check: `ls -d /Applications/Obsidian.app ~/Applications/Obsidian.app 2>/dev/null`. If it's missing, open https://obsidian.md/download and wait until they've dragged it to Applications. If the folder from step 5 isn't a vault yet, ask them to open Obsidian ▸ *Open folder as vault* ▸ choose that folder (⌘⇧G lets them paste the path).
+Check: `ls -d /Applications/Obsidian.app ~/Applications/Obsidian.app 2>/dev/null`. If it's missing, open https://obsidian.md/download and wait until they've dragged it to Applications. If the folder from step 5 isn't a vault yet, open Obsidian and have them add it. On first launch Obsidian may create a vault by itself and skip its start screen, and its command palette has no such command: then it's the vault name at the bottom left ▸ *Manage vaults…* ▸ *Open folder as vault* (⌘⇧G lets them paste the path).
 
 # The end
 
-## 16. Finish
+## 17. Finish
 
 Say clearly: **✅ Setup is finished.** Then, short:
 - Before a lecture: wait for the notification, or click Stenny's icon ▸ *Start Lecture* ▸ course. Keep the MacBook **open** while recording.
@@ -325,9 +338,9 @@ If it prints `{"ok":true}`, say it was sent; otherwise say it didn't go through 
 | macOS says Stenny can't be opened | It was downloaded in a browser: step 0. |
 | `ffmpeg` not found | `<path>/Stenny.app/Contents/MacOS/ffmpeg` should exist. If it doesn't, the app wasn't installed from a release: step 3. |
 | Microphone permission was denied | System Settings ▸ Privacy & Security ▸ Microphone ▸ Stenny on. Then restart Stenny. |
-| The shortcut does nothing | `stenny app-settings` must show `"error": null`. Another app may already use that shortcut: pick another (step 8) and restart Stenny (menu ▸ *Quit Stenny*, then open it again as in step 10). |
+| The shortcut does nothing | `stenny app-settings` must show `"error": null`. Another app may already use that shortcut: pick another (step 6) and restart Stenny (menu ▸ *Quit Stenny*, then open it again as in step 7). |
 | "Only … GB free" when a recording starts | Stenny needs about 1.5 GB to start a lecture. Help them see what's big, but don't delete anything yourself. |
-| The calendar lecture isn't offered | `stenny match-course "<event title>"` (step 13); events shorter than 20 minutes are ignored. |
+| The calendar lecture isn't offered | `stenny match-course "<event title>"` (step 14); events shorter than 20 minutes are ignored. |
 | Transcript is empty or wrong language | Check the course's `language`; for lectures that switch languages use `"mixed"`. Check the microphone level meter. |
-| The AI step fails ("claude CLI not found") | Step 7. Or set `[llm] backend = "none"`. The transcript is always written anyway. |
+| The AI step fails ("claude CLI not found") | Step 9. Or set `[llm] backend = "none"`. The transcript is always written anyway. |
 | Anything else | Logs are in `~/Lectures Data/_System/`: `stenny.log` (the menu bar app), `live.log` (the running recording). Read the end of the newest one. |

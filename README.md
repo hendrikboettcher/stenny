@@ -33,7 +33,7 @@ Paste this sentence into [Claude Code](https://claude.com/claude-code) (in the C
 Install Stenny on my Mac by following https://github.com/hendrikboettcher/stenny/blob/main/SETUP.md
 ```
 
-That's all. Claude Code downloads Stenny to `~/Applications/stenny`, checks your Mac, installs what's missing and the menu bar app, asks where your transcripts should go and which courses you take, downloads the Whisper model, makes a test recording with you and helps you set up a Claude project per course. It explains each step and asks before anything important. [SETUP.md](SETUP.md) is the exact script it follows; you can read it first.
+That's all. Claude Code downloads Stenny to `~/Applications/stenny.noindex`, checks your Mac, installs what's missing and the menu bar app, asks where your transcripts should go and which courses you take, downloads the Whisper model, makes a test recording with you and helps you set up a Claude project per course. It explains each step and asks before anything important. [SETUP.md](SETUP.md) is the exact script it follows; you can read it first.
 
 The app is signed with the author's own certificate, not one from Apple, so macOS refuses a copy downloaded in a browser. Claude Code's download doesn't have that problem. To get a new version later: Stenny's menu ▸ *Check for Updates…* (or `stenny update`).
 
@@ -44,7 +44,7 @@ The app is signed with the author's own certificate, not one from Apple, so macO
 mkdir -p ~/Applications
 curl -fL -o /tmp/Stenny.zip https://github.com/hendrikboettcher/stenny/releases/latest/download/Stenny.zip
 ditto -x -k /tmp/Stenny.zip ~/Applications
-cd ~/Applications/stenny
+cd ~/Applications/stenny.noindex
 
 # 1. Tools
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -101,7 +101,7 @@ stenny check                                      # health check of the last rec
 stenny courses                                    # list your courses
 stenny match-course "VL Calculus (Room 1.01)"     # which course a calendar event belongs to
 stenny queue list | run                           # waiting final passes
-stenny schedule install                           # run the queue every 15 min when plugged in (launchd)
+stenny schedule install                           # run the queue every 10 min when plugged in (launchd)
 ```
 
 ## Studying with Claude
@@ -144,7 +144,7 @@ Stenny never writes anywhere else in your vault. Each folder holds either only f
 Each `[courses."Name"]` table in the config has a `language`:
 - `"fr"`, `"en"`, `"de"`, …: a fixed language (best when a course is always in one language);
 - `"auto"`: one language per lecture, detected among `languages`;
-- `"mixed"`: detected per ~25 s among `languages`, for lectures that switch language. With a fixed language, Whisper tends to *translate* other-language passages instead of transcribing them.
+- `"mixed"`: detected per short piece (4–12 s) among `languages`, for lectures that switch language. With a fixed language, Whisper tends to *translate* other-language passages instead of transcribing them.
 
 Each course also gets a glossary note (`_Glossaries/<Course> (glossary).md`). Its terms go into Whisper's prompt, and `wrong → right` corrections are applied word for word. It fills itself over time: terms that are on the slides, or were transcribed the same way twice, are added automatically.
 

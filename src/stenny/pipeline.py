@@ -169,8 +169,10 @@ def transcribe(audio: np.ndarray, course: Course, engine, prompt: str | None, la
     for t0, t1 in skip:
         for a, b, _ in time_ranges(spans, len(audio), t0, t1):
             bounds = [piece for s0, s1 in bounds for piece in ((s0, min(s1, a)), (max(s0, b), s1)) if piece[1] > piece[0]]
-    # mixed-language courses use short chunks so a switch is caught at sentence level
-    short = course.language == "mixed" and not lang_override
+    # mixed-language courses use short chunks so a switch is caught at sentence level. Talks keep the normal
+    # long chunks and only check each one's language: short chunks cost whole sentences and take ~6× as long
+    # (measured), a price for lecturers who really switch back and forth, not for every talk.
+    short = course.language == "mixed" and not course.is_event and not lang_override
     chunks = []  # (start sample, end sample, span index)
     for i, (s0, s1) in enumerate(bounds):
         piece = audio[s0:s1]

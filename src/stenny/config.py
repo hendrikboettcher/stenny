@@ -91,10 +91,10 @@ class Config:
 
     def event(self, title: str) -> Course:
         """A talk or event: not a course, so no glossary, course files or lecture numbers. Its files go to
-        `<events_root>/<title>/<date>/`; the language is detected per recording."""
+        `<events_root>/<title>/<date>/`; a speaker may switch language, so it's checked for each ~25 s."""
         from .vault import safe_name
         title = re.sub(r"\s*:\s*", " – ", title.strip())  # "Guest talk: Müller" → "Guest talk – Müller"
-        return Course(name=safe_name(title), language="auto", languages=self.event_languages,
+        return Course(name=safe_name(title), language="mixed", languages=self.event_languages,
                       tags=["talk"], kind="event")
 
     def root_for(self, course: Course) -> Path:

@@ -71,6 +71,23 @@ final class CalendarWatcher {
             .first { (courseForTitle[$0] ?? nil) == nil }
     }
 
+    /// Writes this term's event titles to a file on this Mac, so setup can suggest the courses and check that
+    /// they match, without anyone typing or dragging in a timetable.
+    func exportTitles(now: Date = Date()) {
+        guard hasAccess else { return }
+        let predicate = store.predicateForEvents(withStart: now.addingTimeInterval(-28 * 86400),
+                                                 end: now.addingTimeInterval(56 * 86400), calendars: nil)
+        let titles = store.events(matching: predicate)
+            .filter { !$0.isAllDay && $0.endDate.timeIntervalSince($0.startDate) >= Self.minimumLength }
+            .compactMap(\.title)
+        var counts: [String: Int] = [:]
+        titles.forEach { counts[$0, default: 0] += 1 }
+        let rows = counts.sorted { ($0.value, $1.key) > ($1.value, $0.key) }.map { ["title": $0.key, "count": $0.value] as [String: Any] }
+        guard let data = try? JSONSerialization.data(withJSONObject: rows, options: [.prettyPrinted]) else { return }
+        try? FileManager.default.createDirectory(at: StennyCLI.dataDir, withIntermediateDirectories: true)
+        try? data.write(to: StennyCLI.dataDir.appendingPathComponent("calendar-titles.json"), options: .atomic)
+    }
+
     /// Forget cached matches (after the course list may have changed).
     func reset() { courseForTitle = [:] }
 }

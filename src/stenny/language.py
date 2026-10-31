@@ -3,9 +3,9 @@
 - fixed  ("fr")    : the course always uses one language.
 - auto             : one language per lecture, voted from samples spread over the recording
                      (Whisper alone only looks at the first 30 s, often chatter before the start).
-- mixed            : language detected per short chunk (4-12 s, cut at pauses) within the allowed set.
-                     Needed because a fixed language makes Whisper *translate* other-language
-                     passages instead of transcribing them.
+- mixed            : language detected per chunk within the allowed set: short ones (4-12 s, cut at pauses)
+                     for courses, the normal ~25 s for talks. Needed because a fixed language makes
+                     Whisper *translate* other-language passages instead of transcribing them.
 """
 
 import numpy as np

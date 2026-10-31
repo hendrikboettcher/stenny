@@ -12,9 +12,10 @@ def test_newer_versions_compare_as_numbers():
 
 def test_backup_never_overwrites_an_earlier_one(tmp_path):
     folder = tmp_path / "stenny"
-    assert update.backup_path(folder, "0.4.0").name == "stenny (before 0.4.0)"
-    (tmp_path / "stenny (before 0.4.0)").mkdir()
-    assert update.backup_path(folder, "0.4.0").name == "stenny (before 0.4.0, 2)"
+    assert update.backup_path(folder, "0.4.0").name == "stenny (before 0.4.0).noindex"
+    (tmp_path / "stenny (before 0.4.0).noindex").mkdir()
+    assert update.backup_path(folder, "0.4.0").name == "stenny (before 0.4.0, 2).noindex"
+    assert update.backup_path(tmp_path / "stenny.noindex", "0.5.0").name == "stenny (before 0.5.0).noindex"
 
 
 def test_a_git_checkout_is_left_alone(tmp_path):
@@ -29,7 +30,7 @@ def test_failed_install_brings_the_old_folder_back(tmp_path, monkeypatch):
     (folder / "pyproject.toml").write_text("old")
 
     def fake_curl(*args):
-        new = tmp_path / "zip" / "stenny"
+        new = tmp_path / "zip" / "stenny.noindex"
         (new / "app/build.noindex/Stenny.app").mkdir(parents=True)
         (new / "app/install.sh").write_text("")
         (new / "pyproject.toml").write_text("new")
@@ -51,7 +52,7 @@ def test_failed_install_brings_the_old_folder_back(tmp_path, monkeypatch):
         update.update(folder)
     assert attempts == ["new", "old"]
     assert (folder / "pyproject.toml").read_text() == "old"
-    assert not (tmp_path / "stenny (before 0.4.0)").exists()
+    assert not (tmp_path / "stenny (before 0.4.0).noindex").exists()
 
 
 def test_bundled_tools_win_over_the_path(tmp_path, monkeypatch):

@@ -66,7 +66,7 @@ Vault output: `<vault>/<lectures_dir>/<Course>/<YYYY-MM-DD>/<Course> <YYYY-MM-DD
 - **The recording comes first (`resources.py`):** low memory costs the live draft, low disk the backup microphone, and a final pass waits for memory like it waits for power. A process that dies mustn't lose a lecture: `stenny recover` queues its final pass, and Stenny starts recording again without the draft.
 - Live timestamps are lecture-clock time (pauses included); keep `spans`/`pauses` in session.json consistent with that.
 - **Keep README.md, SETUP.md and config.example.toml current** in the same commit as a change to a feature, a command, a setting or a storage location.
-- Don't install large dependencies (>100 MB) or persistent system config (launchd agents) without asking the user.
+- Don't install large dependencies (>100 MB) or persistent system config without asking the user. The one exception: setup installs the queue's launchd agent by itself (`stenny schedule uninstall` removes it).
 
 ## Commands
 ```bash

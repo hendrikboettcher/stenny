@@ -413,6 +413,8 @@ def finalize(session, cfg, policy: str, use_llm: bool, engine) -> None:
         return
     job = jobs.enqueue(session.pcm_path, session.course.name, session.lang_override, use_llm, live=session.session_path,
                        kind=session.course.kind)
+    if hasattr(engine, "release"):  # the live draft's model would count against the memory check
+        engine.release()
     on_power = jobs.on_ac_power()
     run_now = policy == "now" or (policy == "auto" and on_power and resources.enough_memory_for_final_pass())
     if not run_now:
@@ -586,7 +588,7 @@ def main() -> None:
     t.add_argument("--event", "-e", metavar="TITLE", help="a talk or event (not a course): its own folder in "
                                                            "Recordings, e.g. --event \"Guest talk Müller\"")
     p.add_argument("--lang", "-l", help="language for this file, overriding the course setting: a Whisper code (e.g. fr), "
-                   "auto (one language, detected) or mixed (detected every ~25 s)")
+                   "auto (one language, detected) or mixed (detected throughout)")
     p.add_argument("--date", help="lecture date/time if the file's own timestamp is wrong (YYYY-MM-DD[THH:MM])")
     p.add_argument("--no-llm", action="store_true", help="skip AI structuring and summary (fully offline)")
     p.add_argument("--no-summary", action="store_true", help="structure with AI but don't write the summary")

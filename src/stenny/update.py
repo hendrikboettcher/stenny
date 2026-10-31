@@ -52,11 +52,13 @@ def uv() -> str:
 
 
 def backup_path(folder: Path, version: str) -> Path:
-    """A free name next to the folder, e.g. `stenny (before 0.4.1)`. Earlier ones are never overwritten."""
-    path = folder.with_name(f"{folder.name} (before {version})")
+    """A free name next to the folder, e.g. `stenny (before 0.4.1).noindex`. Earlier ones are never overwritten.
+    `.noindex` keeps it out of Spotlight, like the folder itself."""
+    name = folder.name.removesuffix(".noindex")
+    path = folder.with_name(f"{name} (before {version}).noindex")
     n = 2
     while path.exists():
-        path = folder.with_name(f"{folder.name} (before {version}, {n})")
+        path = folder.with_name(f"{name} (before {version}, {n}).noindex")
         n += 1
     return path
 
@@ -76,7 +78,7 @@ def update(folder: Path = FOLDER) -> Path:
         archive = Path(tmp) / "Stenny.zip"
         _curl("-o", str(archive), ZIP_URL)
         subprocess.run(["/usr/bin/ditto", "-x", "-k", str(archive), tmp], check=True)
-        new = Path(tmp) / "stenny"
+        new = Path(tmp) / "stenny.noindex"
         if not (new / "app/install.sh").exists() or not (new / "app/build.noindex/Stenny.app").exists():
             raise UpdateError("The download doesn't contain the Stenny app.")
         backup = backup_path(folder, current_version())

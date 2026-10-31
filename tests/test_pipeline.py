@@ -11,6 +11,7 @@ from pdfgen import make_pdf
 from stenny import pipeline
 from stenny.config import Config, Course
 from stenny.llm import Usage
+from stenny.textproc import SAMPLE_RATE
 from stenny.vault import LectureFiles
 
 RATE = 16000
@@ -420,3 +421,28 @@ def test_talk_goes_to_its_own_folder_without_course_files(setup):
     assert not cfg.lectures_root.exists()                              # nothing written next to the lectures
     data = cfg.data_dir / "_Recordings" / "Guest talk – Müller"
     assert (data / "2026-10-22.opus").exists() and (data / "Guest talk – Müller 2026-10-22 (raw).md").exists()
+
+
+def test_talk_checks_each_long_chunk_for_its_language(tmp_path):
+    from stenny.pipeline import transcribe
+
+    class Engine:
+        """English for the first minute, German after it; records the language each chunk was given."""
+        def __init__(self):
+            self.used, self.lengths = [], []
+
+        def language_probs(self, clip, allowed):
+            first = float(clip[0]) < 0.15
+            return {lang: (0.9 if (lang == "en") == first and lang in ("en", "de") else 0.05) for lang in allowed}
+
+        def transcribe(self, audio, language, prompt=None, fast=False):
+            self.used.append(language)
+            self.lengths.append(len(audio) / SAMPLE_RATE)
+            return [{"start": 0.0, "end": 1.0, "text": " x", "avg_logprob": -0.2, "no_speech_prob": 0.0}]
+
+    audio = np.concatenate([np.full(60 * SAMPLE_RATE, 0.1, np.float32), np.full(60 * SAMPLE_RATE, 0.2, np.float32)])
+    cfg = Config(vault=tmp_path, lectures_dir="L", data_dir=tmp_path)
+    engine = Engine()
+    transcribe(audio, cfg.event("Guest talk"), engine, None)
+    assert "en" in engine.used and "de" in engine.used and engine.used[0] == "en" and engine.used[-1] == "de"
+    assert engine.lengths.count(18.0) >= 5  # the long chunks: short ones cost sentences on a talk

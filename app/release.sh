@@ -18,13 +18,15 @@ STENNY_SIGN_IDENTITY="Stenny Dev" app/build.sh --no-install
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
-git archive --format=tar --prefix=stenny/ HEAD | tar -x -C "$WORK"
-mkdir -p "$WORK/stenny/app/build.noindex"
-/usr/bin/ditto app/build.noindex/Stenny.app "$WORK/stenny/app/build.noindex/Stenny.app"
-codesign --verify --deep --strict "$WORK/stenny/app/build.noindex/Stenny.app"
+# ".noindex": it stays out of Spotlight, or searching for Stenny lists every folder in the code
+TOP=stenny.noindex
+git archive --format=tar --prefix="$TOP/" HEAD | tar -x -C "$WORK"
+mkdir -p "$WORK/$TOP/app/build.noindex"
+/usr/bin/ditto app/build.noindex/Stenny.app "$WORK/$TOP/app/build.noindex/Stenny.app"
+codesign --verify --deep --strict "$WORK/$TOP/app/build.noindex/Stenny.app"
 
 # Checks the shipped audio tools can do Stenny's job, and that they use nothing outside macOS
-MACOS="$WORK/stenny/app/build.noindex/Stenny.app/Contents/MacOS"
+MACOS="$WORK/$TOP/app/build.noindex/Stenny.app/Contents/MacOS"
 if otool -L "$MACOS/ffmpeg" "$MACOS/ffprobe" | grep -E '^\s' | grep -vE '/usr/lib/|/System/Library/'; then
     echo "❌ ffmpeg depends on a library that other Macs don't have."
     exit 1
@@ -33,7 +35,7 @@ fi
 
 mkdir -p dist
 rm -f dist/Stenny.zip
-/usr/bin/ditto -c -k --keepParent "$WORK/stenny" dist/Stenny.zip
+/usr/bin/ditto -c -k --norsrc --noextattr --keepParent "$WORK/$TOP" dist/Stenny.zip  # no ._ files
 echo "✅ dist/Stenny.zip ($(du -h dist/Stenny.zip | cut -f1)) for $TAG"
 
 if [[ "${1:-}" == "--publish" ]]; then

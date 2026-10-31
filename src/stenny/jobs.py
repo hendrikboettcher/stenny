@@ -71,7 +71,7 @@ def pending() -> list[Path]:
 
 
 class QueueLock:
-    """Only one queue run at a time (launchd fires every 15 min, runs can take longer)."""
+    """Only one queue run at a time (launchd fires every 10 min, runs can take longer)."""
 
     def __enter__(self):
         DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -94,7 +94,7 @@ def keep_awake() -> subprocess.Popen:
     return subprocess.Popen(["caffeinate", "-i", "-w", str(os.getpid())])
 
 
-def install_agent(interval_s: int = 900) -> Path:
+def install_agent(interval_s: int = 600) -> Path:
     exe = shutil.which("stenny") or sys.argv[0]
     log = str(DATA_DIR / "queue.log")
     DATA_DIR.mkdir(parents=True, exist_ok=True)
