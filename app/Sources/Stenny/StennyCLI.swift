@@ -112,9 +112,11 @@ enum StennyCLI {
     // MARK: The executable
 
     /// `stenny` as installed by `uv tool install` (~/.local/bin), or found on the PATH.
+    /// $STENNY_CLI points at another one, e.g. a development checkout's `.venv/bin/stenny`.
     static var executable: String? {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let candidates = ["\(home)/.local/bin/stenny", "/opt/homebrew/bin/stenny", "/usr/local/bin/stenny"]
+        let candidates = [ProcessInfo.processInfo.environment["STENNY_CLI"], "\(home)/.local/bin/stenny",
+                          "/opt/homebrew/bin/stenny", "/usr/local/bin/stenny"].compactMap { $0 }
         return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
     }
 
@@ -158,6 +160,31 @@ enum StennyCLI {
     static func courses() -> [String] {
         guard let list = json(["courses", "--json"]) as? [[String: Any]] else { return [] }
         return list.compactMap { $0["name"] as? String }
+    }
+
+    /// Every lecture and talk with a transcript (`stenny library`); nil if the tool couldn't be run.
+    static func library() -> [LibraryEntry]? {
+        guard let list = json(["library", "--json"]) as? [[String: Any]] else { return nil }
+        return list.compactMap(LibraryEntry.init)
+    }
+
+    /// Writes a clean copy to share (`stenny share`) and returns its file, or the reason it failed.
+    static func share(_ entry: LibraryEntry, withSummary: Bool) -> Result<URL, ShareFailure> {
+        let args = ["share", entry.course, entry.folder, "--json"] + (entry.isEvent ? ["--event"] : [])
+            + (withSummary ? ["--with-summary"] : [])
+        guard let result = run(args) else { return .failure(ShareFailure("The `stenny` command was not found.")) }
+        guard result.ok, let data = result.output.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let path = json["path"] as? String else {
+            let reason = result.errors.trimmingCharacters(in: .whitespacesAndNewlines)
+            return .failure(ShareFailure(reason.isEmpty ? "The copy couldn't be made." : reason))
+        }
+        return .success(URL(fileURLWithPath: path))
+    }
+
+    struct ShareFailure: Error {
+        let message: String
+        init(_ message: String) { self.message = message }
     }
 
     /// Course for each calendar event title (nil = none), decided by `stenny match-course`.

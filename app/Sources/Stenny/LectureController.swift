@@ -477,6 +477,10 @@ final class LectureController: NSObject {
     }
 
 
+    @objc private func openLibrary() {
+        LibraryWindow.shared.show()
+    }
+
     @objc private func checkForUpdates() {
         Task.detached {
             let result = StennyCLI.checkForUpdate()
@@ -680,6 +684,9 @@ final class LectureController: NSObject {
         micMenu.delegate = self
         configure(draftItem, title: "Live Transcript While Recording", symbol: "text.append", action: #selector(toggleDraft))
 
+        let libraryItem = NSMenuItem()
+        configure(libraryItem, title: "Open Stenny…", symbol: "books.vertical", action: #selector(openLibrary))
+
         let feedbackItem = NSMenuItem()
         configure(feedbackItem, title: "Send Feedback…", symbol: "bubble.left", action: #selector(sendFeedback))
         let updateItem = NSMenuItem()
@@ -690,7 +697,7 @@ final class LectureController: NSObject {
         [statusLineItem, levelItem, .separator(),
          suggestItem, startItem, pauseItem, stopItem, .separator(),
          micItem, draftItem, .separator(),
-         openItem, .separator(),
+         openItem, libraryItem, .separator(),
          feedbackItem, updateItem, quitItem].forEach(menu.addItem)
         statusItem.menu = menu
         refresh()

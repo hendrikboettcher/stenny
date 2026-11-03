@@ -135,6 +135,30 @@ def cmd_course(args) -> None:
         sys.exit(str(e))
 
 
+def cmd_library(args) -> None:
+    from .share import library
+    entries = library(load_config())
+    if args.json:  # for Stenny's window
+        print(json.dumps(entries, ensure_ascii=False))
+        return
+    for e in entries:
+        number = f"Lecture {e['number']}, " if e["number"] else ""
+        print(f"{e['course']}: {number}{e['folder']}" + ("" if e["status"] == "final" else f"  ({e['status']})"))
+
+
+def cmd_share(args) -> None:
+    from .share import ShareError, find, share
+    try:
+        entry = find(load_config(), args.course, args.date, event=args.event)
+    except ShareError as e:
+        sys.exit(str(e))
+    path = share(entry, with_summary=args.with_summary)
+    if args.json:
+        print(json.dumps({"path": str(path), "status": entry["status"]}, ensure_ascii=False))
+    else:
+        print(path)
+
+
 def check_slides(path: Path | None) -> None:
     if path and not path.is_file():
         sys.exit(f"Slides not found: {path}")
@@ -642,6 +666,18 @@ def main() -> None:
     p = sub.add_parser("course-files", help="rebuild the per-course files in _Course Files/ (all lectures, summaries)")
     p.add_argument("--course", help="only this course (default: all configured courses)")
     p.set_defaults(func=cmd_course_files)
+
+    p = sub.add_parser("library", help="list every lecture and talk with a transcript")
+    p.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
+    p.set_defaults(func=cmd_library)
+
+    p = sub.add_parser("share", help="clean copy of a transcript to send to someone (in ~/Lectures Data/_Shared)")
+    p.add_argument("course", help="course name (or a talk's title, with --event)")
+    p.add_argument("date", help="lecture folder name, e.g. 2026-10-15 or \"2026-10-15 (2)\"")
+    p.add_argument("--event", action="store_true", help="COURSE is the title of a talk or event")
+    p.add_argument("--with-summary", action="store_true", help="put the summary at the top")
+    p.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
+    p.set_defaults(func=cmd_share)
 
     p = sub.add_parser("courses", help="list configured courses")
     p.add_argument("--json", action="store_true", help=argparse.SUPPRESS)

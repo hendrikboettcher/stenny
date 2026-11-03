@@ -12,10 +12,22 @@ MainActor.assumeIsolated {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var controller: LectureController?
+    /// `Stenny --library`: only the window, no menu bar icon, shortcut or calendar, so it can run next to
+    /// the installed Stenny while working on the window.
+    private let libraryOnly = CommandLine.arguments.contains("--library")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if libraryOnly {
+            NSApp.setActivationPolicy(.regular)
+            LibraryWindow.shared.show()
+            return
+        }
         controller = LectureController()
         LoginItem.registerOnFirstLaunch()
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        libraryOnly
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
