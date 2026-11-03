@@ -134,9 +134,45 @@ struct LibraryView: View {
     }
 
     private var sidebar: some View {
+        VStack(spacing: 0) {
+            sidebarGroups
+            Hairline()
+            VStack(alignment: .leading, spacing: 0) {
+                footerButton("Send Feedback…", symbol: "bubble.left", action: AppActions.sendFeedback)
+                footerButton("Check for Updates…", symbol: "arrow.down.circle", action: AppActions.checkForUpdates)
+                if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String {
+                    Text("Version \(version)").font(Typeface.sans(11)).foregroundStyle(Palette.muted)
+                        .padding(.horizontal, 10).padding(.top, 6)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(10)
+        }
+    }
+
+    private func footerButton(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: symbol)
+                .font(Typeface.sans(12.5))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(FooterButtonStyle())
+    }
+
+    private var sidebarGroups: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Stenny").font(Typeface.serif(22, weight: 480)).padding(.horizontal, 10).padding(.bottom, 18)
+                // the website's brand: the stick figure next to the name
+                HStack(alignment: .center, spacing: 10) {
+                    StennyLogo(height: 30)
+                    Text("Stenny").font(Typeface.serif(22, weight: 480))
+                }
+                .padding(.horizontal, 10)
+                .padding(.bottom, 18)
+                .accessibilityElement(children: .combine)
                 if !model.courses.isEmpty {
                     Kicker("Courses").padding(.horizontal, 10).padding(.bottom, 4)
                     ForEach(model.courses, id: \.self) { groupRow($0) }
@@ -146,6 +182,7 @@ struct LibraryView: View {
                     ForEach(model.events, id: \.self) { groupRow($0) }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)  // "Stenny" stays left while the list loads
             .padding(.horizontal, 10)
             .padding(.top, titleBarHeight)
             .padding(.bottom, 16)
@@ -318,6 +355,7 @@ struct LectureDetail: View {
     }
 
     private func share() {
+        guard AppActions.lecturerAgreed(to: .share, course: entry.course, isEvent: entry.isEvent) else { return }
         sharing = true
         error = nil
         let entry = entry, withSummary = withSummary && entry.summary != nil

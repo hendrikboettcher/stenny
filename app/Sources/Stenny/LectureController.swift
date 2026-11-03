@@ -239,47 +239,7 @@ final class LectureController: NSObject {
     // MARK: Feedback
 
     @objc private func sendFeedback() {
-        let alert = NSAlert()
-        alert.messageText = "Send feedback"
-        alert.informativeText = "What works, what doesn't, what you'd want. It goes straight to the person who makes Stenny."
-        let stack = NSStackView(frame: NSRect(x: 0, y: 0, width: 340, height: 196))
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 8
-        let scroll = NSTextView.scrollableTextView()
-        let message = scroll.documentView as! NSTextView
-        message.font = .systemFont(ofSize: NSFont.systemFontSize)
-        message.isRichText = false
-        scroll.borderType = .bezelBorder
-        let contact = NSTextField(frame: NSRect(x: 0, y: 0, width: 340, height: 24))
-        contact.placeholderString = "Your email, if you'd like a reply (optional)"
-        let attach = NSButton(checkboxWithTitle: "Include Stenny's version, this Mac's model and the last lines of Stenny's log",
-                              target: nil, action: nil)
-        attach.lineBreakMode = .byWordWrapping
-        [scroll, contact, attach].forEach { view in
-            stack.addArrangedSubview(view)
-            view.widthAnchor.constraint(equalToConstant: 340).isActive = true
-        }
-        scroll.heightAnchor.constraint(equalToConstant: 120).isActive = true
-        alert.accessoryView = stack
-        alert.addButton(withTitle: "Send")
-        alert.addButton(withTitle: "Cancel")
-        alert.window.initialFirstResponder = message
-        NSApp.activate()
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        let text = message.string.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return show("Your message was empty, so nothing was sent.") }
-        let reply = contact.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        let details = attach.state == .on
-        Task.detached {
-            let failure = await StennyCLI.sendFeedback(text, contact: reply, includeDetails: details)
-            await MainActor.run {
-                guard let failure else { return self.show("Thank you! Your feedback was sent.") }
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(text, forType: .string)
-                self.show("\(failure)\n\nYour message is on the clipboard, so it isn't lost.")
-            }
-        }
+        AppActions.sendFeedback()
     }
 
     // MARK: Courses
@@ -402,6 +362,7 @@ final class LectureController: NSObject {
 
     private func start(course: String, event: Bool = false) {
         guard status == nil, !starting else { return }
+        guard AppActions.lecturerAgreed(to: .record, course: course, isEvent: event) else { return }
         AppLog.write("start \(event ? "event" : "course") \(course)")
         do {
             try StennyCLI.startLive(course: course, event: event, device: microphone, draft: liveDraft) { code in
@@ -482,50 +443,7 @@ final class LectureController: NSObject {
     }
 
     @objc private func checkForUpdates() {
-        Task.detached {
-            let result = StennyCLI.checkForUpdate()
-            await MainActor.run { self.showUpdate(result) }
-        }
-    }
-
-    private func showUpdate(_ result: StennyCLI.UpdateCheck?) {
-        let alert = NSAlert()
-        NSApp.activate()
-        guard let result else {
-            alert.messageText = "Couldn't check for updates"
-            alert.informativeText = "Check your internet connection and try again."
-            alert.runModal()
-            return
-        }
-        guard result.available else {
-            alert.messageText = "Stenny is up to date"
-            alert.informativeText = "You have the newest version, \(result.current)."
-            alert.runModal()
-            return
-        }
-        alert.messageText = "Stenny \(result.latest) is available"
-        alert.informativeText = "You have \(result.current). Stenny closes and reopens by itself; your courses and transcripts stay as they are."
-        alert.addButton(withTitle: "Update")
-        alert.addButton(withTitle: "Not Now")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        guard status == nil else {
-            let busy = NSAlert()
-            busy.messageText = "Stenny is working on a recording"
-            busy.informativeText = "Update once the recording and its final transcript are finished."
-            busy.runModal()
-            return
-        }
-        AppLog.write("updating from \(result.current) to \(result.latest)")
-        // On success this app is closed and replaced, so only a failure ever gets back here
-        StennyCLI.runUpdate { failure in
-            Task { @MainActor in
-                let failed = NSAlert()
-                failed.messageText = "The update didn't work"
-                failed.informativeText = failure
-                NSApp.activate()
-                failed.runModal()
-            }
-        }
+        AppActions.checkForUpdates()
     }
 
     @objc private func quit() {
