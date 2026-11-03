@@ -1,3 +1,4 @@
+import argparse
 import json
 import subprocess
 import sys
@@ -5,7 +6,7 @@ import sys
 import pytest
 
 from stenny import cli, jobs, resources
-from stenny.config import Config
+from stenny.config import Config, Course
 
 
 @pytest.fixture
@@ -101,3 +102,43 @@ def test_memory_check_needs_normal_pressure_and_room(monkeypatch):
 def test_the_real_readings_make_sense():
     assert resources.memory_pressure() in (1, 2, 4)
     assert 0 < resources.available_memory() < 1024 * resources.GB
+
+
+class FinishedSession:
+    def __init__(self, cfg):
+        self.pcm_path, self.session_path = crashed_session(cfg)
+        self.course, self.lang_override, self.backup = Course(name="Calculus"), None, None
+        self.recorded, self.final_note, self.state = 16000, "", "stopped"
+
+
+@pytest.fixture
+def plugged_in(cfg, monkeypatch):
+    monkeypatch.setattr(jobs, "DATA_DIR", cfg.data_dir / "_System")
+    monkeypatch.setattr(jobs, "on_ac_power", lambda: True)
+    monkeypatch.setattr(jobs, "lower_own_priority", lambda mode: None)
+    monkeypatch.setattr(resources, "enough_memory_for_final_pass", lambda: True)
+    started = []
+    monkeypatch.setattr(cli, "run_job", lambda job, *a, **kw: started.append(job))
+    return started
+
+
+def test_the_pass_after_a_recording_waits_while_another_one_runs(cfg, plugged_in):
+    session = FinishedSession(cfg)
+    with jobs.QueueLock():  # a scheduled queue run is busy
+        cli.finalize(session, cfg, "auto", True, object())
+    assert plugged_in == [] and len(jobs.pending()) == 1 and session.state == "stopped"
+    assert "another one is running" in session.final_note
+
+
+def test_the_schedule_leaves_alone_a_job_the_recording_is_finishing(cfg, plugged_in, monkeypatch):
+    monkeypatch.setenv("STENNY_PRIORITY", "background")  # no re-exec under taskpolicy
+    monkeypatch.setattr(cli, "load_config", lambda: cfg)
+    session = FinishedSession(cfg)
+
+    def run_job(job, *a, **kw):  # while the live process runs its final pass, launchd fires
+        plugged_in.append(job)
+        cli.cmd_queue(argparse.Namespace(action="run", scheduled=True))
+
+    monkeypatch.setattr(cli, "run_job", run_job)
+    cli.finalize(session, cfg, "auto", True, object())
+    assert len(plugged_in) == 1 and session.state == "done"

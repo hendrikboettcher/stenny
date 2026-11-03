@@ -446,3 +446,29 @@ def test_talk_checks_each_long_chunk_for_its_language(tmp_path):
     transcribe(audio, cfg.event("Guest talk"), engine, None)
     assert "en" in engine.used and "de" in engine.used and engine.used[0] == "en" and engine.used[-1] == "de"
     assert engine.lengths.count(18.0) >= 5  # the long chunks: short ones cost sentences on a talk
+
+
+def test_unplugging_stops_the_final_pass_between_chunks(tmp_path):
+    from stenny.pipeline import Interrupted, transcribe
+
+    audio = np.full(120 * SAMPLE_RATE, 0.1, np.float32)
+    course = Course(name="Calculus", language="en", languages=["en"])
+    engine = FakeEngine({"en": 1.0})
+    asked = []
+
+    def unplugged():
+        asked.append(1)
+        return len(asked) > 2  # pulled after two chunks
+
+    with pytest.raises(Interrupted, match="after 2/"):
+        transcribe(audio, course, engine, None, stop=unplugged)
+    assert engine.calls == 2
+
+
+def test_unplugged_check_asks_pmset_at_most_every_few_seconds(monkeypatch):
+    from stenny import jobs
+
+    calls = []
+    monkeypatch.setattr(jobs, "on_ac_power", lambda: calls.append(1) or len(calls) > 1)
+    unplugged = jobs.unplugged_check(every_s=3600)
+    assert unplugged() and unplugged() and len(calls) == 1  # on battery at first ask, cached after it

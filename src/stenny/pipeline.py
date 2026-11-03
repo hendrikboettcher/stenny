@@ -34,6 +34,10 @@ class LectureError(Exception):
     pass
 
 
+class Interrupted(LectureError):
+    """Work stopped on purpose (the charger was pulled); its job stays queued and starts over later."""
+
+
 def log(msg: str) -> None:
     print(f"[{datetime.now():%H:%M:%S}] {msg}", flush=True)
 
@@ -159,10 +163,11 @@ def fill_from_backup(segments: list[dict], pauses: list[tuple], main: np.ndarray
 
 def transcribe(audio: np.ndarray, course: Course, engine, prompt: str | None, lang_override: str | None = None,
                spans: list[tuple[int, float]] | None = None,
-               skip: list[tuple[float, float]] = ()) -> tuple[list[dict], list[str], str]:
+               skip: list[tuple[float, float]] = (), stop=None) -> tuple[list[dict], list[str], str]:
     """Chunked transcription. `spans` maps recorded audio to lecture time for live recordings; each
     stretch between real breaks is transcribed on its own, so no chunk straddles a pause.
     `skip`: lecture-time ranges left out (gaps where the microphone sent only digital silence).
+    `stop`: asked before each chunk; True raises Interrupted.
     Returns (segments in lecture time, languages used by share, language note)."""
     spans = spans or [(0, 0.0)]
     bounds = span_groups(spans, len(audio))
@@ -186,6 +191,8 @@ def transcribe(audio: np.ndarray, course: Course, engine, prompt: str | None, la
         span_chunks = [(a, b, lang) for (a, b, k), lang in zip(chunks, langs) if k == i]
         local = []
         for a, b, lang in span_chunks:
+            if stop and stop():
+                raise Interrupted(f"stopped after {done}/{len(chunks)} chunks")
             off = (a - s0) / SAMPLE_RATE
             for seg in engine.transcribe(audio[a:b], lang, prompt):
                 local.append({**seg, "start": seg["start"] + off, "end": min(seg["end"] + off, (b - s0) / SAMPLE_RATE)})
@@ -355,9 +362,10 @@ def log_llm(info: dict) -> None:
 
 def process(path: Path, cfg: Config, course: Course, engine, *, lang: str | None = None,
             when: datetime | None = None, use_llm: bool = True, summary: bool | None = None,
-            live: LiveInfo | None = None, slides_src: Path | None = None) -> dict:
+            live: LiveInfo | None = None, slides_src: Path | None = None, stop=None) -> dict:
     """`slides_src`: lecture slides (PDF), copied into the folder as Slides.pdf. Without it, a Slides.pdf
-    already in the folder (e.g. dropped there during a live lecture) is used."""
+    already in the folder (e.g. dropped there during a live lecture) is used.
+    `stop`: see transcribe(); nothing is written before Whisper is done, so an interrupted job leaves no trace."""
     t0 = time.time()
     vault = Vault(cfg.root_for(course))
     glossary = ensure_glossary(vault, course)
@@ -386,7 +394,7 @@ def process(path: Path, cfg: Config, course: Course, engine, *, lang: str | None
         log(f"Slides: {slides.count} pages, {used} slide terms in Whisper's prompt")
 
     gaps = [(p[0], p[1]) for p in pauses if p[2] == "no input"]  # only zeros there, or nothing at all
-    segments, languages, lang_note = transcribe(audio, course, engine, prompt, lang, spans, skip=gaps)
+    segments, languages, lang_note = transcribe(audio, course, engine, prompt, lang, spans, skip=gaps, stop=stop)
     backup_path = Path(live.backup["recording"]) if live and live.backup else None
     backup_mic, filled = None, 0.0
     if backup_path and backup_path.exists() and backup_path.stat().st_size:

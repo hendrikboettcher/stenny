@@ -273,25 +273,30 @@ def cmd_queue(args) -> None:
             return
         jobs.keep_awake()
         from .engines import get_engine
-        from .pipeline import log, process
+        from .pipeline import Interrupted, log
 
         engine = get_engine(cfg.model)
+        unplugged = jobs.unplugged_check() if args.scheduled and cfg.require_ac_for_queue else None
         for p in jobs.pending():
-            if args.scheduled and cfg.require_ac_for_queue and not jobs.on_ac_power():
+            if unplugged and unplugged():
                 log("Unplugged; stopping, remaining jobs wait.")
                 break
             if args.scheduled and not resources.enough_memory_for_final_pass():
                 log("Not enough free memory now; remaining jobs wait.")
                 break
             try:
-                run_job(p, cfg, engine)
+                run_job(p, cfg, engine, stop=unplugged)
+            except Interrupted as e:  # the Mac is on battery now: give it back, the job waits for power
+                log(f"Unplugged; final pass {e}, it starts over on power. Remaining jobs wait.")
+                break
             except Exception as e:  # keep the job, move on to the next one
                 log(f"Job {p.name} failed: {e}")
                 p.rename(p.with_suffix(".failed"))
 
 
-def run_job(job_path: Path, cfg, engine) -> dict:
-    """Process one queued job; on success remove it (and a live recording's temporary .pcm)."""
+def run_job(job_path: Path, cfg, engine, stop=None) -> dict:
+    """Process one queued job; on success remove it (and a live recording's temporary .pcm).
+    `stop`: see pipeline.transcribe(); an interrupted job stays queued."""
     from .pipeline import LiveInfo, process
 
     job = json.loads(job_path.read_text(encoding="utf-8"))
@@ -301,7 +306,7 @@ def run_job(job_path: Path, cfg, engine) -> dict:
     src = Path(job["file"])
     slides = Path(job["slides"]) if job.get("slides") else None
     info = process(src, cfg, course, engine, lang=job.get("lang"), use_llm=job.get("llm", True), live=live,
-                   slides_src=slides if slides and slides.exists() else None)
+                   slides_src=slides if slides and slides.exists() else None, stop=stop)
     job_path.unlink()
     if live and src.suffix == ".pcm":
         src.unlink(missing_ok=True)  # archived as .opus by process() (or keep_audio = false)
@@ -423,10 +428,24 @@ def finalize(session, cfg, policy: str, use_llm: bool, engine) -> None:
         log(f"Live draft kept. Final pass queued {why}: {job.name} — runs with `stenny queue run` "
             "or the schedule (`stenny schedule install`).")
         return
-    session.state = "finalizing"
-    jobs.lower_own_priority(cfg.priority)
-    log("Final pass on the full recording (low priority) …")
-    run_job(job, cfg, engine)
+    from .pipeline import Interrupted
+
+    with jobs.QueueLock() as lock:
+        if lock is None:  # a scheduled run is busy; a later one picks this job up
+            session.final_note = session.final_note or "final pass queued (another one is running)"
+            log(f"Live draft kept. Another final pass is running; this one waits in the queue: {job.name}")
+            return
+        session.state = "finalizing"
+        jobs.lower_own_priority(cfg.priority)
+        log("Final pass on the full recording (low priority) …")
+        try:
+            # "auto" ran because the Mac was plugged in, so it gives way when unplugged; "now" was asked for
+            run_job(job, cfg, engine, stop=jobs.unplugged_check() if policy == "auto" else None)
+        except Interrupted as e:
+            session.state = "stopped"
+            session.final_note = session.final_note or "final pass queued (unplugged)"
+            log(f"Unplugged; final pass {e}. Live draft kept, the job waits in the queue: {job.name}")
+            return
     session.state = "done"
 
 

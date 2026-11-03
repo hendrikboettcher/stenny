@@ -47,6 +47,18 @@ def on_ac_power() -> bool:
     return "AC Power" in out.splitlines()[0] if out else True
 
 
+def unplugged_check(every_s: float = 20):
+    """For long work that gives way when the charger is pulled: the returned function is True once on battery.
+    pmset is asked at most every `every_s` seconds (it's called between Whisper chunks)."""
+    last = [-every_s, False]
+
+    def unplugged() -> bool:
+        if time.monotonic() - last[0] >= every_s:
+            last[:] = [time.monotonic(), not on_ac_power()]
+        return last[1]
+    return unplugged
+
+
 def in_window(start: str, end: str, now: datetime | None = None) -> bool:
     now = now or datetime.now()
     t = now.strftime("%H:%M")
@@ -71,7 +83,8 @@ def pending() -> list[Path]:
 
 
 class QueueLock:
-    """Only one queue run at a time (launchd fires every 10 min, runs can take longer)."""
+    """Only one queue run at a time (launchd fires every 10 min, runs can take longer). The final pass right after
+    a live recording takes it too, or the next scheduled run would start a second pass on the same job."""
 
     def __enter__(self):
         DATA_DIR.mkdir(parents=True, exist_ok=True)
