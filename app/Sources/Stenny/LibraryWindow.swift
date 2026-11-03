@@ -3,6 +3,7 @@ import SwiftUI
 
 // Stenny's window (prototype): every lecture and talk by course, the summary, and Share…, which sends a
 // clean copy (`stenny share`) through the macOS share sheet. The lists come from `stenny library`.
+// Styled like stenny.eu (StennyStyle.swift).
 
 /// One lecture or talk, as `stenny library --json` lists it.
 struct LibraryEntry: Identifiable, Hashable, Sendable {
@@ -54,7 +55,9 @@ struct LibraryEntry: Identifiable, Hashable, Sendable {
     var rowDetail: String {
         [number > 0 ? prettyDate : start, duration].compactMap { $0 }.joined(separator: " · ")
     }
-    var heading: String { number > 0 ? "\(course) – Lecture \(number)" : course }
+    /// Above the title: the course, or that it's a talk.
+    var kicker: String { isEvent ? "Talk or event" : course }
+    var title: String { number > 0 ? "Lecture \(number)" : isEvent ? course : prettyDate }
     var details: String {
         let languages = ["en": "English", "de": "German", "fr": "French", "it": "Italian", "es": "Spanish",
                          "mixed": "Mixed languages"]
@@ -109,56 +112,128 @@ final class LibraryModel: ObservableObject {
     }
 }
 
+/// Space at the top for the window's close/minimize/zoom buttons (the title bar is transparent).
+private let titleBarHeight: CGFloat = 52
+
 struct LibraryView: View {
     @ObservedObject var model: LibraryModel
 
     var body: some View {
-        NavigationSplitView {
-            List(selection: $model.group) {
+        HStack(spacing: 0) {
+            sidebar.frame(width: 232).background(Palette.bar)
+            Hairline(vertical: true)
+            lectureList.frame(width: 248)
+            Hairline(vertical: true)
+            detail.frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .background(Palette.bg)
+        .foregroundStyle(Palette.ink)
+        .tint(Palette.ink)
+        .ignoresSafeArea()
+        .frame(minWidth: 860, minHeight: 540)
+    }
+
+    private var sidebar: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Stenny").font(Typeface.serif(22, weight: 480)).padding(.horizontal, 10).padding(.bottom, 18)
                 if !model.courses.isEmpty {
-                    Section("Courses") {
-                        ForEach(model.courses, id: \.self) { Label($0.course, systemImage: "book.closed").tag($0) }
-                    }
+                    Kicker("Courses").padding(.horizontal, 10).padding(.bottom, 4)
+                    ForEach(model.courses, id: \.self) { groupRow($0) }
                 }
                 if !model.events.isEmpty {
-                    Section("Talks & Events") {
-                        ForEach(model.events, id: \.self) { Label($0.course, systemImage: "mic").tag($0) }
-                    }
+                    Kicker("Talks & events").padding(.horizontal, 10).padding(.top, 16).padding(.bottom, 4)
+                    ForEach(model.events, id: \.self) { groupRow($0) }
                 }
             }
-            .navigationSplitViewColumnWidth(min: 200, ideal: 250)
-        } content: {
-            if let group = model.group {
-                List(model.entries(in: group), selection: $model.selection) { entry in
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack {
-                            Text(entry.rowTitle).font(.headline)
-                            if !entry.isFinal {
-                                Text(entry.status == "live" ? "Live draft" : "Draft")
-                                    .font(.caption).foregroundStyle(.orange)
-                            }
-                        }
-                        Text(entry.rowDetail).font(.subheadline).foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 2)
-                }
-                .navigationSplitViewColumnWidth(min: 200, ideal: 240)
-            } else {
-                Color.clear
-            }
-        } detail: {
-            if let entry = model.selected {
-                LectureDetail(entry: entry).id(entry.id)
-            } else if model.failed {
-                ContentUnavailableView("Couldn't read your lectures", systemImage: "exclamationmark.triangle",
-                                       description: Text("The `stenny` command didn't answer."))
-            } else if model.loaded {
-                ContentUnavailableView("No lectures yet", systemImage: "doc.text",
-                                       description: Text("Transcripts appear here after your first recording."))
-            } else {
-                ProgressView()
-            }
+            .padding(.horizontal, 10)
+            .padding(.top, titleBarHeight)
+            .padding(.bottom, 16)
         }
+    }
+
+    private func groupRow(_ group: LibraryGroup) -> some View {
+        Button { model.group = group } label: {
+            Text(group.course)
+                .font(Typeface.serif(15, weight: model.group == group ? 440 : 360))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(model.group == group ? Palette.mark : .clear, in: RoundedRectangle(cornerRadius: 8))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(group.course)
+    }
+
+    @ViewBuilder private var lectureList: some View {
+        if let group = model.group {
+            let entries = model.entries(in: group)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 2) {
+                    Kicker(entries.count == 1 ? "1 recording" : "\(entries.count) recordings")
+                        .padding(.horizontal, 10).padding(.bottom, 6)
+                    ForEach(entries) { entryRow($0) }
+                }
+                .padding(.horizontal, 10)
+                .padding(.top, titleBarHeight + 6)
+                .padding(.bottom, 16)
+            }
+        } else {
+            Color.clear
+        }
+    }
+
+    private func entryRow(_ entry: LibraryEntry) -> some View {
+        Button { model.selection = entry.id } label: {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 8) {
+                    Text(entry.rowTitle).font(Typeface.serif(16, weight: 440))
+                    if !entry.isFinal { LiveBadge(status: entry.status) }
+                }
+                Text(entry.rowDetail).font(Typeface.sans(12)).foregroundStyle(Palette.muted)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(model.selection == entry.id ? Palette.mark : .clear, in: RoundedRectangle(cornerRadius: 8))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder private var detail: some View {
+        if let entry = model.selected {
+            LectureDetail(entry: entry).id(entry.id)
+        } else {
+            VStack(spacing: 6) {
+                Text(model.failed ? "Couldn't read your lectures" : model.loaded ? "No lectures yet" : "Loading…")
+                    .font(Typeface.serif(19, weight: 440))
+                if model.failed || model.loaded {
+                    Text(model.failed ? "The stenny command didn't answer." :
+                            "Transcripts appear here after your first recording.")
+                        .font(Typeface.serif(15)).foregroundStyle(Palette.muted)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+}
+
+/// "Live draft" or "Draft", with the website's recording dot.
+struct LiveBadge: View {
+    let status: String
+    var body: some View {
+        HStack(spacing: 5) {
+            Circle().fill(status == "live" ? Palette.rec : Palette.warn).frame(width: 6, height: 6)
+            Text(status == "live" ? "Live draft" : "Draft").font(Typeface.sans(10.5, weight: .medium))
+        }
+        .foregroundStyle(status == "live" ? Palette.rec : Palette.warn)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 2)
+        .overlay(Capsule().strokeBorder(status == "live" ? Palette.rec : Palette.warn, lineWidth: 1))
     }
 }
 
@@ -172,44 +247,68 @@ struct LectureDetail: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(entry.heading).font(.title2.bold()).textSelection(.enabled)
-                    Text(entry.details).foregroundStyle(.secondary)
-                }
+            VStack(alignment: .leading, spacing: 0) {
+                Kicker(entry.kicker)
+                Text(entry.title).font(Typeface.serif(30, weight: 460)).textSelection(.enabled).padding(.top, 6)
+                Text(entry.details).font(Typeface.sans(13)).foregroundStyle(Palette.muted).padding(.top, 6)
+
                 if !entry.isFinal {
-                    Label("This is still the \(entry.status == "live" ? "live draft" : "draft"). The final transcript "
-                          + "replaces it once the recording is finished.", systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(.orange)
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Circle().fill(Palette.rec).frame(width: 7, height: 7)
+                        Text("This is still the \(entry.status == "live" ? "live draft" : "draft"). The final "
+                             + "transcript replaces it once the recording is finished.")
+                            .font(Typeface.serif(14.5))
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 11)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Palette.mark, in: RoundedRectangle(cornerRadius: 12))
+                    .padding(.top, 18)
                 }
-                HStack(spacing: 10) {
+
+                HStack(spacing: 8) {
                     Button(action: share) {
                         Label(sharing ? "Preparing…" : "Share…", systemImage: "square.and.arrow.up")
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(PillButtonStyle(primary: true))
                     .disabled(sharing)
                     .background(ShareAnchorView(anchor: anchor))
-                    Button("Open Transcript", action: open)
+                    Button("Open Transcript", action: open).buttonStyle(PillButtonStyle())
                     Button("Show in Finder") {
                         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: entry.transcript)])
                     }
+                    .buttonStyle(PillButtonStyle())
                 }
+                .padding(.top, 22)
+
                 if entry.summary != nil {
-                    Toggle("Put the summary at the top of the shared copy", isOn: $withSummary)
+                    Toggle(isOn: $withSummary) {
+                        Text("Put the summary at the top of the shared copy").font(Typeface.sans(12.5))
+                            .foregroundStyle(Palette.muted)
+                    }
+                    .toggleStyle(.checkbox)
+                    .padding(.top, 12)
                 }
                 if let error {
-                    Text(error).foregroundStyle(.red).textSelection(.enabled)
+                    Text(error).font(Typeface.sans(12.5)).foregroundStyle(Palette.rec).textSelection(.enabled)
+                        .padding(.top, 10)
                 }
-                Divider()
+
+                Hairline().padding(.vertical, 26)
+
                 if let summary, !summary.isEmpty {
-                    Text("Summary").font(.title3.bold())
-                    ForEach(summary) { $0.view }
+                    Kicker("Summary").padding(.bottom, 4)
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(summary) { $0.view }
+                    }
                 } else if summary != nil {
-                    Text("No summary for this lecture.").foregroundStyle(.secondary)
+                    Text("No summary for this lecture.").font(Typeface.serif(15)).foregroundStyle(Palette.muted)
                 }
             }
-            .padding(24)
-            .frame(maxWidth: 760, alignment: .leading)
+            .frame(maxWidth: 640, alignment: .leading)
+            .padding(.horizontal, 40)
+            .padding(.top, titleBarHeight + 6)
+            .padding(.bottom, 40)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .task {
@@ -286,18 +385,37 @@ struct SummaryLine: Identifiable, Sendable {
         return lines
     }
 
-    @MainActor @ViewBuilder var view: some View {
-        let inline = (try? AttributedString(markdown: text, options: .init(
+    /// Inline Markdown, with timestamps like [0:08:02] set small and muted so the sentence reads first.
+    private var inline: AttributedString {
+        var out = (try? AttributedString(markdown: text, options: .init(
             interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(text)
+        let plain = String(out.characters)
+        let pattern = try! NSRegularExpression(pattern: #"\[\d+:\d{2}:\d{2}\]"#)
+        for match in pattern.matches(in: plain, range: NSRange(plain.startIndex..., in: plain)).reversed() {
+            guard let range = Range(match.range, in: plain) else { continue }
+            let lower = plain.distance(from: plain.startIndex, to: range.lowerBound)
+            let upper = plain.distance(from: plain.startIndex, to: range.upperBound)
+            let start = out.characters.index(out.startIndex, offsetBy: lower)
+            let end = out.characters.index(out.startIndex, offsetBy: upper)
+            out[start..<end].foregroundColor = Palette.muted
+            out[start..<end].font = Typeface.sans(11.5)
+        }
+        return out
+    }
+
+    @MainActor @ViewBuilder var view: some View {
         switch kind {
-        case .heading: Text(inline).font(.headline).padding(.top, 6)
-        case .subheading: Text(inline).bold().padding(.top, 2)
+        case .heading:
+            Text(inline).font(Typeface.serif(19, weight: 460)).padding(.top, 14)
+        case .subheading:
+            Text(inline).font(Typeface.serif(15.5, weight: 500)).padding(.top, 6)
         case .bullet:
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text("•").foregroundStyle(.secondary)
-                Text(inline).textSelection(.enabled)
+            HStack(alignment: .firstTextBaseline, spacing: 9) {
+                Text("–").font(Typeface.serif(15.5)).foregroundStyle(Palette.muted)
+                Text(inline).font(Typeface.serif(15.5)).lineSpacing(3).textSelection(.enabled)
             }
-        case .text: Text(inline).textSelection(.enabled)
+        case .text:
+            Text(inline).font(Typeface.serif(15.5)).lineSpacing(3).textSelection(.enabled)
         }
     }
 }
@@ -311,12 +429,15 @@ final class LibraryWindow {
 
     func show() {
         if window == nil {
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1000, height: 640),
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1060, height: 680),
                                   styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                                   backing: .buffered, defer: false)
             window.title = "Stenny"
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
+            window.backgroundColor = Palette.bgNSColor
             window.contentViewController = NSHostingController(rootView: LibraryView(model: model))
-            window.setContentSize(NSSize(width: 1000, height: 640))
+            window.setContentSize(NSSize(width: 1060, height: 680))
             window.isReleasedWhenClosed = false
             window.center()
             window.setFrameAutosaveName("StennyLibrary")

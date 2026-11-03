@@ -26,6 +26,8 @@ cp "$(swift build -c release --show-bin-path)/Stenny" "$APP/Contents/MacOS/Stenn
 swift make-icon.swift "$BUILD/AppIcon.iconset"
 iconutil -c icns "$BUILD/AppIcon.iconset" -o "$APP/Contents/Resources/AppIcon.icns"
 rm -rf "$BUILD/AppIcon.iconset"
+# the website's typeface for Stenny's window (SIL Open Font License, which travels with it)
+cp Resources/Fraunces.ttf Resources/Fraunces-OFL.txt "$APP/Contents/Resources/"
 # the recorder runs as a child of Stenny, so it shares Stenny's microphone permission
 cp "$(swift build -c release --show-bin-path)/stenny-rec" "$APP/Contents/MacOS/stenny-rec"
 # the audio tools, if built (build-ffmpeg.sh, for releases); without them Stenny uses the ones on the PATH
