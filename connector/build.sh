@@ -13,8 +13,10 @@ mkdir -p "$WORK/bundle/server" dist
 cp connector/server/index.js "$WORK/bundle/server/"
 # the manifest with the package's version, so the extension and Stenny never disagree
 sed "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" connector/manifest.json > "$WORK/bundle/manifest.json"
-swift app/make-icon.swift "$WORK/icon.iconset" >/dev/null   # the app icon, at 512 px
-cp "$WORK/icon.iconset/icon_256x256@2x.png" "$WORK/bundle/icon.png"
+# the app icon without the transparent margin of Apple's icon grid (824 of 1024 px), so it fills Claude's tile
+swift app/make-icon.swift "$WORK/icon.iconset" >/dev/null
+sips -c 824 824 "$WORK/icon.iconset/icon_512x512@2x.png" --out "$WORK/crop.png" >/dev/null
+sips -Z 512 "$WORK/crop.png" --out "$WORK/bundle/icon.png" >/dev/null
 
 npx --yes @anthropic-ai/mcpb@2 validate "$WORK/bundle/manifest.json"
 npx --yes @anthropic-ai/mcpb@2 pack "$WORK/bundle" dist/Stenny.mcpb
