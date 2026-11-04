@@ -148,6 +148,17 @@ def test_search_gives_lecture_date_timestamp_and_section(cfg):
     assert_clean(text, cfg)
 
 
+def test_hits_and_transcripts_say_how_to_cite_with_the_full_timestamp(cfg):
+    # "0:02" for 0:02:05 reads as two seconds, so every hit carries a citation ready to copy
+    everywhere = connector.search_lectures(cfg, "bolzano weierstrass")
+    assert "cite as: Calculus, Lecture 1 [0:11:40]" in everywhere
+    one_course = connector.search_lectures(cfg, "bolzano weierstrass", course="Calculus")
+    assert "cite as: Lecture 1 [0:11:40]" in one_course
+    talk = connector.search_lectures(cfg, "limits")
+    assert "cite as: Some Talk, " in talk
+    assert '"Lecture 1 [0:00:04]"' in connector.get_transcript(cfg, "Calculus", "1")
+
+
 def test_search_matching(cfg):
     assert "1 match " in connector.search_lectures(cfg, "kmeans")          # "K-means" in the text
     assert "1 match " in connector.search_lectures(cfg, "continu", "Calc")  # start of a word

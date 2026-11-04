@@ -101,6 +101,15 @@ def _label(entry: dict, index: int) -> str:
     return f"Lecture {_lecture_number(entry, index)} ({entry['folder']})"
 
 
+def _cite(entry: dict, index: int, time: str | None, with_course: bool = False) -> str:
+    """How to cite a passage, ready to copy: "Lecture 3 [0:02:05]". The full h:mm:ss, since a shortened
+    "0:02" reads as two seconds."""
+    where = entry["folder"] if entry["kind"] == "event" else f"Lecture {_lecture_number(entry, index)}"
+    if with_course or entry["kind"] == "event":
+        where = f"{entry['course']}, {where}"
+    return where + (f" [{time}]" if time else "")
+
+
 def _title(entry: dict, entries: list[dict]) -> str:
     return f"{entry['course']}, {_label(entry, entries.index(entry))}"
 
@@ -236,6 +245,10 @@ def get_transcript(cfg, course: str, lecture: str | int, part: int = 1, at: str 
         raise ConnectorError(f"{_title(entry, entries)} has {len(parts)} part(s); ask for part 1 to {len(parts)}.")
     head = f"[{_title(entry, entries)}{_status_note(entry)} · part {part} of {len(parts)} · {_span(parts[part - 1])}"
     head += f" · next: get_transcript with part={part + 1}]" if part < len(parts) else "]"
+    times = TIMESTAMP.findall(parts[part - 1])
+    if times:
+        head += (f"\n[Cite a passage with its paragraph's full timestamp, e.g. "
+                 f"\"{_cite(entry, entries.index(entry), times[0])}\"; never shorten it to h:mm.]")
     return f"{head}\n\n{parts[part - 1]}\n"
 
 
@@ -330,8 +343,10 @@ def search_lectures(cfg, query: str, course: str | None = None, max_results: int
     for _, (entry, i, p, _), pos in shown:
         where = f"{entry['course']}, {_label(entry, i)}" + (f" [{p['time']}]" if p["time"] else "")
         section = f" — section: {p['section']}" if p["section"] else ""
-        lines.append(f"\n- {where}{section}{_status_note(entry)}\n  {_snippet(p['text'], pos, len(terms[0]))}")
-    lines.append("\nRead more around a hit with get_transcript(course, lecture, at=\"h:mm:ss\").")
+        lines.append(f"\n- {where}{section}{_status_note(entry)}\n  {_snippet(p['text'], pos, len(terms[0]))}"
+                     f"\n  cite as: {_cite(entry, i, p['time'], with_course=not course)}")
+    lines.append("\nCite a hit exactly as its \"cite as\" line shows, with the full h:mm:ss timestamp. "
+                 "Read more around a hit with get_transcript(course, lecture, at=\"h:mm:ss\").")
     return "\n".join(lines)
 
 
