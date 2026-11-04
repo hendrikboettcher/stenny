@@ -75,6 +75,8 @@ struct LibraryGroup: Hashable {
 @MainActor
 final class LibraryModel: ObservableObject {
     @Published private(set) var entries: [LibraryEntry] = []
+    /// The courses in Stenny's menu (`stenny courses`), recorded or not, in the config's order.
+    @Published private(set) var configured: [String] = []
     @Published private(set) var loaded = false
     @Published private(set) var failed = false
     @Published var group: LibraryGroup? {
@@ -82,9 +84,18 @@ final class LibraryModel: ObservableObject {
     }
     @Published var selection: LibraryEntry.ID?
 
-    var courses: [LibraryGroup] { groups(events: false) }
+    /// The courses in the menu, also those without a recording yet.
+    var courses: [LibraryGroup] { configured.map { LibraryGroup(course: $0, isEvent: false) } }
+    /// Removed courses (or ones never added) that still have transcripts.
+    var pastCourses: [LibraryGroup] { groups(events: false).filter { !isConfigured($0.course) } }
     var events: [LibraryGroup] { groups(events: true) }
     var selected: LibraryEntry? { entries.first { $0.id == selection } }
+
+    private var all: [LibraryGroup] { courses + pastCourses + events }
+
+    func isConfigured(_ course: String) -> Bool {
+        configured.contains { $0.caseInsensitiveCompare(course) == .orderedSame }
+    }
 
     private func groups(events: Bool) -> [LibraryGroup] {
         var seen: [LibraryGroup] = []
@@ -92,23 +103,79 @@ final class LibraryModel: ObservableObject {
         return seen
     }
 
-    /// Newest first.
+    /// Newest first. Course names match regardless of case, as they do in the config.
     func entries(in group: LibraryGroup) -> [LibraryEntry] {
-        entries.filter { $0.group == group }.reversed()
+        entries.filter { $0.isEvent == group.isEvent && $0.course.caseInsensitiveCompare(group.course) == .orderedSame }
+            .reversed()
+    }
+
+    init() {
+        NotificationCenter.default.addObserver(forName: AppActions.coursesChanged, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.reload() }
+        }
     }
 
     func reload() {
         Task {
-            let list = await Task.detached { StennyCLI.library() }.value
-            failed = list == nil
-            entries = list ?? []
+            async let list = Task.detached { StennyCLI.library() }.value
+            async let menu = Task.detached { StennyCLI.courses() }.value
+            let (found, names) = await (list, menu)
+            let added = names.first { !configured.isEmpty && !isConfigured($0) }  // just added: show it
+            failed = found == nil
+            entries = found ?? []
+            configured = names
             loaded = true
-            if group == nil || !entries.contains(where: { $0.group == group }) {
-                group = courses.first ?? events.first
+            if let added {
+                group = LibraryGroup(course: added, isEvent: false)
+            } else if group == nil || !all.contains(group!) {
+                group = all.first
             } else if selected == nil {
                 selection = group.flatMap { entries(in: $0).first?.id }
             }
         }
+    }
+}
+
+/// A course or talk in the sidebar. Courses show a ⋯ on hover (Remove Course…, or Bring Back for a past one),
+/// right under the + that adds them; the same actions are on right-click.
+private struct GroupRow<Actions: View>: View {
+    let group: LibraryGroup
+    let selected: Bool
+    let select: () -> Void
+    @ViewBuilder let actions: () -> Actions
+    @State private var hovering = false
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            Button(action: select) {
+                Text(group.course)
+                    .font(Typeface.serif(15, weight: selected ? 440 : 360))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .padding(.leading, 10)
+                    .padding(.trailing, hovering && !group.isEvent ? 30 : 10)
+                    .padding(.vertical, 6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(selected ? Palette.mark : .clear, in: RoundedRectangle(cornerRadius: 8))
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(group.course)
+            if hovering && !group.isEvent {
+                Menu(content: actions) {
+                    Image(systemName: "ellipsis").font(.system(size: 12, weight: .semibold))
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .foregroundStyle(Palette.muted)
+                .padding(.trailing, 8)
+                .help("Course options")
+                .accessibilityLabel("Options for \(group.course)")
+            }
+        }
+        .onHover { hovering = $0 }
+        .contextMenu(menuItems: actions)
     }
 }
 
@@ -173,9 +240,27 @@ struct LibraryView: View {
                 .padding(.horizontal, 10)
                 .padding(.bottom, 18)
                 .accessibilityElement(children: .combine)
-                if !model.courses.isEmpty {
-                    Kicker("Courses").padding(.horizontal, 10).padding(.bottom, 4)
-                    ForEach(model.courses, id: \.self) { groupRow($0) }
+                HStack {
+                    Kicker("Courses")
+                    Spacer()
+                    Button(action: AppActions.addCourse) {
+                        Image(systemName: "plus").font(.system(size: 11, weight: .semibold)).frame(width: 22, height: 20)
+                    }
+                    .buttonStyle(FooterButtonStyle())
+                    .help("Add a course")
+                    .accessibilityLabel("Add Course")
+                }
+                .padding(.leading, 10).padding(.trailing, 4).padding(.bottom, 2)
+                if model.loaded && model.courses.isEmpty {
+                    Button(action: AppActions.addCourse) {
+                        Text("Add your first course").font(Typeface.serif(15)).padding(.horizontal, 10).padding(.vertical, 6)
+                    }
+                    .buttonStyle(FooterButtonStyle())
+                }
+                ForEach(model.courses, id: \.self) { groupRow($0) }
+                if !model.pastCourses.isEmpty {
+                    Kicker("Past courses").padding(.horizontal, 10).padding(.top, 16).padding(.bottom, 4)
+                    ForEach(model.pastCourses, id: \.self) { groupRow($0) }
                 }
                 if !model.events.isEmpty {
                     Kicker("Talks & events").padding(.horizontal, 10).padding(.top, 16).padding(.bottom, 4)
@@ -190,19 +275,22 @@ struct LibraryView: View {
     }
 
     private func groupRow(_ group: LibraryGroup) -> some View {
-        Button { model.group = group } label: {
-            Text(group.course)
-                .font(Typeface.serif(15, weight: model.group == group ? 440 : 360))
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(model.group == group ? Palette.mark : .clear, in: RoundedRectangle(cornerRadius: 8))
-                .contentShape(Rectangle())
+        GroupRow(group: group, selected: model.group == group, select: { model.group = group }) {
+            courseActions(group)
         }
-        .buttonStyle(.plain)
-        .help(group.course)
+    }
+
+    /// Remove Course… for a course in the menu, Bring Back for a past one; nothing for talks.
+    @ViewBuilder private func courseActions(_ group: LibraryGroup) -> some View {
+        if !group.isEvent {
+            if model.isConfigured(group.course) {
+                Button("Remove Course…") {
+                    AppActions.removeCourse(group.course, recordings: model.entries(in: group).count)
+                }
+            } else {
+                Button("Bring Back to the Menu") { AppActions.bringBack(group.course) }
+            }
+        }
     }
 
     @ViewBuilder private var lectureList: some View {
@@ -210,7 +298,7 @@ struct LibraryView: View {
             let entries = model.entries(in: group)
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
-                    Kicker(entries.count == 1 ? "1 recording" : "\(entries.count) recordings")
+                    Kicker(entries.isEmpty ? "No recordings yet" : entries.count == 1 ? "1 recording" : "\(entries.count) recordings")
                         .padding(.horizontal, 10).padding(.bottom, 6)
                     ForEach(entries) { entryRow($0) }
                 }
@@ -244,6 +332,15 @@ struct LibraryView: View {
     @ViewBuilder private var detail: some View {
         if let entry = model.selected {
             LectureDetail(entry: entry).id(entry.id)
+        } else if let group = model.group, model.loaded, !model.failed {
+            VStack(spacing: 6) {
+                Text("Nothing recorded for \(group.course) yet").font(Typeface.serif(19, weight: 440))
+                Text("Start a recording from Stenny in the menu bar; its transcript appears here.")
+                    .font(Typeface.serif(15)).foregroundStyle(Palette.muted)
+            }
+            .multilineTextAlignment(.center)
+            .padding(32)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             VStack(spacing: 6) {
                 Text(model.failed ? "Couldn't read your lectures" : model.loaded ? "No lectures yet" : "Loading…")

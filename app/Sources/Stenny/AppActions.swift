@@ -21,7 +21,8 @@ enum Consent {
     }
 }
 
-/// Send Feedback… and Check for Updates…, the same from the menu bar menu and from Stenny's window.
+/// Send Feedback…, Check for Updates… and adding or removing a course: the same from the menu bar menu
+/// and from Stenny's window.
 @MainActor
 enum AppActions {
     // MARK: Feedback
@@ -116,6 +117,100 @@ enum AppActions {
                 failed.informativeText = failure
                 NSApp.activate()
                 failed.runModal()
+            }
+        }
+    }
+
+    // MARK: Courses
+
+    /// Posted after a course was added, removed or brought back, so the menu and the window catch up.
+    static let coursesChanged = Notification.Name("StennyCoursesChanged")
+
+    /// Asks for a name, language and short name, then adds the course (`stenny course add`).
+    static func addCourse() {
+        let alert = NSAlert()
+        alert.messageText = "Add a course"
+        alert.informativeText = "Mixed is for lecturers who switch languages within a lecture. Auto is for one language per lecture, but not always the same one."
+        let stack = NSStackView(frame: NSRect(x: 0, y: 0, width: 280, height: 90))
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 8
+        let name = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+        name.placeholderString = "Course name, e.g. Microeconomics"
+        let language = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 280, height: 26))
+        let languages = [("English", "en"), ("German", "de"), ("French", "fr"), ("Mixed", "mixed"), ("Auto", "auto")]
+        language.addItems(withTitles: languages.map(\.0))
+        let short = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+        short.placeholderString = "Short name (optional), e.g. micro"
+        [name, language, short].forEach { view in
+            stack.addArrangedSubview(view)
+            view.widthAnchor.constraint(equalToConstant: 280).isActive = true
+        }
+        alert.accessoryView = stack
+        alert.addButton(withTitle: "Add Course")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = name
+        NSApp.activate()
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let course = name.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let alias = short.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        var args = ["course", "add", course, "--language", languages[language.indexOfSelectedItem].1]
+        if !alias.isEmpty { args += ["--alias", alias] }
+        changeCourses(args) { offerProject(course) }
+    }
+
+    /// Takes a course out of the menu and calendar matching (`stenny course hide`); nothing is deleted.
+    static func removeCourse(_ course: String, recordings: Int) {
+        let alert = NSAlert()
+        alert.messageText = "Remove \(course)?"
+        let kept = switch recordings {
+        case 0: "Nothing was recorded for it yet. Its glossary, if it has one, stays."
+        case 1: "Its transcript and glossary stay, under Past Courses in this window."
+        default: "Its \(recordings) transcripts and glossary stay, under Past Courses in this window."
+        }
+        alert.informativeText = "It leaves the menu and calendar matching. \(kept) Adding a course with the same name brings it back."
+        alert.addButton(withTitle: "Remove Course")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate()
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        changeCourses(["course", "hide", course])
+    }
+
+    /// A removed course back in the menu, with its earlier settings.
+    static func bringBack(_ course: String) {
+        // `course add` restores a removed course as it was; the language only counts for one that was never added
+        changeCourses(["course", "add", course, "--language", "auto"])
+    }
+
+    private static func changeCourses(_ args: [String], then done: @escaping @MainActor () -> Void = {}) {
+        Task.detached {
+            let result = StennyCLI.run(args)
+            await MainActor.run {
+                NotificationCenter.default.post(name: coursesChanged, object: nil)
+                guard let result, result.ok else {
+                    return show(result?.errors.trimmingCharacters(in: .whitespacesAndNewlines) ?? "The `stenny` command was not found.")
+                }
+                done()
+            }
+        }
+    }
+
+    /// Recommended, never required: Stenny works the same without a Claude project.
+    private static func offerProject(_ course: String) {
+        let alert = NSAlert()
+        alert.messageText = "\(course) is in Stenny's menu"
+        alert.informativeText = "Want a Claude project for it, so its chats read these transcripts? In the Claude desktop app: "
+            + "Projects ▸ New project, name it, Instructions ▸ paste ▸ Save."
+        alert.addButton(withTitle: "Copy Project Instructions")
+        alert.addButton(withTitle: "Not Now")
+        NSApp.activate()
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        Task.detached {
+            let result = StennyCLI.run(["project-instructions", "--course", course])
+            await MainActor.run {
+                guard let result, result.ok else { return show("Couldn't get the instructions.") }
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(result.output, forType: .string)
             }
         }
     }
