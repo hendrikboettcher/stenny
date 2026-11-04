@@ -264,6 +264,18 @@ def cmd_project_instructions(args) -> None:
         print(PROJECT_TEXT.format(root=cfg.lectures_root, course=safe_name(name)))
 
 
+def cmd_mcp(args) -> None:
+    """The connector for Claude: an MCP server on stdin/stdout, started by Claude Desktop."""
+    if args.desktop_config:
+        command = Path(sys.argv[0]).resolve() if Path(sys.argv[0]).name in ("stenny", "lecture") else None
+        server = {"command": str(command), "args": ["mcp"]} if command else \
+            {"command": sys.executable, "args": ["-m", "stenny", "mcp"]}
+        print(json.dumps({"mcpServers": {"stenny": server}}, indent=2, ensure_ascii=False))
+        return
+    from .mcp_server import main as serve
+    serve()
+
+
 def cmd_course_files(args) -> None:
     """Rebuild the generated per-course files (normally done after every final pass)."""
     cfg = load_config()
@@ -660,6 +672,12 @@ def main() -> None:
                        "so its chats read the transcripts (Filesystem connector) and keep the glossary up to date")
     p.add_argument("--course", help="only this course (default: all)")
     p.set_defaults(func=cmd_project_instructions)
+
+    p = sub.add_parser("mcp", help="the connector for Claude: lets Claude Desktop read your lectures, summaries, "
+                       "slides and glossaries (a local MCP server on stdin/stdout)")
+    p.add_argument("--desktop-config", action="store_true",
+                   help="print the entry for Claude Desktop's claude_desktop_config.json instead of serving")
+    p.set_defaults(func=cmd_mcp)
 
     p = sub.add_parser("match-course", help="which course a calendar event title belongs to")
     p.add_argument("titles", nargs="+")

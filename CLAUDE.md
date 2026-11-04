@@ -16,6 +16,7 @@ Developer notes for Stenny, a lecture transcription tool for Apple Silicon Macs:
 - mlx-whisper (Metal) for transcription; ffmpeg for audio decoding/encoding
 - pypdf for slide text (poppler's `pdftotext` is preferred when installed)
 - Optional: `claude` CLI or the `anthropic` SDK for structuring and summaries
+- `mcp` (the official MCP SDK) for the connector, `stenny mcp`
 - pytest for tests
 
 ## Layout
@@ -32,6 +33,11 @@ src/stenny/
   slides.py       the lecture's slides PDF: page text, prompt terms, reference text for the LLM
   course_files.py generated _Course Files/<Course> (overview|all lectures|summaries).md and _Topics/<topic>.md;
                   renumbers lectures, sets previous/next links
+  share.py        the library (every lecture and talk, for Stenny's window) and clean copies to share
+  connector.py    what Claude may read through the connector, as clean text (no paths, no microphones): courses,
+                  lectures, transcripts in parts, summaries, search, glossary, slide text; one guarded write
+                  (`suggest_glossary_terms`: guard.validate_terms → pipeline.update_glossary, automatic section only)
+  mcp_server.py   `stenny mcp`: connector.py as a local MCP server (stdio, official `mcp` SDK) + study instructions
   pipeline.py     audio → segments → paragraphs → files; `postprocess` (text + AI step) and `refresh` (AI step
                   again from segments.json, no re-transcription)
   llm/            backends (claude_code, anthropic_api) + guard (no invented content)
@@ -75,6 +81,7 @@ uv run stenny add <audio> --course "<name>" [--lang fr] [--no-llm]
 uv run stenny add <audio> --course "<name>" --slides deck.pdf
 uv run stenny refresh "<course>" <YYYY-MM-DD[ (n)]>   # AI step again (slides, glossary edits), no Whisper
 uv run stenny courses                 # list configured courses
+uv run stenny mcp                     # the connector for Claude (MCP over stdio); --desktop-config: its config entry
 uv run python bench/run_bench.py       # engine benchmark
 uv run stenny live --course "<name>" --file sample.m4a --speed 3   # test live mode without a microphone
 app/build.sh                           # build + install the menu bar app (--no-install: only build)

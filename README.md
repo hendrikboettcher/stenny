@@ -99,6 +99,8 @@ stenny devices                                    # list microphones
 stenny check                                      # health check of the last recording
 
 stenny courses                                    # list your courses
+stenny library                                    # every lecture and talk with a transcript
+stenny mcp --desktop-config                       # the connector for Claude Desktop (see Studying with Claude)
 stenny match-course "VL Calculus (Room 1.01)"     # which course a calendar event belongs to
 stenny queue list | run                           # waiting final passes
 stenny schedule install                           # run the queue every 10 min when plugged in (launchd)
@@ -106,7 +108,32 @@ stenny schedule install                           # run the queue every 10 min w
 
 ## Studying with Claude
 
-The transcripts are meant as context for Claude. The least work is one Claude project per course that reads them straight from your Mac:
+### The Stenny connector (preview)
+
+`stenny mcp` lets Claude Desktop read your lectures directly: no Filesystem connector, no project per course, no
+instructions to paste. Any chat can then answer *"What did the lecturer say about k-means in lecture 4?"*. Claude
+gets these tools:
+
+- `list_courses`, `list_lectures`: your courses, and each lecture with its date, topics and section headings
+- `search_lectures`: where something was said (lecture, date, timestamp, snippet). Automatic transcripts misspell
+  terms, so a word that occurs nowhere is searched in its closest transcribed spelling ("dendrogram" → "dendogram")
+- `get_transcript` (in parts of about 10k tokens; `at="1:05:30"` jumps to a passage), `get_summary`,
+  `get_slides_text`, `get_glossary`
+- `suggest_glossary_terms`: the one tool that writes. It adds terms to the glossary's "Terms (added
+  automatically)" section only if they are on the slides or were transcribed the same way twice (the same check as
+  after every lecture). Corrections and your own terms stay yours to edit.
+
+Everything Claude gets is clean text, like a shared copy: no paths on your Mac, no microphone names. The connector
+also tells Claude how to study with Stenny (cite as "Lecture 3 [0:12:30]", check terms against the glossary and the
+slides), and offers a *Study a course* prompt.
+
+To add it, put the entry `stenny mcp --desktop-config` prints into `mcpServers` in
+`~/Library/Application Support/Claude/claude_desktop_config.json` and restart Claude Desktop. It only works in the
+desktop app on this Mac: Claude on the web and on your phone can't reach it.
+
+### With the Filesystem connector and a project per course
+
+The transcripts are meant as context for Claude. Without the connector, the least work is one Claude project per course that reads them straight from your Mac:
 
 1. In the Claude desktop app, turn on the **Filesystem** connector (Settings ▸ Connectors) and give it your lectures folder (and the `Recordings` folder, for talks).
 2. Create a project for each course.
