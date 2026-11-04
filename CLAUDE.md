@@ -51,6 +51,8 @@ app/              Swift menu bar app (SwiftPM + build.sh): starts `stenny live`,
                   also builds `stenny-rec`, the native microphone recorder bundled in Stenny.app;
                   build-ffmpeg.sh: the LGPL ffmpeg/ffprobe bundled there; install.sh: installs the built app;
                   release.sh: the release zip, which holds the signed app at app/build.noindex/Stenny.app
+connector/        the Claude Desktop extension (.mcpb): manifest.json, server/index.js (finds the installed `stenny`
+                  and runs `stenny mcp`), build.sh → dist/Stenny.mcpb (icon from app/make-icon.swift)
 tests/            pytest, no model downloads needed
 bench/            engine benchmark scripts
 ```
@@ -82,6 +84,7 @@ uv run stenny add <audio> --course "<name>" --slides deck.pdf
 uv run stenny refresh "<course>" <YYYY-MM-DD[ (n)]>   # AI step again (slides, glossary edits), no Whisper
 uv run stenny courses                 # list configured courses
 uv run stenny mcp                     # the connector for Claude (MCP over stdio); --desktop-config: its config entry
+connector/build.sh                     # dist/Stenny.mcpb, the one-click Claude Desktop extension
 uv run python bench/run_bench.py       # engine benchmark
 uv run stenny live --course "<name>" --file sample.m4a --speed 3   # test live mode without a microphone
 app/build.sh                           # build + install the menu bar app (--no-install: only build)

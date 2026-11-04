@@ -127,9 +127,14 @@ Everything Claude gets is clean text, like a shared copy: no paths on your Mac, 
 also tells Claude how to study with Stenny (cite as "Lecture 3 [0:12:30]", check terms against the glossary and the
 slides), and offers a *Study a course* prompt.
 
-To add it, put the entry `stenny mcp --desktop-config` prints into `mcpServers` in
-`~/Library/Application Support/Claude/claude_desktop_config.json` and restart Claude Desktop. It only works in the
-desktop app on this Mac: Claude on the web and on your phone can't reach it.
+To add it, double-click `Stenny.mcpb` (made by `connector/build.sh`; or drag it onto Claude's Settings window) and
+click **Install**. It shows up under Settings ▸ Customize ▸ Connectors. The extension starts the `stenny` installed on
+your computer, so it always reads the same lectures as the app. It only works in the desktop app on this computer:
+Claude on the web and on your phone can't reach it.
+
+Developing the connector? Point the extension's *Stenny command* setting at your copy's `.venv/bin/stenny`, or put
+the entry `stenny mcp --desktop-config` prints into `mcpServers` in Claude Desktop's `claude_desktop_config.json`
+while Claude Desktop is closed (it rewrites that file when it quits).
 
 ### With the Filesystem connector and a project per course
 
