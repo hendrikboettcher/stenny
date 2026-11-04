@@ -169,9 +169,10 @@ enum StennyCLI {
     }
 
     /// Writes a clean copy to share (`stenny share`) and returns its file, or the reason it failed.
-    static func share(_ entry: LibraryEntry, withSummary: Bool) -> Result<URL, ShareFailure> {
-        let args = ["share", entry.course, entry.folder, "--json"] + (entry.isEvent ? ["--event"] : [])
-            + (withSummary ? ["--with-summary"] : [])
+    /// For a PDF the tool writes HTML, which `PDFExport` then lays out on pages.
+    static func share(_ entry: LibraryEntry, withSummary: Bool, format: ShareFormat) -> Result<URL, ShareFailure> {
+        let args = ["share", entry.course, entry.folder, "--json", "--format", format == .pdf ? "html" : format.rawValue]
+            + (entry.isEvent ? ["--event"] : []) + (withSummary ? ["--with-summary"] : [])
         guard let result = run(args) else { return .failure(ShareFailure("The `stenny` command was not found.")) }
         guard result.ok, let data = result.output.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

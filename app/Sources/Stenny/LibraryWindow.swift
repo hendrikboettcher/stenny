@@ -401,7 +401,7 @@ struct LectureDetail: View {
                 }
 
                 HStack(spacing: 8) {
-                    Button(action: share) {
+                    Button(action: chooseFormat) {
                         Label(sharing ? "Preparing…" : "Share…", systemImage: "square.and.arrow.up")
                     }
                     .buttonStyle(PillButtonStyle(primary: true))
@@ -451,18 +451,34 @@ struct LectureDetail: View {
         }
     }
 
-    private func share() {
+    /// Share… first asks which kind of file, in a menu under the button, then opens the share sheet there.
+    private func chooseFormat() {
+        guard let view = anchor.view else { return }
+        let menu = NSMenu()
+        for format in ShareFormat.allCases {
+            let item = ClosureMenuItem(title: format.title, symbol: format.symbol) { share(format) }
+            item.subtitle = format.help
+            menu.addItem(item)
+        }
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: view.isFlipped ? view.bounds.height + 4 : -4), in: view)
+    }
+
+    /// The clean copy, with the summary on top if the box is ticked.
+    private func share(_ format: ShareFormat) {
         guard AppActions.lecturerAgreed(to: .share, course: entry.course, isEvent: entry.isEvent) else { return }
         sharing = true
         error = nil
         let entry = entry, withSummary = withSummary && entry.summary != nil
         Task {
-            let result = await Task.detached { StennyCLI.share(entry, withSummary: withSummary) }.value
+            var result = await Task.detached { StennyCLI.share(entry, withSummary: withSummary, format: format) }.value
+            if format == .pdf, case .success(let page) = result {
+                result = PDFExport.make(from: page)
+            }
             sharing = false
             switch result {
             case .success(let url):
                 guard let view = anchor.view else { return }
-                NSSharingServicePicker(items: [url]).show(relativeTo: view.bounds, of: view, preferredEdge: .minY)
+                ShareSheet.show(url, asText: format == .md, at: view)
             case .failure(let failure):
                 error = failure.message
             }
@@ -490,6 +506,115 @@ struct ShareAnchorView: NSViewRepresentable {
         return view
     }
     func updateNSView(_ view: NSView, context: Context) { anchor.view = view }
+}
+
+/// The macOS share sheet with Copy added at the top: the file itself (paste it into Finder, Mail or a chat),
+/// and for Markdown also its text (paste it straight into an AI chat or a note).
+@MainActor
+final class ShareSheet: NSObject, NSSharingServicePickerDelegate {
+    private static var current: ShareSheet?  // the picker doesn't keep its delegate
+    private let file: URL
+    private let asText: Bool
+
+    private init(file: URL, asText: Bool) {
+        self.file = file
+        self.asText = asText
+    }
+
+    static func show(_ file: URL, asText: Bool, at view: NSView) {
+        let sheet = ShareSheet(file: file, asText: asText)
+        current = sheet
+        let picker = NSSharingServicePicker(items: [file])
+        picker.delegate = sheet
+        picker.show(relativeTo: view.bounds, of: view, preferredEdge: .minY)
+    }
+
+    nonisolated func sharingServicePicker(_ picker: NSSharingServicePicker, sharingServicesForItems items: [Any],
+                                          proposedSharingServices proposed: [NSSharingService]) -> [NSSharingService] {
+        let copy = NSSharingService(title: "Copy", image: NSImage(systemSymbolName: "doc.on.doc", accessibilityDescription: nil)!,
+                                    alternateImage: nil) { [file, asText] in
+            let board = NSPasteboard.general
+            board.clearContents()
+            let item = NSPasteboardItem()
+            item.setString(file.absoluteString, forType: .fileURL)
+            if asText, let text = try? String(contentsOf: file, encoding: .utf8) {
+                item.setString(text, forType: .string)
+            }
+            board.writeObjects([item])
+        }
+        return [copy] + proposed
+    }
+
+    nonisolated func sharingServicePicker(_ picker: NSSharingServicePicker, didChoose service: NSSharingService?) {
+        MainActor.assumeIsolated { Self.current = nil }
+    }
+}
+
+/// A menu item that runs a closure (NSMenu wants a target and a selector).
+final class ClosureMenuItem: NSMenuItem {
+    private let run: () -> Void
+
+    init(title: String, symbol: String, run: @escaping () -> Void) {
+        self.run = run
+        super.init(title: title, action: #selector(fire), keyEquivalent: "")
+        target = self
+        image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+    }
+
+    required init(coder: NSCoder) { fatalError("not used") }
+
+    @objc private func fire() { run() }
+}
+
+/// What Share… sends: a PDF to read anywhere, a Word file to edit, or the Markdown the vault keeps.
+enum ShareFormat: String, CaseIterable {
+    case pdf, docx, md
+
+    var title: String { switch self { case .pdf: "PDF"; case .docx: "Word"; case .md: "Markdown" } }
+    var help: String {
+        switch self {
+        case .pdf: "Opens on any phone or computer"
+        case .docx: "To edit in Word, Pages or Google Docs"
+        case .md: "Best for Obsidian and AI chats"
+        }
+    }
+    var symbol: String { switch self { case .pdf: "doc.richtext"; case .docx: "doc.text"; case .md: "number" } }
+}
+
+/// The HTML copy (`stenny share --format html`) laid out on pages of the Mac's default paper size by the
+/// text system, saved as a PDF next to it; the HTML is removed.
+@MainActor
+enum PDFExport {
+    static func make(from page: URL) -> Result<URL, StennyCLI.ShareFailure> {
+        defer { try? FileManager.default.removeItem(at: page) }
+        let pdf = page.deletingPathExtension().appendingPathExtension("pdf")
+        guard let data = try? Data(contentsOf: page),
+              let text = NSAttributedString(html: data, baseURL: page.deletingLastPathComponent(), documentAttributes: nil)
+        else { return .failure(.init("The PDF couldn't be made.")) }
+        let info = NSPrintInfo.shared.copy() as! NSPrintInfo
+        (info.topMargin, info.bottomMargin, info.leftMargin, info.rightMargin) = (54, 54, 62, 62)
+        info.horizontalPagination = .fit
+        info.verticalPagination = .automatic
+        info.isHorizontallyCentered = false
+        info.isVerticallyCentered = false
+        info.jobDisposition = .save
+        info.dictionary()[NSPrintInfo.AttributeKey.jobSavingURL] = pdf
+        let width = info.paperSize.width - info.leftMargin - info.rightMargin
+        let view = NSTextView(frame: NSRect(x: 0, y: 0, width: width, height: 1))
+        view.appearance = NSAppearance(named: .aqua)  // paper is white, also in dark mode
+        view.textContainer?.lineFragmentPadding = 0
+        view.textStorage?.setAttributedString(text)
+        view.layoutManager?.ensureLayout(for: view.textContainer!)
+        view.sizeToFit()
+        try? FileManager.default.removeItem(at: pdf)
+        let operation = NSPrintOperation(view: view, printInfo: info)
+        operation.showsPrintPanel = false
+        operation.showsProgressPanel = false
+        guard operation.run(), FileManager.default.fileExists(atPath: pdf.path) else {
+            return .failure(.init("The PDF couldn't be made."))
+        }
+        return .success(pdf)
+    }
 }
 
 /// A line of the summary file, for showing it without its frontmatter, title and note.

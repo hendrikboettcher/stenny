@@ -152,7 +152,10 @@ def cmd_share(args) -> None:
         entry = find(load_config(), args.course, args.date, event=args.event)
     except ShareError as e:
         sys.exit(str(e))
-    path = share(entry, with_summary=args.with_summary)
+    try:
+        path = share(entry, with_summary=args.with_summary, fmt=args.format)
+    except ShareError as e:
+        sys.exit(str(e))
     if args.json:
         print(json.dumps({"path": str(path), "status": entry["status"]}, ensure_ascii=False))
     else:
@@ -676,6 +679,8 @@ def main() -> None:
     p.add_argument("date", help="lecture folder name, e.g. 2026-10-15 or \"2026-10-15 (2)\"")
     p.add_argument("--event", action="store_true", help="COURSE is the title of a talk or event")
     p.add_argument("--with-summary", action="store_true", help="put the summary at the top")
+    p.add_argument("--format", choices=["md", "docx", "html"], default="md",
+                   help="Markdown (default), Word or HTML; Stenny's window also makes PDFs")
     p.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
     p.set_defaults(func=cmd_share)
 

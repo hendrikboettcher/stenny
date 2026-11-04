@@ -68,3 +68,26 @@ def test_a_talk_is_named_without_a_lecture_number(cfg, tmp_path):
     assert share.share(entry, out_dir=tmp_path).name == "Some Talk (2026-10-22).md"
     with pytest.raises(share.ShareError):
         share.find(cfg, "Some Talk", "2026-10-22")  # not a lecture
+
+
+def test_html_keeps_the_structure_and_greys_timestamps():
+    page = share.to_html("# Title\n\n> Note one\n>\n> **Audio only:** two\n\n*[Recording paused 0:00:03–0:07:30]*\n\n"
+                         "## Part\n\n**[0:01:02]** Some *word* & more.\n\n- point [0:00:04]\n- other\n\n---\n", "Title")
+    assert "<h1>Title</h1>" in page and "<h2>Part</h2>" in page
+    assert "<blockquote><p>Note one</p><p><strong>Audio only:</strong> two</p></blockquote>" in page
+    assert "<em>[Recording paused 0:00:03–0:07:30]</em>" in page
+    assert '<p><span class="ts">[0:01:02]</span> Some <em>word</em> &amp; more.</p>' in page
+    assert '<ul><li>point <span class="ts">[0:00:04]</span></li><li>other</li></ul>' in page
+    assert "<hr>" in page
+
+
+def test_share_writes_word_and_html(cfg, tmp_path):
+    entry = share.find(cfg, "Calculus", "2026-10-20")
+    docx = share.share(entry, with_summary=True, out_dir=tmp_path / "out", fmt="docx")
+    assert docx.name == "Calculus – Lecture 3 (2026-10-20).docx" and docx.read_bytes()[:2] == b"PK"
+    page = share.share(entry, with_summary=True, out_dir=tmp_path / "out", fmt="html").read_text(encoding="utf-8")
+    assert "<h2>Summary</h2>" in page and "Lectures Data" not in page and "MacBook" not in page
+    assert sorted(p.name for p in (tmp_path / "out").iterdir()) == [
+        "Calculus – Lecture 3 (2026-10-20).docx", "Calculus – Lecture 3 (2026-10-20).html"]
+    with pytest.raises(share.ShareError):
+        share.share(entry, fmt="pdf")
