@@ -246,12 +246,6 @@ final class LectureController: NSObject {
         AppActions.sendFeedback()
     }
 
-    // MARK: Courses
-
-    @objc private func addCourse() {
-        AppActions.addCourse()
-    }
-
     // MARK: Actions
 
     @objc private func startCourse(_ sender: NSMenuItem) {
@@ -549,9 +543,11 @@ final class LectureController: NSObject {
     private func reloadCourses() {
         coursesMenu.removeAllItems()
         let courses = StennyCLI.courses()
+        // Courses are added and removed in Stenny's window; with none yet, the menu points there
         if courses.isEmpty {
-            let item = NSMenuItem(title: "No courses yet", action: nil, keyEquivalent: "")
-            item.isEnabled = false
+            let item = NSMenuItem(title: "Add Your Courses in Stenny…", action: #selector(openLibrary), keyEquivalent: "")
+            item.target = self
+            item.image = NSImage(systemSymbolName: "plus", accessibilityDescription: nil)
             coursesMenu.addItem(item)
         }
         for course in courses {
@@ -565,11 +561,6 @@ final class LectureController: NSObject {
         event.target = self
         event.image = NSImage(systemSymbolName: "person.wave.2", accessibilityDescription: nil)
         coursesMenu.addItem(event)
-        coursesMenu.addItem(.separator())
-        let add = NSMenuItem(title: "Add Course…", action: #selector(addCourse), keyEquivalent: "")
-        add.target = self
-        add.image = NSImage(systemSymbolName: "plus", accessibilityDescription: nil)
-        coursesMenu.addItem(add)
     }
 
     private func reloadMicrophones() {
