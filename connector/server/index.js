@@ -86,7 +86,12 @@ if (!command) {
 }
 
 function run(command) {
-  const child = spawn(command, ["mcp"], { stdio: "inherit" });
+  // Pipes, not "inherit": Claude Desktop runs this file in its built-in Node, whose stdin/stdout aren't plain
+  // file descriptors a child process could take over.
+  const child = spawn(command, ["mcp"], { stdio: ["pipe", "pipe", "pipe"] });
+  process.stdin.pipe(child.stdin);
+  child.stdout.pipe(process.stdout);
+  child.stderr.pipe(process.stderr);
   for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => child.kill(signal));
   child.on("exit", (code, signal) => process.exit(code ?? (signal ? 1 : 0)));
   child.on("error", (e) => {
