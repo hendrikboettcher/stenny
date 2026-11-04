@@ -132,9 +132,9 @@ click **Install**. It shows up under Settings ▸ Customize ▸ Connectors. The 
 your computer, so it always reads the same lectures as the app. It only works in the desktop app on this computer:
 Claude on the web and on your phone can't reach it.
 
-Developing the connector? Point the extension's *Stenny command* setting at your copy's `.venv/bin/stenny`, or put
-the entry `stenny mcp --desktop-config` prints into `mcpServers` in Claude Desktop's `claude_desktop_config.json`
-while Claude Desktop is closed (it rewrites that file when it quits).
+Developing the connector? Set `[connector] stenny` in config.toml to your copy's `.venv/bin/stenny` (see
+config.example.toml), or put the entry `stenny mcp --desktop-config` prints into `mcpServers` in Claude Desktop's
+`claude_desktop_config.json` while Claude Desktop is closed (it rewrites that file when it quits).
 
 ### With the Filesystem connector and a project per course
 

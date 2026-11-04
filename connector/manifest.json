@@ -22,18 +22,7 @@
     "entry_point": "server/index.js",
     "mcp_config": {
       "command": "node",
-      "args": ["${__dirname}/server/index.js"],
-      "env": {
-        "STENNY_COMMAND": "${user_config.stenny_command}"
-      }
-    }
-  },
-  "user_config": {
-    "stenny_command": {
-      "type": "file",
-      "title": "Stenny command (only for developers)",
-      "description": "Leave empty: the extension finds Stenny by itself. Only to run Stenny from another place, e.g. a development copy: its `stenny` program.",
-      "required": false
+      "args": ["${__dirname}/server/index.js"]
     }
   },
   "tools": [

@@ -11,10 +11,27 @@ const path = require("path");
 const windows = process.platform === "win32";
 const exe = windows ? "stenny.exe" : "stenny";
 
+// Stenny's config (paths.py / config.py): only for developers, `[connector] stenny = "…"` runs another copy of
+// Stenny, e.g. a development checkout, instead of the installed one. Users never set anything.
+function configured() {
+  const home = process.env.STENNY_HOME || path.join(os.homedir(), "Lectures Data");
+  const file = process.env.STENNY_CONFIG || path.join(home, "_System", "config.toml");
+  let text;
+  try { text = fs.readFileSync(file, "utf8"); } catch { return null; }
+  let inSection = false;
+  for (const line of text.split(/\r?\n/)) {
+    const t = line.trim();
+    if (t.startsWith("[")) inSection = t === "[connector]";
+    const m = inSection && t.match(/^stenny\s*=\s*"([^"]+)"/);
+    if (m) return m[1].startsWith("~") ? path.join(os.homedir(), m[1].slice(1)) : m[1];
+  }
+  return null;
+}
+
 function candidates() {
   const out = [];
-  const chosen = (process.env.STENNY_COMMAND || "").trim();
-  if (chosen && !chosen.startsWith("${")) out.push(chosen); // "${user_config…}": the field was left empty
+  const chosen = configured();
+  if (chosen) out.push(chosen);
   out.push(path.join(os.homedir(), ".local", "bin", exe)); // `uv tool install` (Stenny's setup)
   for (const dir of (process.env.PATH || "").split(path.delimiter)) {
     if (dir) out.push(path.join(dir, exe));

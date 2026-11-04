@@ -41,6 +41,11 @@ pause_shortcut = "cmd+shift+ü"
 # folder = "Recordings"
 # languages = ["en", "de", "fr"]           # detected among these, about every 25 s
 
+# Only for developers: the Claude extension (Stenny.mcpb) normally runs the installed `stenny`; this runs
+# another copy instead, e.g. a development checkout. Turn the extension off and on in Claude after a change.
+# [connector]
+# stenny = "~/Code/stenny/.venv/bin/stenny"
+
 # One table per course. language: a fixed code ("fr", "de", "en", …), "auto" (one language per lecture,
 # detected among `languages`) or "mixed" (detected per 4-12 s chunk among `languages`).
 # aliases: short names for the command line (`--course calc`); calendar: extra words that identify the
