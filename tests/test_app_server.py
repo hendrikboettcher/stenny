@@ -59,6 +59,6 @@ def test_serve_answers_line_by_line_and_keeps_stdout_clean(cfg, monkeypatch):
     monkeypatch.setitem(app_server.METHODS, "noisy", noisy)
     out = io.StringIO()
     app_server.serve(io.StringIO('{"id": 1, "method": "noisy"}\n\nnot json\n{"id": 2, "method": "ping"}\n'), out)
-    replies = [json.loads(line) for line in out.getvalue().splitlines()]
-    assert replies[0] == {"id": 1, "result": {"ok": True}}
-    assert replies[1] == {"id": None, "error": "Not JSON."} and replies[2]["result"]["version"]
+    replies = {r["id"]: r for r in map(json.loads, out.getvalue().splitlines())}  # in any order, by id
+    assert len(replies) == 3 and replies[1] == {"id": 1, "result": {"ok": True}}
+    assert replies[None] == {"id": None, "error": "Not JSON."} and replies[2]["result"]["version"]

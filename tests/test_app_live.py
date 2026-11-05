@@ -13,6 +13,7 @@ from stenny.live import control
 @pytest.fixture
 def home(tmp_path, monkeypatch):
     monkeypatch.setattr(paths, "SYSTEM_DIR", tmp_path)
+    monkeypatch.setattr("stenny.jobs.QUEUE_DIR", tmp_path / "_Queue")
     monkeypatch.setattr(control, "send", lambda *a, **k: (_ for _ in ()).throw(control.NoSession("none")))
     app_live._started.clear()
     yield tmp_path
@@ -41,7 +42,7 @@ def test_start_runs_stenny_live_and_reports_starting_then_why_it_failed(home, mo
     (home / "live.log").write_text("Loading …\nThe microphone 'USB Mic' isn't connected.\n", encoding="utf-8")
     FakeProcess.last.returncode = 1
     assert app_live.status(None, {})["error"] == "The microphone 'USB Mic' isn't connected."
-    assert app_live.status(None, {}) == {"ok": True, "state": "idle"}  # said once
+    assert app_live.status(None, {}) == {"ok": True, "state": "idle", "queued": 0}  # said once
 
 
 def test_a_talk_starts_with_its_title_and_one_target_is_required(home, monkeypatch):

@@ -83,7 +83,7 @@ pub fn show_window(app: &AppHandle, label: &str) {
         let built = match label.as_str() {
             "talk" => WebviewWindowBuilder::new(&app2, "talk", WebviewUrl::App("talk".into()))
                 .title("Record a Talk or Event")
-                .inner_size(440.0, 230.0)
+                .inner_size(440.0, 262.0)
                 .resizable(false)
                 .minimizable(false)
                 .center()

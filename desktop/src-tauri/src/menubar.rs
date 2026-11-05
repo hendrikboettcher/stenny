@@ -47,6 +47,7 @@ struct State {
     course_for_title: HashMap<String, Option<String>>,
     notified: HashSet<String>,               // calendar events already announced
     agent_in: Option<std::process::ChildStdin>,
+    status_item: Option<MenuItem<Wry>>,      // the menu's first line, updated in place
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -119,12 +120,11 @@ fn alert(app: &AppHandle, title: &str, message: &str) {
 
 // ---------------------------------------------------------------- the menu
 
-fn build_menu(app: &AppHandle, st: &State) -> tauri::Result<Menu<Wry>> {
+/// The menu's first line; it changes every second while paused, so it is updated in place, not rebuilt.
+fn status_line(st: &State) -> String {
     let s = &st.status;
-    let state = str_of(s, "state");
-    let active = is_active(s);
     let course = str_of(s, "course");
-    let line = match state {
+    match str_of(s, "state") {
         "recording" if s.get("input_lost").and_then(Value::as_bool) == Some(true) => {
             "No audio from the microphone · reconnecting …".to_string()
         }
@@ -136,14 +136,20 @@ fn build_menu(app: &AppHandle, st: &State) -> tauri::Result<Menu<Wry>> {
         "starting" => "Starting …".into(),
         _ if st.idle_message.is_empty() => "Ready".into(),
         _ => st.idle_message.clone(),
-    };
-    let status_line = MenuItem::with_id(app, "status", line, false, None::<&str>)?;
-    let mut items: Vec<Box<dyn IsMenuItem<Wry>>> = vec![Box::new(status_line), Box::new(PredefinedMenuItem::separator(app)?)];
+    }
+}
+
+fn build_menu(app: &AppHandle, st: &State) -> tauri::Result<(Menu<Wry>, MenuItem<Wry>)> {
+    let s = &st.status;
+    let state = str_of(s, "state");
+    let active = is_active(s);
+    let status_item = MenuItem::with_id(app, "status", status_line(st), false, None::<&str>)?;
+    let mut items: Vec<Box<dyn IsMenuItem<Wry>>> = vec![Box::new(status_item.clone()), Box::new(PredefinedMenuItem::separator(app)?)];
 
     if active {
         let pause = if state == "paused" { "Resume" } else { "Pause" };
         items.push(Box::new(MenuItem::with_id(app, "toggle", pause, true, None::<&str>)?));
-        items.push(Box::new(MenuItem::with_id(app, "stop", "Stop & Make Final Transcript", true, None::<&str>)?));
+        items.push(Box::new(MenuItem::with_id(app, "stop", "Stop && Make Final Transcript", true, None::<&str>)?)); // && shows one &
         items.push(Box::new(PredefinedMenuItem::separator(app)?));
     } else if state == "idle" || state.is_empty() {
         if let Some(sg) = &st.suggestion {
@@ -193,26 +199,23 @@ fn build_menu(app: &AppHandle, st: &State) -> tauri::Result<Menu<Wry>> {
     items.push(Box::new(PredefinedMenuItem::separator(app)?));
     items.push(Box::new(MenuItem::with_id(app, "quit", "Quit Stenny", true, None::<&str>)?));
     let refs: Vec<&dyn IsMenuItem<Wry>> = items.iter().map(|b| b.as_ref()).collect();
-    Menu::with_items(app, &refs)
+    Ok((Menu::with_items(app, &refs)?, status_item))
 }
 
 fn shape(st: &State) -> String {
     let s = &st.status;
-    // the parts of the status the menu shows; the clock goes to the title instead, the word count every 50 words
+    // what the menu's items depend on; the clock goes to the title and the status line is updated in place,
+    // because rebuilding the menu closes it while it is open
     format!(
-        "{}|{}|{}|{}|{}|{}|{}|{:?}|{:?}|{:?}|{}|{}|{:?}",
+        "{}|{}|{}|{}|{:?}|{:?}|{:?}|{}|{:?}",
         str_of(s, "state"),
         str_of(s, "course"),
-        str_of(s, "warning"),
-        s.get("input_lost").and_then(Value::as_bool).unwrap_or(false),
-        s.get("words").and_then(Value::as_u64).unwrap_or(0) / 50,
         str_of(s, "microphone"),
-        if str_of(s, "state") == "paused" { (num(s, "current_pause_s") as u64).to_string() } else { String::new() },
+        str_of(s, "transcript").is_empty(),
         st.courses,
         st.devices,
         st.prefs.microphone,
         st.prefs.no_draft,
-        st.idle_message,
         st.suggestion,
     )
 }
@@ -236,10 +239,16 @@ fn redraw(app: &AppHandle, force: bool) {
     let _ = tray.set_icon_as_template(true);
     let _ = tray.set_title(title.as_deref());
     let new_shape = shape(&st);
-    if force || new_shape != st.shape {
+    if force || new_shape != st.shape || st.status_item.is_none() {
         st.shape = new_shape;
-        if let Ok(menu) = build_menu(app, &st) {
+        if let Ok((menu, item)) = build_menu(app, &st) {
             let _ = tray.set_menu(Some(menu));
+            st.status_item = Some(item);
+        }
+    } else if let Some(item) = &st.status_item {
+        let line = status_line(&st);
+        if item.text().ok().as_deref() != Some(line.as_str()) {
+            let _ = item.set_text(line);
         }
     }
 }
@@ -288,7 +297,17 @@ fn update(app: &AppHandle, status: Value) {
         st.last_warning = warning;
         let was_session = !matches!(str_of(&st.status, "state"), "idle" | "" | "starting");
         if was_session && state == "idle" {
-            st.idle_message = if st.last_note.is_empty() { "Ready · last lecture saved".into() } else { format!("Ready · {}", st.last_note) };
+            let queued = status.get("queued").and_then(Value::as_u64).unwrap_or(0);
+            let on_power = status.get("on_power").and_then(Value::as_bool).unwrap_or(true);
+            st.idle_message = if queued > 0 && !on_power {
+                "Ready · the final transcript waits until the Mac is plugged in".into()
+            } else if queued > 0 {
+                "Ready · the final transcript is made soon".into()
+            } else if !st.last_note.is_empty() {
+                format!("Ready · {}", st.last_note)
+            } else {
+                "Ready · last lecture saved".into()
+            };
             st.last_note.clear();
         }
         // a session that ends properly goes through "stopping"; one that goes from recording to gone was killed

@@ -35,7 +35,18 @@ def status(cfg, params: dict) -> dict:
         _started.clear()
         if proc.returncode:  # it ended before its socket came up: say why
             return {"ok": True, "state": "idle", "error": last_log_line() or f"exit status {proc.returncode}"}
-    return {"ok": True, "state": "idle"}
+    return {"ok": True, "state": "idle", **waiting()}
+
+
+def waiting() -> dict:
+    """Final passes in the queue, and whether the Mac is plugged in (they run only then): for the menu's
+    "Ready · …" line after a recording."""
+    from . import jobs
+    try:
+        queued = len(jobs.pending())
+    except OSError:
+        queued = 0
+    return {"queued": queued, "on_power": jobs.on_ac_power()} if queued else {"queued": 0}
 
 
 def last_log_line() -> str | None:

@@ -6,11 +6,11 @@ The app starts one server and keeps it running; anything the engine prints goes 
 only replies. The methods are plain functions of (cfg, params), so the phone page can later serve them too.
 """
 
-import contextlib
 import json
 import re
 import subprocess
 import sys
+import threading
 from importlib.metadata import version as package_version
 from pathlib import Path
 
@@ -107,23 +107,40 @@ def handle(cfg, request: dict) -> dict:
         return {"id": rid, "error": f"Something went wrong ({type(e).__name__}: {e})."}
 
 
+def _answer(line: str) -> dict:
+    try:
+        request = json.loads(line)
+    except ValueError:
+        return {"id": None, "error": "Not JSON."}
+    try:
+        cfg = config_mod.load()
+    except ConfigError as e:
+        return {"id": request.get("id"), "error": f"Stenny's settings couldn't be read: {e}"}
+    return handle(cfg, request)
+
+
 def serve(stdin=sys.stdin, stdout=sys.stdout) -> None:
-    """Reads requests until stdin closes (the app quit). The config is read again for every request, so a course
-    added in the config shows up without restarting."""
-    for line in stdin:
-        if not line.strip():
-            continue
-        try:
-            request = json.loads(line)
-        except ValueError:
-            reply = {"id": None, "error": "Not JSON."}
-        else:
-            with contextlib.redirect_stdout(sys.stderr):
-                try:
-                    cfg = config_mod.load()
-                except ConfigError as e:
-                    reply = {"id": request.get("id"), "error": f"Stenny's settings couldn't be read: {e}"}
-                else:
-                    reply = handle(cfg, request)
-        stdout.write(json.dumps(reply, ensure_ascii=False) + "\n")
-        stdout.flush()
+    """Reads requests until stdin closes (the app quit), each in its own thread: a slow one (the microphone
+    list, a share copy) mustn't hold up the recording's status. Replies carry their request's id, so their order
+    doesn't matter. The config is read again for every request, so a course added in the config shows up
+    without restarting. Anything else printed goes to stderr, so stdout carries only replies."""
+    lock = threading.Lock()
+    sys.stdout = sys.stderr
+
+    def reply(line: str) -> None:
+        answer = _answer(line)
+        with lock:
+            stdout.write(json.dumps(answer, ensure_ascii=False) + "\n")
+            stdout.flush()
+
+    workers = []
+    try:
+        for line in stdin:
+            if line.strip():
+                t = threading.Thread(target=reply, args=(line,), daemon=True)
+                t.start()
+                workers.append(t)
+        for t in workers:
+            t.join(timeout=30)
+    finally:
+        sys.stdout = sys.__stdout__
