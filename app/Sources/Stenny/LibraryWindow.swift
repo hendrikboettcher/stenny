@@ -16,7 +16,7 @@ struct LibraryEntry: Identifiable, Hashable, Sendable {
     let duration: String?
     let language: String?
     let status: String         // final | draft | live | queued | finalizing (the last three: the live draft)
-    let waitingNote: String?   // queued: why, and when it starts ("the Mac is on battery. It starts by itself …")
+    let draftNote: String?     // a live draft: where its final transcript is ("… made once the Mac is plugged in …")
     let transcript: String
     let summary: String?
 
@@ -33,7 +33,7 @@ struct LibraryEntry: Identifiable, Hashable, Sendable {
         duration = json["duration"] as? String
         language = json["language"] as? String
         status = json["status"] as? String ?? "final"
-        waitingNote = json["waiting_note"] as? String
+        draftNote = json["draft_note"] as? String
         summary = json["summary"] as? String
     }
 
@@ -42,13 +42,7 @@ struct LibraryEntry: Identifiable, Hashable, Sendable {
     var isFinal: Bool { status == "final" }
     /// Where the final transcript is, so a draft never looks forgotten.
     var draftNotice: String {
-        switch status {
-        case "live": "This is still the live draft. The final transcript replaces it once the recording is finished."
-        case "queued": "This is still the live draft. The final transcript is waiting because "
-            + (waitingNote ?? "it hasn't been made yet") + "."
-        case "finalizing": "This is still the live draft. The final transcript is being made now and replaces it when it's done."
-        default: "This is still the draft. The final transcript replaces it once the recording is finished."
-        }
+        "This is still the live draft. " + (draftNote ?? "The final transcript replaces it once the recording is finished.")
     }
     var group: LibraryGroup { LibraryGroup(course: course, isEvent: isEvent) }
 

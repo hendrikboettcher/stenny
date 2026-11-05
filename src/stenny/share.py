@@ -17,7 +17,7 @@ import tempfile
 from pathlib import Path
 
 from . import paths
-from .render import WAITING, parse_frontmatter
+from .render import DRAFT_STATES, draft_status, parse_frontmatter
 from .vault import LectureFiles, Vault, folder_key, safe_name
 
 SHARED_DIR = paths.HOME / "_Shared"
@@ -56,7 +56,7 @@ def _entries(root: Path, kind: str) -> list[dict]:
                 "duration": fm.get("duration"),
                 "language": fm.get("language"),
                 "status": fm.get("status") or "final",  # live | queued | finalizing: still the live draft
-                "waiting_note": WAITING.get(fm.get("waiting") or "") if fm.get("status") == "queued" else None,
+                "draft_note": draft_status(fm["status"], fm.get("waiting")) if fm.get("status") in DRAFT_STATES else None,
                 "transcript": str(transcript),
                 "summary": str(summary) if summary else None,
             })

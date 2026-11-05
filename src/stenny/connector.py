@@ -117,12 +117,7 @@ def _title(entry: dict, entries: list[dict]) -> str:
 def _status_note(entry: dict) -> str:
     if entry["status"] == "final":
         return ""
-    if entry["status"] == "queued":
-        when = f"waiting because {entry['waiting_note']}" if entry.get("waiting_note") else "not made yet"
-        return f" [live draft: rough text; the final transcript is {when}]"
-    if entry["status"] == "finalizing":
-        return " [live draft: rough text; the final transcript is being made now]"
-    return " [live draft: rough text; the final transcript comes after the recording is processed]"
+    return f" [live draft, rough text. {entry.get('draft_note') or 'The final transcript replaces it later.'}]"
 
 
 # ---------------------------------------------------------------- transcripts as paragraphs

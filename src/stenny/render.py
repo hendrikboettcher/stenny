@@ -13,32 +13,23 @@ TIME_SECTION_SECONDS = 600
 
 # A live draft says where its final transcript is, so nobody wonders why it is still a draft (frontmatter `status`)
 DRAFT_STATES = ("live", "queued", "finalizing")
-# queued: why the final transcript isn't made yet, and when it will be (frontmatter `waiting`)
-WAITING = {
-    "battery": "the Mac is on battery. It starts by itself once the Mac is plugged in",
-    "memory": "there isn't enough free memory right now. It starts by itself once there is, while the Mac is "
-              "plugged in",
-    "busy": "another final transcript is being made. This one starts by itself after it, while the Mac is "
-            "plugged in",
-    "unplugged": "the Mac was unplugged while it was being made. It starts over by itself once the Mac is "
-                 "plugged in",
-    "later": "it was set to be made later. It starts by itself once the Mac is plugged in",
-    "recovered": "Stenny stopped unexpectedly, but the recording was saved. It starts by itself once the Mac is "
-                 "plugged in",
-    "failed": "something went wrong while making it. The recording is kept; please use Send Feedback in "
-              "Stenny's menu",
-}
+
+
+def draft_status(status: str, waiting: str | None = None) -> str:
+    """Where a live draft's final transcript is, in one sentence: for the draft's note, Stenny's window and Claude.
+    The only reason given is the one new users wonder about: the Mac is on battery (frontmatter `waiting`)."""
+    if status == "queued" and waiting == "battery":
+        return "The recording is finished; the final transcript is made once the Mac is plugged in and then replaces this draft."
+    if status == "queued":
+        return "The recording is finished; the final transcript comes later and replaces this draft."
+    if status == "finalizing":
+        return "The recording is finished and the final transcript is being made now. It replaces this draft when it's done."
+    return "After the recording it is replaced by the final transcript, made from the full recording."
 
 
 def draft_note(status: str, waiting: str | None = None) -> str:
     """The note at the top of a live draft."""
-    head = "> **Live draft** (fast, unpolished). "
-    if status == "queued":
-        why = WAITING.get(waiting or "", "it hasn't been made yet")
-        return head + f"The recording is finished; the final transcript is waiting because {why}. It then replaces this draft."
-    if status == "finalizing":
-        return head + "The recording is finished and the final transcript is being made now. It replaces this draft when it's done."
-    return head + "After the recording it is replaced by the final transcript, made from the full recording."
+    return "> **Live draft** (fast, unpolished). " + draft_status(status, waiting)
 
 
 DRAFT_NOTE = re.compile(r"^> \*\*Live draft\*\*.*$", re.M)
@@ -71,7 +62,7 @@ class Lecture:
     tags: list[str] = field(default_factory=list)
     audio: str | None = None
     status: str = "final"      # live | queued | finalizing (all three: the live draft) | draft | final
-    waiting: str | None = None  # queued: why (a key of WAITING)
+    waiting: str | None = None  # queued: "battery" when the final pass waits for power
     structure: str = "time"    # "time" or e.g. "ai (claude-code haiku)"
     pauses: list = field(default_factory=list)  # (start, end) lecture-time intervals not recorded
     microphone: str | None = None  # live: input device; file: recording device/app from its metadata

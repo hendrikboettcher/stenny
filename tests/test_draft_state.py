@@ -1,4 +1,4 @@
-"""A live draft says where its final transcript is: being recorded, waiting (and why), or being made."""
+"""A live draft says where its final transcript is: waiting (for power, if the Mac is on battery), or being made."""
 import json
 
 import pytest
@@ -18,16 +18,16 @@ def draft(status="live") -> str:
     return transcript_md(lec, PARAGRAPHS, [])
 
 
-def test_the_draft_says_why_its_final_transcript_waits_and_when_it_starts():
+def test_the_draft_says_its_final_transcript_waits_for_power():
     queued = set_draft_state(draft(), "queued", "battery")
     assert 'status: "queued"\nwaiting: "battery"\n' in queued
-    assert "the final transcript is waiting because the Mac is on battery. It starts by itself once the Mac is " \
-           "plugged in. It then replaces this draft." in queued
+    assert "The recording is finished; the final transcript is made once the Mac is plugged in and then replaces " \
+           "this draft." in queued
     assert queued.count("Live draft") == 1 and "**[0:00:04]** Bonjour." in queued
 
     making = set_draft_state(queued, "finalizing")
     assert 'status: "finalizing"\n' in making and "waiting:" not in making
-    assert "the final transcript is being made now" in making and "on battery" not in making
+    assert "the final transcript is being made now" in making and "plugged in" not in making
 
 
 def test_a_final_transcript_is_never_touched():
@@ -71,12 +71,13 @@ def test_stopping_on_battery_says_so_in_the_draft(cfg, monkeypatch):
     assert 'waiting: "battery"' in session.text() and len(jobs.pending()) == 1
 
 
-def test_waiting_for_another_final_pass_says_so(cfg, monkeypatch):
+def test_any_other_wait_gives_no_reason(cfg, monkeypatch):
     monkeypatch.setattr(jobs, "on_ac_power", lambda: True)
     session = StoppedSession(cfg)
-    with jobs.QueueLock():
+    with jobs.QueueLock():  # another final pass is running
         cli.finalize(session, cfg, "auto", True, object())
-    assert 'waiting: "busy"' in session.text()
+    assert 'status: "queued"\n' in session.text() and "waiting:" not in session.text()
+    assert "the final transcript comes later and replaces this draft." in session.text()
 
 
 def test_the_final_pass_marks_the_draft_and_an_unplugged_mac_puts_it_back(cfg, monkeypatch):
@@ -93,13 +94,12 @@ def test_the_final_pass_marks_the_draft_and_an_unplugged_mac_puts_it_back(cfg, m
     with pytest.raises(pipeline.Interrupted):
         cli.run_job(jobs.pending()[0], cfg, object())
     assert 'status: "finalizing"' in seen[0]
-    assert 'waiting: "unplugged"' in session.text() and len(jobs.pending()) == 1
+    assert 'waiting: "battery"' in session.text() and len(jobs.pending()) == 1
 
 
-def test_the_window_and_claude_get_the_reason(cfg, monkeypatch):
-    monkeypatch.setattr(jobs, "on_ac_power", lambda: False)
+def test_the_window_and_claude_get_the_same_sentence(cfg, monkeypatch):
     StoppedSession(cfg)
-    cli.mark_draft(cfg.vault / "Lectures/Calculus/2026-10-31/Calculus 2026-10-31.md", "queued", "memory")
+    cli.mark_draft(cfg.vault / "Lectures/Calculus/2026-10-31/Calculus 2026-10-31.md", "queued", "battery")
     [entry] = share.library(cfg)
-    assert entry["status"] == "queued" and entry["waiting_note"].startswith("there isn't enough free memory")
-    assert _status_note(entry).startswith(" [live draft: rough text; the final transcript is waiting because there")
+    assert entry["status"] == "queued" and "once the Mac is plugged in" in entry["draft_note"]
+    assert _status_note(entry) == f" [live draft, rough text. {entry['draft_note']}]"

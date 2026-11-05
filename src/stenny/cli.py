@@ -322,8 +322,6 @@ def cmd_queue(args) -> None:
                 break
             if args.scheduled and not resources.enough_memory_for_final_pass():
                 log("Not enough free memory now; remaining jobs wait.")
-                for waiting in jobs.pending():
-                    mark_job_draft(cfg, waiting, "queued", "memory")
                 break
             try:
                 run_job(p, cfg, engine, stop=unplugged)
@@ -388,10 +386,10 @@ def run_job(job_path: Path, cfg, engine, stop=None) -> dict:
         info = process(src, cfg, course, engine, lang=job.get("lang"), use_llm=job.get("llm", True), live=live,
                        slides_src=slides if slides and slides.exists() else None, stop=stop)
     except Interrupted:
-        mark_draft(draft, "queued", "unplugged")
+        mark_draft(draft, "queued", "battery")
         raise
     except Exception:
-        mark_draft(draft, "queued", "failed")
+        mark_draft(draft, "queued")
         raise
     job_path.unlink()
     if live and src.suffix == ".pcm":
@@ -479,7 +477,7 @@ def recover_sessions(cfg) -> list[dict]:
         path.write_text(json.dumps(d, indent=1), encoding="utf-8")
         kind = d.get("kind") or ("event" if path.parent.parent.name == "_Recordings" else "lecture")
         job = jobs.enqueue(pcm, d["course"], d.get("lang"), True, live=path, kind=kind)
-        mark_job_draft(cfg, job, "queued", "recovered")
+        mark_job_draft(cfg, job, "queued")
         log(f"Recovered the recording {pcm.name} of {d['course']}: final pass queued")
         recovered.append({"course": d["course"], "kind": kind})
     return recovered
@@ -512,7 +510,7 @@ def finalize(session, cfg, policy: str, use_llm: bool, engine) -> None:
     if not run_now:
         why = "as requested" if policy != "auto" else "memory is low" if on_power else "on battery"
         session.final_note = session.final_note or f"final pass queued ({why})"
-        mark_draft(session.transcript_path, "queued", "later" if policy != "auto" else "memory" if on_power else "battery")
+        mark_draft(session.transcript_path, "queued", "battery" if policy == "auto" and not on_power else None)
         log(f"Live draft kept. Final pass queued {why}: {job.name} — runs with `stenny queue run` "
             "or the schedule (`stenny schedule install`).")
         return
@@ -521,7 +519,7 @@ def finalize(session, cfg, policy: str, use_llm: bool, engine) -> None:
     with jobs.QueueLock() as lock:
         if lock is None:  # a scheduled run is busy; a later one picks this job up
             session.final_note = session.final_note or "final pass queued (another one is running)"
-            mark_draft(session.transcript_path, "queued", "busy")
+            mark_draft(session.transcript_path, "queued")
             log(f"Live draft kept. Another final pass is running; this one waits in the queue: {job.name}")
             return
         session.state = "finalizing"
