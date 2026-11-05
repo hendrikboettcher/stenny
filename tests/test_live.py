@@ -104,11 +104,23 @@ class FakeEngine:
         return {a: 1.0 / len(allowed) for a in allowed}
 
 
-def short_chunks(s, monkeypatch, on_power=True):
+class SkippingEngine(FakeEngine):
+    """Whisper on a bad day: in a long clip it writes the first second, skips 6 s and returns "..." for the rest,
+    so the second look fills the gap and transcribes the near-empty rest again in short pieces."""
+
+    def transcribe(self, audio, language, prompt=None):
+        dur = len(audio) / SAMPLE_RATE
+        if dur >= 12:
+            return [{"start": 0.0, "end": 1.0, "text": "Bonjour", "avg_logprob": -0.1},
+                    {"start": 7.0, "end": dur, "text": "...", "avg_logprob": -0.1}]
+        return [{"start": 0.0, "end": dur, "text": " mot" * int(dur * 3), "avg_logprob": -0.1}]
+
+
+def short_chunks(s, monkeypatch, on_power=True, lengths=(5.0, 3.0)):
     """Chunks of 3-5 s instead of 18-28 s, so a recording of a few simulated seconds has some. The session takes
     the final pass's chunk lengths, so the final pass in assert_final_pass_reuses gets the same."""
-    s.max_len, s.min_len = 5.0, 3.0
-    monkeypatch.setattr(pipeline, "chunk_lengths", lambda course, lang=None: (5.0, 3.0))
+    s.max_len, s.min_len = lengths
+    monkeypatch.setattr(pipeline, "chunk_lengths", lambda course, lang=None: lengths)
     s.on_power = on_power
     monkeypatch.setattr(jobs, "on_ac_power", lambda: s.on_power_now)
     s.on_power_now = on_power
@@ -120,13 +132,13 @@ def assert_final_pass_reuses(s):
     info = LiveInfo.load(s.session_path)
     audio = np.fromfile(s.pcm_path, np.int16).astype(np.float32) / 32768.0
     cache = ChunkCache(info.chunks)
-    made = set(cache.chunks)
-    assert made, "nothing was transcribed during the recording"
+    made = {(*k, "chunk") for k in cache.chunks} | set(cache.others)
+    assert cache.chunks, "nothing was transcribed during the recording"
     asked = []
     get = cache.get
-    cache.get = lambda a, b, lang: (asked.append((a, b, lang)), get(a, b, lang))[1]
+    cache.get = lambda a, b, lang, kind="chunk": (asked.append((a, b, lang, kind)), get(a, b, lang, kind))[1]
     gaps = [(p[0], p[1]) for p in info.pauses if p[2] == "no input"]
-    pipeline.transcribe(audio, s.course, FakeEngine(), s.prompt, None, info.spans, skip=gaps, cache=cache)
+    pipeline.transcribe(audio, s.course, type(s.engine)(), s.prompt, None, info.spans, skip=gaps, cache=cache)
     assert made <= set(asked), sorted(made - set(asked))
     return made
 
@@ -221,11 +233,12 @@ def test_microphone_dropout_keeps_session_and_marks_gap(tmp_path, monkeypatch):
     assert "No audio from the microphone 0:00:08" in draft
 
 
-def run_session(tmp_path, monkeypatch, mic, until=30.0, stall=0.05, backup=None, script=None, on_power=True):
+def run_session(tmp_path, monkeypatch, mic, until=30.0, stall=0.05, backup=None, script=None, on_power=True,
+                engine=None, lengths=(5.0, 3.0)):
     (tmp_path / "vault" / "Areas").mkdir(parents=True, exist_ok=True)
     cfg = Config(vault=tmp_path / "vault", lectures_dir="Areas/Lectures", data_dir=tmp_path / "audio")
-    s = LiveSession(cfg, Course("Calculus", language="fr"), mic, FakeEngine(), backup=backup)
-    short_chunks(s, monkeypatch, on_power)
+    s = LiveSession(cfg, Course("Calculus", language="fr"), mic, engine or FakeEngine(), backup=backup)
+    short_chunks(s, monkeypatch, on_power, lengths)
     monkeypatch.setattr(s, "now", lambda: mic.t)
     monkeypatch.setattr(live_session, "STALL", stall)
     monkeypatch.setattr(live_session, "RETRY", 0.01)
@@ -306,6 +319,15 @@ def test_gap_at_the_end_is_kept_when_a_backup_heard_it(tmp_path, monkeypatch):
     (start, end, reason), = s.pauses
     assert reason == "no input" and 11.9 <= start <= 12.2 and end == s.ended_at and s.ended_at >= 19.9
     assert s.backup.written / SAMPLE_RATE >= 19.5
+
+
+def test_the_second_look_is_done_during_the_recording_too(tmp_path, monkeypatch):
+    mic = FakeMic()
+    s = run_session(tmp_path, monkeypatch, mic, until=80.0, engine=SkippingEngine(), lengths=(14.0, 12.0))
+    kinds = {k[3] for k in s.cache.others}
+    assert kinds == {"gap", "retry"}, kinds          # skipped stretches filled, "..." transcribed again
+    made = assert_final_pass_reuses(s)               # and the final pass takes all of it from there
+    assert sum(1 for k in made if k[3] != "chunk") >= 4
 
 
 def test_on_battery_it_only_records_and_catches_up_when_plugged_in(tmp_path, monkeypatch):

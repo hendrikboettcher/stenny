@@ -74,33 +74,43 @@ class ChunkCache:
     pass takes a chunk from here only where it would transcribe exactly that chunk (same samples, same
     language), so its result is the same as transcribing everything after the lecture, only sooner.
 
-    Each line: {"a", "b": recorded samples, "lang", "t": lecture time of sample a (for showing the text so far),
-    "segments": Whisper's segments in seconds from a}."""
+    Besides the chunks it keeps Whisper's second look at them (second_look): stretches it skipped ("gap") and
+    near-empty segments transcribed again in short pieces ("retry").
+
+    Each line: {"a", "b": recorded samples, "lang", "kind": chunk | gap | retry, "t": lecture time of sample a (for
+    showing the text so far), "segments": Whisper's segments in seconds from a}."""
 
     def __init__(self, path: Path | None = None):
         self.path = path
-        self.chunks: dict[tuple[int, int, str], dict] = {}
+        self.chunks: dict[tuple[int, int, str], dict] = {}           # kind "chunk"
+        self.others: dict[tuple[int, int, str, str], dict] = {}      # gap, retry
         if path and path.exists():
             for line in path.read_text(encoding="utf-8").splitlines():
                 try:
-                    d = json.loads(line)
-                    self.chunks[(d["a"], d["b"], d["lang"])] = d
+                    self._keep(json.loads(line))
                 except (ValueError, KeyError, TypeError):
                     continue  # a line cut short by a crash
 
-    def get(self, a: int, b: int, lang: str) -> list[dict] | None:
-        d = self.chunks.get((a, b, lang))
+    def _keep(self, d: dict) -> None:
+        kind = d.get("kind", "chunk")
+        if kind == "chunk":
+            self.chunks[(d["a"], d["b"], d["lang"])] = d
+        else:
+            self.others[(d["a"], d["b"], d["lang"], kind)] = d
+
+    def get(self, a: int, b: int, lang: str, kind: str = "chunk") -> list[dict] | None:
+        d = self.chunks.get((a, b, lang)) if kind == "chunk" else self.others.get((a, b, lang, kind))
         return d["segments"] if d else None
 
-    def put(self, a: int, b: int, lang: str, segments: list[dict], t: float) -> None:
-        d = {"a": a, "b": b, "lang": lang, "t": round(t, 3), "segments": segments}
-        self.chunks[(a, b, lang)] = d
+    def put(self, a: int, b: int, lang: str, segments: list[dict], t: float, kind: str = "chunk") -> None:
+        d = {"a": a, "b": b, "lang": lang, "kind": kind, "t": round(t, 3), "segments": segments}
+        self._keep(d)
         if self.path:
             with open(self.path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(d, ensure_ascii=False, default=float) + "\n")
 
     def text_so_far(self) -> list[dict]:
-        """The segments in lecture time, in order: what has been transcribed of a recording so far."""
+        """The chunks' segments in lecture time, in order: what has been transcribed of a recording so far."""
         out = []
         for d in sorted(self.chunks.values(), key=lambda d: d["t"]):
             out += [{**seg, "start": seg["start"] + d["t"], "end": seg["end"] + d["t"]} for seg in d["segments"]]
@@ -247,22 +257,48 @@ def transcribe(audio: np.ndarray, course: Course, engine, prompt: str | None, la
             if done % step == 0 or done == len(chunks):
                 log(f"  {done}/{len(chunks)} chunks ({fmt_ts(b / SAMPLE_RATE)} of {fmt_ts(len(audio) / SAMPLE_RATE)})")
 
-        def lang_at(t: float, span_chunks=span_chunks, s0=s0) -> str:
-            for a, b, lang in span_chunks:
-                if (a - s0) / SAMPLE_RATE <= t < (b - s0) / SAMPLE_RATE:
-                    return lang
-            return span_chunks[-1][2] if span_chunks else langs[-1]
-
         if span_chunks:
-            piece = audio[s0:s1]
-            local = fill_gaps(local, piece, lambda clip, start: engine.transcribe(clip, lang_at(start), prompt))
-            local = retry_sparse(local, piece, lambda clip, start: engine.transcribe(clip, lang_at(start), None))
+            local = second_look(local, audio[s0:s1], s0, span_chunks, whisper_with(cache, engine, prompt, spans))
         to_lecture = lambda t, s0=s0: lecture_time(spans, s0 + t * SAMPLE_RATE)
         segments += [{**seg, "start": to_lecture(seg["start"]), "end": to_lecture(seg["end"])} for seg in local]
     if reused:
-        log(f"  {reused} of {len(chunks)} chunks were transcribed during the recording")
+        log(f"  {reused} of {len(chunks)} chunks were transcribed during the recording"
+            + (f", {len(cache.others)} second looks at them" if cache.others else ""))
     used = sorted(set(langs), key=langs.count, reverse=True) if langs else [lang_override or course.languages[0]]
     return segments, used, note
+
+
+def second_look(local: list[dict], piece, s0: int, span_chunks: list[tuple[int, int, str]], whisper) -> list[dict]:
+    """Whisper's second look at one stretch (recorded samples s0…, `piece` its audio, `local` its segments in
+    seconds from s0, `span_chunks` its chunks as (a, b, language)): stretches of 5 s and more it skipped although
+    someone talked (textproc.fill_gaps, with the prompt) and near-empty segments in short pieces (retry_sparse,
+    without). `whisper(kind, clip, start, language, use_prompt)` transcribes; the recording's session calls this
+    on what is transcribed so far (live/session.py), so the final pass finds the answers in the ChunkCache."""
+    def lang_at(t: float) -> str:
+        for a, b, lang in span_chunks:
+            if (a - s0) / SAMPLE_RATE <= t < (b - s0) / SAMPLE_RATE:
+                return lang
+        return span_chunks[-1][2]
+
+    local = fill_gaps(local, piece, lambda clip, start: whisper("gap", s0, clip, start, lang_at(start), True))
+    return retry_sparse(local, piece, lambda clip, start: whisper("retry", s0, clip, start, lang_at(start), False))
+
+
+def whisper_with(cache: "ChunkCache | None", engine, prompt: str | None, spans, before=None):
+    """The `whisper` for second_look: takes the answer from the cache if it has one, else transcribes and keeps it.
+    `before()`: called before Whisper runs (the session stops there when the recording ends)."""
+    def whisper(kind: str, s0: int, clip, start: float, lang: str, use_prompt: bool) -> list[dict]:
+        a = s0 + round(start * SAMPLE_RATE)
+        b = a + len(clip)
+        segs = cache.get(a, b, lang, kind) if cache else None
+        if segs is None:
+            if before:
+                before()
+            segs = engine.transcribe(np.asarray(clip), lang, prompt if use_prompt else None)
+            if cache:
+                cache.put(a, b, lang, segs, lecture_time(spans, a), kind)
+        return segs
+    return whisper
 
 
 def chunk_bounds(spans: list[tuple[int, float]], n_samples: int, skip=()) -> list[tuple[int, int]]:

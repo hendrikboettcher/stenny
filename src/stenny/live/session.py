@@ -28,7 +28,7 @@ import numpy as np
 from .. import jobs, language, resources
 from ..config import Config, Course
 from ..pipeline import (ChunkCache, chunk_bounds, chunk_lengths, chunks_path, ensure_glossary, lecture_time, log,
-                        whisper_prompt)
+                        second_look, whisper_prompt, whisper_with)
 from ..render import Lecture, transcript_md
 from ..textproc import SAMPLE_RATE, chunk_end, to_paragraphs
 from ..vault import Vault
@@ -50,6 +50,25 @@ DRAFT_RESUME = 120.0   # seconds of normal memory before transcription paused fo
 LAG = SILENT_GAP + 1.5
 POWER_CHECK = 20.0     # seconds between looks at whether the Mac is plugged in
 PROMPT_CHECK = 300.0   # seconds between looks for slides dropped into the lecture's folder (terms for the prompt)
+
+
+class _Stopping(Exception):
+    """The second look stops: the recording ended, or transcription has to wait (battery, memory)."""
+
+
+class _Recorded:
+    """A stretch of the recording file as the array second_look expects: only what it looks at is read.
+    `length`: what it counts as the stretch's length (where its look ends); `avail`: what may be read."""
+
+    def __init__(self, read, s0: int, length: int, avail: int):
+        self.read, self.s0, self.length, self.avail = read, s0, length, avail
+
+    def __len__(self) -> int:
+        return self.length
+
+    def __getitem__(self, sl: slice) -> np.ndarray:
+        a, b = min(sl.start or 0, self.avail), min(self.avail if sl.stop is None else sl.stop, self.avail)
+        return self.read(self.s0 + a, self.s0 + max(a, b))
 
 
 def rms(block: np.ndarray) -> float:
@@ -133,6 +152,8 @@ class LiveSession:
         self.prompt_checked = time.monotonic()
         self.max_len, self.min_len = chunk_lengths(course, lang)
         self.chunk_pos: dict[int, int] = {}  # per stretch (its first sample): where its next chunk starts
+        self.looked: dict[int, tuple] = {}   # per stretch: what the second look last saw (chunks, complete)
+        self.look_state = None               # what _second_look last saw of the session as a whole
         self.done_to = 0.0                   # lecture time transcribed up to (for the status)
 
         self.state = "starting"           # starting → recording ⇄ paused → stopping → stopped (→ finalizing → done)
@@ -424,8 +445,11 @@ class LiveSession:
 
     def _transcribe_loop(self) -> None:
         while self.state in ("starting", "recording", "paused"):
-            chunk = self._next_chunk() if self._may_transcribe() else None
+            may = self._may_transcribe()
+            chunk = self._next_chunk() if may else None
             if chunk is None:
+                if may and self._second_look():
+                    continue
                 self._release_model_if_idle()
                 self.stopped.wait(POLL * 5)
                 continue
@@ -449,6 +473,54 @@ class LiveSession:
                     self.cache.put(a, b, lang, segs, t)
                     self.done_to = lecture_time(self.spans, b)
                 self.chunk_pos[s0] = b - s0
+
+    def _second_look(self) -> bool:
+        """Whisper's second look (pipeline.second_look) at each stretch's chunks transcribed so far, as far as it is
+        settled: up to their last segment, or to the stretch's end once all its chunks are done. The same code as
+        in the final pass, on the same segments, so it asks Whisper the same questions; the answers go to the
+        ChunkCache. Returns True if it looked at anything anew."""
+        with self.lock:
+            spans, n, state = list(self.spans), self.written, self.state
+            gaps = [(p[0], p[1]) for p in self.pauses if p[2] == "no input"]
+            chunks = sorted(self.cache.chunks.values(), key=lambda d: d["a"])
+            seen = (len(chunks), state, len(spans), str(gaps), sum(self.chunk_pos.values()))
+        if seen == self.look_state:
+            return False
+        bounds = chunk_bounds(spans, n, gaps)
+        growing = state in ("starting", "recording", "paused")
+        whisper = whisper_with(self.cache, self.engine, self.prompt, spans, before=self._still_transcribing)
+        looked = False
+        for k, (s0, s1) in enumerate(bounds):
+            span_chunks, local, pos = [], [], s0
+            for d in chunks:
+                if not s0 <= d["a"] < s1:
+                    continue
+                if d["a"] != pos:  # a chunk failed here: the final pass looks at the rest
+                    break
+                off = (d["a"] - s0) / SAMPLE_RATE
+                local += [{**seg, "start": seg["start"] + off, "end": min(seg["end"] + off, (d["b"] - s0) / SAMPLE_RATE)}
+                          for seg in d["segments"]]
+                span_chunks.append((d["a"], d["b"], d["lang"]))
+                pos = d["b"]
+            closed = not (growing and k == len(bounds) - 1)
+            complete = closed and self.chunk_pos.get(s0) == s1 - s0 and s1 - pos <= SAMPLE_RATE // 10
+            if not local or self.looked.get(s0) == (len(span_chunks), complete):
+                continue
+            # an unfinished stretch ends at its last segment for now: what comes after it isn't known yet
+            length = s1 - s0 if complete else int(np.ceil(local[-1]["end"] * SAMPLE_RATE))
+            try:
+                second_look(local, _Recorded(self._read, s0, length, pos - s0), s0, span_chunks, whisper)
+            except _Stopping:
+                return looked
+            self.looked[s0] = (len(span_chunks), complete)
+            looked = True
+        self.look_state = seen
+        return looked
+
+    def _still_transcribing(self) -> None:
+        if self.state not in ("starting", "recording", "paused") or not self._may_transcribe():
+            raise _Stopping
+        self.model_released = False
 
     def _release_model_if_idle(self) -> None:
         """On battery or low memory Whisper's model (GBs) is unloaded until transcription goes on."""
