@@ -92,7 +92,7 @@ def test_list_courses_and_lectures(cfg):
     assert "## Lecture 1 (2026-10-20)" in text and "Topics: Limits" in text
     assert "Sections: [0:00:04] Intro; [0:11:40] Bounded sequences" in text
     assert "Has: transcript, summary\n" in text and "Has: transcript, slides" in text
-    assert "## Lecture 3 (2026-11-03) [live draft" in text
+    assert "## Lecture 3 (2026-11-03) [not transcribed yet" in text
     assert_clean(text, cfg)
 
 
@@ -170,7 +170,7 @@ def test_search_matching(cfg):
     assert text.index("Calculus, Lecture 1") < text.index("Some Talk")
     one_course = connector.search_lectures(cfg, "limits", course="Calculus")
     assert "Some Talk" not in one_course
-    assert "[live draft" in connector.search_lectures(cfg, "derivatives")
+    assert "[not transcribed yet" in connector.search_lectures(cfg, "derivatives")
 
 
 def test_search_falls_back_to_the_transcribed_spelling(cfg):

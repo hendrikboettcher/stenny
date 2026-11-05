@@ -16,6 +16,7 @@
   let group = $state<Group | null>(null);
   let selectedId = $state<string | null>(null);
   let summary = $state<string | null | undefined>(undefined); // undefined: loading
+  let progress = $state<string | null>(null); // the text so far, while there is no transcript yet
   let withSummary = $state(localStorage.getItem("withSummary") !== "false");
   let shareOpen = $state(false);
   let busy = $state<string | null>(null);   // "share" | "finish"
@@ -65,17 +66,20 @@
     selectedId = entries[0] ? id(entries[0]) : null;
   }
 
-  // The summary of the selected recording; reloaded when the selection or its status changes.
+  // The summary of the selected recording, or its text so far while it has no transcript yet (looked at again
+  // every 10 s, as it grows during a recording); reloaded when the selection or its status changes.
   $effect(() => {
     const key = selectedKey;
     const entry = untrack(() => selected);
-    untrack(() => { summary = undefined; notice = null; shareOpen = false; });
+    untrack(() => { summary = undefined; progress = null; notice = null; shareOpen = false; });
     if (!key || !entry) return;
     let current = true;
-    lecture(entry)
-      .then((r) => { if (current) summary = r.summary; })
+    const load = () => lecture(entry)
+      .then((r) => { if (current) { summary = r.summary; progress = r.progress; } })
       .catch(() => { if (current) summary = null; });
-    return () => { current = false; };
+    load();
+    const timer = isDraft(entry) ? setInterval(load, 10000) : undefined;
+    return () => { current = false; clearInterval(timer); };
   });
 
   $effect(() => localStorage.setItem("withSummary", String(withSummary)));
@@ -214,8 +218,7 @@
           <div class="draft">
             <p class="serif">
               <span class="status {selected.status}">{statusLabel[selected.status] ?? "Draft"}</span>
-              This is still the live draft.
-              {selected.draft_note ?? "The final transcript replaces it once the recording is finished."}
+              {selected.draft_note ?? "Its transcript comes later."}
             </p>
             {#if selected.status === "queued"}
               <button class="pill small" onclick={finish} disabled={busy === "finish"}>
@@ -225,6 +228,7 @@
           </div>
         {/if}
 
+        {#if !isDraft(selected)}
         <div class="actions">
           <div class="share-wrap">
             <button class="pill primary" disabled={busy === "share"}
@@ -244,7 +248,8 @@
           <button class="pill" onclick={() => openTranscript(selected!.transcript)}>Open transcript</button>
           <button class="pill" onclick={() => reveal(selected!.transcript)}>Show in Finder</button>
         </div>
-        {#if selected.summary}
+        {/if}
+        {#if selected.summary && !isDraft(selected)}
           <label class="check">
             <input type="checkbox" bind:checked={withSummary} /> Put the summary at the top of shared copies
           </label>
@@ -259,6 +264,15 @@
 
         {#if summary === undefined}
           <p class="quiet serif">Loading…</p>
+        {:else if isDraft(selected)}
+          {#if progress}
+            <div class="kicker">Transcribed so far</div>
+            <div class="summary serif selectable">{@html renderMarkdown(progress)}</div>
+          {:else}
+            <p class="quiet serif">Nothing transcribed yet. {selected.status === "live"
+              ? "While the Mac is plugged in, the text appears here as the recording goes on."
+              : "The text appears here once the transcript is being made."}</p>
+          {/if}
         {:else if summary}
           <div class="kicker">Summary</div>
           <div class="summary serif selectable">{@html renderMarkdown(summary)}</div>

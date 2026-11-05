@@ -420,6 +420,8 @@ def run_job(job_path: Path, cfg, engine, stop=None) -> dict:
     job_path.unlink()
     if live and src.suffix == ".pcm":
         src.unlink(missing_ok=True)  # archived as .opus by process() (or keep_audio = false)
+        if live.chunks:  # in the final transcript now
+            live.chunks.unlink(missing_ok=True)
         if live.backup:  # archived by process() if it filled a gap, else not needed
             Path(live.backup["recording"]).unlink(missing_ok=True)
     return info
@@ -445,7 +447,7 @@ def cmd_live(args) -> None:
                  f"{resources.DISK_TO_START / resources.GB:.1f} GB, so free some space first.")
     engine = get_engine(cfg.model)
     session = LiveSession(cfg, course, source, engine, lang=args.lang, draft=cfg.live_draft and not args.no_draft,
-                          backup=backup, provisional=cfg.live_provisional)
+                          backup=backup)
     server = ControlServer(session)
     jobs.keep_awake()  # on battery macOS idle-sleeps after a few minutes; closing the lid still sleeps
     try:
@@ -529,7 +531,7 @@ def finalize(session, cfg, policy: str, use_llm: bool, engine) -> None:
         return
     job = jobs.enqueue(session.pcm_path, session.course.name, session.lang_override, use_llm, live=session.session_path,
                        kind=session.course.kind)
-    if hasattr(engine, "release"):  # the live draft's model would count against the memory check
+    if hasattr(engine, "release"):  # the recording's model would count against the memory check
         engine.release()
     on_power = jobs.on_ac_power()
     run_now = policy == "now" or (policy == "auto" and on_power and resources.enough_memory_for_final_pass())
@@ -537,7 +539,7 @@ def finalize(session, cfg, policy: str, use_llm: bool, engine) -> None:
         why = "as requested" if policy != "auto" else "memory is low" if on_power else "on battery"
         session.final_note = session.final_note or f"final pass queued ({why})"
         mark_draft(session.transcript_path, "queued", "battery" if policy == "auto" and not on_power else None)
-        log(f"Live draft kept. Final pass queued {why}: {job.name} — runs with `stenny queue run` "
+        log(f"Final pass queued {why}: {job.name} — runs with `stenny queue run` "
             "or the schedule (`stenny schedule install`).")
         return
     from .pipeline import Interrupted
@@ -546,7 +548,7 @@ def finalize(session, cfg, policy: str, use_llm: bool, engine) -> None:
         if lock is None:  # a scheduled run is busy; a later one picks this job up
             session.final_note = session.final_note or "final pass queued (another one is running)"
             mark_draft(session.transcript_path, "queued")
-            log(f"Live draft kept. Another final pass is running; this one waits in the queue: {job.name}")
+            log(f"Another final pass is running; this one waits in the queue: {job.name}")
             return
         session.state = "finalizing"
         jobs.lower_own_priority(cfg.priority)
@@ -557,7 +559,7 @@ def finalize(session, cfg, policy: str, use_llm: bool, engine) -> None:
         except Interrupted as e:
             session.state = "stopped"
             session.final_note = session.final_note or "final pass queued (unplugged)"
-            log(f"Unplugged; final pass {e}. Live draft kept, the job waits in the queue: {job.name}")
+            log(f"Unplugged; final pass {e}. The job waits in the queue and goes on from there: {job.name}")
             return
     session.state = "done"
 
@@ -794,7 +796,7 @@ def main() -> None:
     p.add_argument("--final", choices=["auto", "now", "later"], default="auto",
                    help="final pass after stop: auto = now on AC power, queued on battery")
     p.add_argument("--no-llm", action="store_true", help="final pass without AI structuring/summary")
-    p.add_argument("--no-draft", action="store_true", help="record only: no live transcription while recording")
+    p.add_argument("--no-draft", action="store_true", help="record only: no transcription during the recording, even when plugged in")
     p.add_argument("--backup", metavar="DEVICE", help="second microphone that fills the main one's gaps in the final "
                    "pass: a device name, 'auto' (the Mac's own) or 'off' (default: [live] backup in the config)")
     p.set_defaults(func=cmd_live)

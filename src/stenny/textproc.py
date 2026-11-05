@@ -59,6 +59,25 @@ def split_at_pauses(audio: np.ndarray, max_len: float = 28.0, min_len: float = 1
     return [(a, b) for a, b in chunks if b - a > sample_rate // 10]
 
 
+CUT_MARGIN = 1.0  # s of audio past a chunk's longest length that chunk_end reads (the cut's smoothing looks 0.1 s ahead)
+
+
+def chunk_end(read, pos: int, avail: int, closed: bool, max_len: float = 28.0, min_len: float = 18.0,
+              sample_rate: int = SAMPLE_RATE) -> int | None:
+    """Where split_at_pauses(piece) ends the chunk that starts at `pos` (the piece's start or a cut it made), for a
+    piece that may still be growing while it is recorded: `avail` samples of it exist so far, `closed` if it won't
+    grow. Reads only audio[pos : pos + max_len + CUT_MARGIN] through read(a, b). None: not known yet.
+
+    The result is the same as cutting the finished piece: a cut depends only on the audio from its chunk's start to
+    0.1 s past max_len, and cuts lie on the 20 ms frame grid, so the frames from `pos` line up with the piece's."""
+    if avail - pos > max_len * sample_rate:
+        need = pos + int((max_len + CUT_MARGIN) * sample_rate)
+        if need > avail and not closed:
+            return None
+        return pos + split_at_pauses(read(pos, min(avail, need)), max_len, min_len, sample_rate)[0][1]
+    return avail if closed else None
+
+
 # Near-silence boosted to speech level (engine.normalize) makes Whisper invent words at very low confidence, while
 # no_speech_prob stays at 0 ("та ayım Ladies keep krypton"). On 58,000 words of real lectures this score marked
 # 83 words, nearly all of them nonsense; from -2.5 up there is misheard speech, so the line stays well below that.
@@ -315,25 +334,3 @@ def trim_edge_overlap(main: list[dict], backup: list[dict], g0: float, g1: float
         else:
             seg["text"], seg["dropped"] = "", "repeats the main microphone"
     return out
-
-
-def trim_repeats(text: str, max_n: int = 10, gram: int = 4) -> str:
-    """Cut a Whisper loop, typical on very short audio: where a run of words repeats right after itself
-    ("divide by 3 again, divide by 3 again, …" → "divide by 3 again,"), or where any 4 words come back
-    or starts over ("Right, because we started… Right, because we sta" → "Right, because we started…"). For provisional
-    text only: within a few seconds of speech, a repeated 4-word run is almost always a loop."""
-    words = text.split()
-    norm = [re.sub(r"[^\w']", "", w).lower() for w in words]
-    seen: dict[tuple, int] = {}
-    for i in range(len(words)):
-        for n in range(2, max_n + 1):
-            if i + 2 * n <= len(words) and norm[i:i + n] == norm[i + n:i + 2 * n]:
-                return " ".join(words[:i + n])
-        if i >= 3 and norm[i:i + 3] == norm[:3]:  # starts over from its beginning
-            return " ".join(words[:i])
-        key = tuple(norm[i:i + gram])
-        if len(key) == gram:
-            if key in seen and seen[key] + gram <= i:
-                return " ".join(words[:i])
-            seen.setdefault(key, i)
-    return text

@@ -11,28 +11,30 @@ from .vault import TOPICS_DIR, safe_name
 LANG_NAMES = {"fr": "French", "de": "German", "en": "English", "it": "Italian", "es": "Spanish"}
 TIME_SECTION_SECONDS = 600
 
-# A live draft says where its final transcript is, so nobody wonders why it is still a draft (frontmatter `status`)
+# Until its transcript is done, a live recording's file in the vault is a placeholder that says where the transcript
+# is (frontmatter `status`); the text so far shows only in Stenny's window
 DRAFT_STATES = ("live", "queued", "finalizing")
 
 
 def draft_status(status: str, waiting: str | None = None) -> str:
-    """Where a live draft's final transcript is, in one sentence: for the draft's note, Stenny's window and Claude.
+    """Where a recording's transcript is, in one sentence: for the placeholder's note, Stenny's window and Claude.
     The only reason given is the one new users wonder about: the Mac is on battery (frontmatter `waiting`)."""
     if status == "queued" and waiting == "battery":
-        return "The recording is finished; the final transcript is made once the Mac is plugged in and then replaces this draft."
+        return "The recording is finished; its transcript is made once the Mac is plugged in."
     if status == "queued":
-        return "The recording is finished; the final transcript comes later and replaces this draft."
+        return "The recording is finished; its transcript comes later."
     if status == "finalizing":
-        return "The recording is finished and the final transcript is being made now. It replaces this draft when it's done."
-    return "After the recording it is replaced by the final transcript, made from the full recording."
+        return "The recording is finished and its transcript is being made now."
+    return "Stenny is recording. The transcript appears here when it's done; Stenny's window shows the text so far."
 
 
 def draft_note(status: str, waiting: str | None = None) -> str:
-    """The note at the top of a live draft."""
-    return "> **Live draft** (fast, unpolished). " + draft_status(status, waiting)
+    """The note at the top of the placeholder."""
+    return "> **No transcript yet.** " + draft_status(status, waiting)
 
 
-DRAFT_NOTE = re.compile(r"^> \*\*Live draft\*\*.*$", re.M)
+# also the live drafts of Stenny 0.4, which held a rough text
+DRAFT_NOTE = re.compile(r"^> \*\*(No transcript yet\.|Live draft)\*\*.*$", re.M)
 
 
 def set_draft_state(text: str, status: str, waiting: str | None = None) -> str | None:

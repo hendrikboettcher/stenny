@@ -52,11 +52,34 @@ def summary_markdown(text: str) -> str:
     return share._unlink(body) + "\n"
 
 
+def progress(cfg, entry: dict) -> str | None:
+    """A recording without its transcript yet: the text transcribed so far (during the recording, or by a final
+    pass that was interrupted) as Markdown, None if there is none. Raw Whisper text, shown only in the window."""
+    from .pipeline import ChunkCache
+    from .textproc import fmt_hms, to_paragraphs
+
+    course = cfg.event(entry["course"]) if entry["kind"] == "event" else cfg.courses.get(entry["course"])
+    if course is None:
+        return None
+    base = cfg.data_for(course) / entry["folder"]
+    cache = ChunkCache(Path(f"{base}.chunks.jsonl"))
+    if not cache.chunks:
+        return None
+    try:
+        breaks = [p[0] for p in json.loads(Path(f"{base}.session.json").read_text(encoding="utf-8"))["pauses"]]
+    except (OSError, ValueError, KeyError):
+        breaks = []
+    paragraphs = to_paragraphs(cache.text_so_far(), breaks=breaks)
+    return "\n\n".join(f"**[{fmt_hms(p['start'])}]** {p['text']}" for p in paragraphs) + "\n"
+
+
 def lecture(cfg, params: dict) -> dict:
-    """What the detail view shows besides the library entry: the summary as Markdown (None if there is none)."""
+    """What the detail view shows besides the library entry: the summary as Markdown (None if there is none), and
+    for a recording without its transcript yet the text so far (`progress`)."""
     entry = _entry(cfg, params)
     summary = Path(entry["summary"]).read_text(encoding="utf-8") if entry.get("summary") else None
-    return {"entry": entry, "summary": summary_markdown(summary) if summary else None}
+    return {"entry": entry, "summary": summary_markdown(summary) if summary else None,
+            "progress": progress(cfg, entry) if entry["status"] != "final" else None}
 
 
 def make_copy(cfg, params: dict) -> dict:

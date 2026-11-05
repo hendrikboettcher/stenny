@@ -62,3 +62,32 @@ def test_serve_answers_line_by_line_and_keeps_stdout_clean(cfg, monkeypatch):
     replies = {r["id"]: r for r in map(json.loads, out.getvalue().splitlines())}  # in any order, by id
     assert len(replies) == 3 and replies[1] == {"id": 1, "result": {"ok": True}}
     assert replies[None] == {"id": None, "error": "Not JSON."} and replies[2]["result"]["version"]
+
+
+def test_a_recording_without_transcript_shows_its_text_so_far(cfg, tmp_path):
+    from stenny.config import Course
+    from stenny.pipeline import ChunkCache
+
+    lec = Lecture(course="Calculus", date="2026-11-03", start_time="10:00", duration=600, languages=["en"],
+                  language_note="live", model="m", source="live", status="live", number=2,
+                  names={"transcript": "Calculus 2026-11-03.md"})
+    folder = cfg.lectures_root / "Calculus" / "2026-11-03"
+    folder.mkdir(parents=True)
+    (folder / "Calculus 2026-11-03.md").write_text(transcript_md(lec, [], []), encoding="utf-8")
+    data = tmp_path / "audio" / "Calculus"
+    data.mkdir(parents=True)
+    cfg.data_for = lambda course: data
+    cfg.courses["Calculus"] = Course("Calculus")
+    cache = ChunkCache(data / "2026-11-03.chunks.jsonl")
+    cache.put(0, 16000 * 20, "en", [{"start": 1.0, "end": 5.0, "text": "Limits first."}], 0.0)
+    cache.put(16000 * 20, 16000 * 45, "en", [{"start": 2.0, "end": 9.0, "text": "Then derivatives."}], 20.0)
+    with open(data / "2026-11-03.chunks.jsonl", "a") as f:
+        f.write('{"a": 7200')  # a line cut short by a crash
+
+    result = app_server.handle(cfg, {"id": 1, "method": "lecture",
+                                     "params": {"course": "Calculus", "folder": "2026-11-03"}})["result"]
+    assert result["entry"]["status"] == "live"
+    assert result["progress"] == "**[0:00:01]** Limits first. Then derivatives.\n"
+    final = app_server.handle(cfg, {"id": 2, "method": "lecture",
+                                    "params": {"course": "Calculus", "folder": "2026-10-20"}})["result"]
+    assert final["progress"] is None

@@ -36,7 +36,9 @@ export async function engine<T>(method: string, params: Record<string, unknown> 
 const where = (e: Entry) => ({ course: e.course, folder: e.folder, event: e.kind === "event" });
 
 export const library = () => engine<Library>("library");
-export const lecture = (e: Entry) => engine<{ entry: Entry; summary: string | null }>("lecture", where(e));
+// progress: the text so far of a recording whose transcript isn't done yet
+export const lecture = (e: Entry) =>
+  engine<{ entry: Entry; summary: string | null; progress: string | null }>("lecture", where(e));
 export const makeCopy = (e: Entry, format: string, withSummary: boolean) =>
   engine<{ path: string }>("make_copy", { ...where(e), format, with_summary: withSummary });
 // A PDF from an HTML copy (stenny-agent, see make_pdf in src-tauri/src/lib.rs); in a browser the HTML stays

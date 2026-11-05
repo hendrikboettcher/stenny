@@ -7,11 +7,11 @@ from pathlib import Path
 
 import numpy as np
 
-from stenny import resources
+from stenny import jobs, pipeline, resources
 from stenny.config import Config, Course
 from stenny.live import session as live_session
 from stenny.live.session import LiveSession
-from stenny.pipeline import LiveInfo
+from stenny.pipeline import ChunkCache, LiveInfo
 from stenny.textproc import SAMPLE_RATE
 
 BLOCK = SAMPLE_RATE // 10
@@ -103,8 +103,32 @@ class FakeEngine:
     def language_probs(self, clip, allowed):
         return {a: 1.0 / len(allowed) for a in allowed}
 
-    def quick(self, audio, language, prompt=None):
-        return f"vorläufig{len(audio) // BLOCK}", -0.2
+
+def short_chunks(s, monkeypatch, on_power=True):
+    """Chunks of 3-5 s instead of 18-28 s, so a recording of a few simulated seconds has some. The session takes
+    the final pass's chunk lengths, so the final pass in assert_final_pass_reuses gets the same."""
+    s.max_len, s.min_len = 5.0, 3.0
+    monkeypatch.setattr(pipeline, "chunk_lengths", lambda course, lang=None: (5.0, 3.0))
+    s.on_power = on_power
+    monkeypatch.setattr(jobs, "on_ac_power", lambda: s.on_power_now)
+    s.on_power_now = on_power
+
+
+def assert_final_pass_reuses(s):
+    """Every chunk transcribed during the recording is one the final pass makes (same samples, same language),
+    so it takes it as it is: the final transcript is the same as transcribing everything after the lecture."""
+    info = LiveInfo.load(s.session_path)
+    audio = np.fromfile(s.pcm_path, np.int16).astype(np.float32) / 32768.0
+    cache = ChunkCache(info.chunks)
+    made = set(cache.chunks)
+    assert made, "nothing was transcribed during the recording"
+    asked = []
+    get = cache.get
+    cache.get = lambda a, b, lang: (asked.append((a, b, lang)), get(a, b, lang))[1]
+    gaps = [(p[0], p[1]) for p in info.pauses if p[2] == "no input"]
+    pipeline.transcribe(audio, s.course, FakeEngine(), s.prompt, None, info.spans, skip=gaps, cache=cache)
+    assert made <= set(asked), sorted(made - set(asked))
+    return made
 
 
 def wait_until(cond, timeout=10):
@@ -118,15 +142,16 @@ def test_pause_resume_timeline(tmp_path, monkeypatch):
     cfg = Config(vault=tmp_path / "vault", lectures_dir="Areas/Lectures", data_dir=tmp_path / "audio")
     mic = FakeMic(startup_blocks=30)  # 3 s until the first audio, on start and on every resume
     s = LiveSession(cfg, Course("Calculus", language="fr"), mic, FakeEngine())
+    short_chunks(s, monkeypatch)
     monkeypatch.setattr(s, "now", lambda: mic.t)  # lecture clock = simulated time
     monkeypatch.setattr(live_session, "POLL", 0.002)
 
     def script():
-        wait_until(lambda: mic.t >= 10)
-        s.command("toggle")            # pause at ~10 s
-        wait_until(lambda: mic.t >= 15)
-        s.command("toggle")            # resume at ~15 s
-        wait_until(lambda: mic.t >= 20)
+        wait_until(lambda: mic.t >= 14)
+        s.command("toggle")            # pause at ~14 s
+        wait_until(lambda: mic.t >= 19)
+        s.command("toggle")            # resume at ~19 s
+        wait_until(lambda: mic.t >= 36)
         s.command("stop")
 
     threading.Thread(target=script, daemon=True).start()
@@ -137,7 +162,7 @@ def test_pause_resume_timeline(tmp_path, monkeypatch):
     (p_start, p_end, reason), = s.pauses
     assert reason == "paused"
     # the test thread reacts a little after the simulated clock passes each mark
-    assert 9.9 <= p_start <= 11 and 14.9 <= p_end <= 16
+    assert 13.9 <= p_start <= 15 and 18.9 <= p_end <= 20
     # each span starts when audio actually arrived: 3 s after start / resume
     assert s.spans[0][0] == 0 and 2.9 <= s.spans[0][1] <= 3.3
     assert 2.9 <= s.spans[1][1] - p_end <= 3.3
@@ -145,19 +170,20 @@ def test_pause_resume_timeline(tmp_path, monkeypatch):
     audible = (p_start - s.spans[0][1]) + (s.ended_at - s.spans[1][1])
     assert abs(recorded - audible) < 0.3                       # paused (and not yet started) audio is absent
     assert s.pcm_path.stat().st_size == s.recorded * 2         # everything recorded is on disk
-    assert s.read_pos == s.recorded                            # and all of it reached the live draft
-    # segments: nothing inside the pause, and together they cover the recorded audio
+    assert s.read_pos == s.recorded                            # and all of it was looked at (gaps, level)
+    # transcribed during the recording: nothing inside the pause, both stretches, the final pass's chunks
     assert not any(p_start + 0.05 < seg["start"] < s.spans[1][1] - 0.05 for seg in s.segments)
     assert min(seg["start"] for seg in s.segments) >= s.spans[0][1] - 0.01
-    covered = sum(seg["end"] - seg["start"] for seg in s.segments)
-    assert abs(covered - recorded) < 0.5
-    # chunks are cut at the quiet stretches, so none is longer than the max
-    assert all(seg["end"] - seg["start"] <= live_session.MAX_CHUNK + 0.2 for seg in s.segments)
+    assert any(seg["start"] > p_end for seg in s.segments)
+    assert all(seg["end"] - seg["start"] <= 5.0 + 0.01 for seg in s.segments)
+    assert_final_pass_reuses(s)
 
+    # the vault only has a placeholder: details and status, no text (that's in Stenny's window)
     draft = s.transcript_path.read_text()
     marker = f"*[Recording paused 0:00:{int(p_start):02d}–0:00:{int(p_end):02d}]*"
-    assert 'status: "live"' in draft and marker in draft
+    assert 'status: "live"' in draft and marker in draft and "No transcript yet" in draft
     assert 'microphone: "Alex’s iPhone Microphone"' in draft
+    assert "mot" not in draft and s.text_so_far()
 
     info = LiveInfo.load(s.session_path)
     assert info.folder == s.folder.name and len(info.spans) == 2 and len(info.pauses) == 1
@@ -169,6 +195,7 @@ def test_microphone_dropout_keeps_session_and_marks_gap(tmp_path, monkeypatch):
     cfg = Config(vault=tmp_path / "vault", lectures_dir="Areas/Lectures", data_dir=tmp_path / "audio")
     mic = FakeMic(dropout=(8.0, 14.0))
     s = LiveSession(cfg, Course("Calculus", language="fr"), mic, FakeEngine())
+    short_chunks(s, monkeypatch)
     monkeypatch.setattr(s, "now", lambda: mic.t)
     # real seconds: one simulated 0.1 s block takes ~1 ms here
     monkeypatch.setattr(live_session, "STALL", 0.05)
@@ -176,7 +203,7 @@ def test_microphone_dropout_keeps_session_and_marks_gap(tmp_path, monkeypatch):
     monkeypatch.setattr(live_session, "POLL", 0.002)
 
     def script():
-        wait_until(lambda: mic.t >= 20)
+        wait_until(lambda: mic.t >= 30)
         s.command("stop")
 
     threading.Thread(target=script, daemon=True).start()
@@ -189,14 +216,16 @@ def test_microphone_dropout_keeps_session_and_marks_gap(tmp_path, monkeypatch):
     assert s.state == "stopping"                                    # the session did not end by itself
     assert any(seg["start"] >= 13.9 for seg in s.segments)          # transcription continued afterwards
     assert not any(start + 0.05 < seg["start"] < end - 0.05 for seg in s.segments)
+    assert_final_pass_reuses(s)
     draft = s.transcript_path.read_text()
     assert "No audio from the microphone 0:00:08" in draft
 
 
-def run_session(tmp_path, monkeypatch, mic, until=20.0, stall=0.05, backup=None, script=None, provisional=False):
+def run_session(tmp_path, monkeypatch, mic, until=30.0, stall=0.05, backup=None, script=None, on_power=True):
     (tmp_path / "vault" / "Areas").mkdir(parents=True, exist_ok=True)
     cfg = Config(vault=tmp_path / "vault", lectures_dir="Areas/Lectures", data_dir=tmp_path / "audio")
-    s = LiveSession(cfg, Course("Calculus", language="fr"), mic, FakeEngine(), backup=backup, provisional=provisional)
+    s = LiveSession(cfg, Course("Calculus", language="fr"), mic, FakeEngine(), backup=backup)
+    short_chunks(s, monkeypatch, on_power)
     monkeypatch.setattr(s, "now", lambda: mic.t)
     monkeypatch.setattr(live_session, "STALL", stall)
     monkeypatch.setattr(live_session, "RETRY", 0.01)
@@ -213,9 +242,10 @@ def test_digital_silence_is_a_gap_not_recorded(tmp_path, monkeypatch):
     gaps = [p for p in s.pauses if p[2] == "no input"]
     assert len(gaps) == 1 and 7.9 <= gaps[0][0] <= 8.2 and 12.9 <= gaps[0][1] <= 13.3
     recorded = s.recorded / SAMPLE_RATE
-    assert abs(recorded - s.ended_at) < 0.3                                 # zeros stay in the file: timeline intact
+    assert abs(recorded - s.ended_at) < 0.5                                 # zeros stay in the file: timeline intact (± start-up time)
     later = [seg for seg in s.segments if seg["start"] > 10]
     assert later and min(seg["start"] for seg in later) >= 12.9            # text after the gap keeps clock time
+    assert_final_pass_reuses(s)                                            # no chunk reached into the zeros
     assert "No audio from the microphone 0:00:08" in s.transcript_path.read_text()
 
 
@@ -278,43 +308,21 @@ def test_gap_at_the_end_is_kept_when_a_backup_heard_it(tmp_path, monkeypatch):
     assert s.backup.written / SAMPLE_RATE >= 19.5
 
 
-def test_provisional_text_shows_the_chunk_in_progress_and_is_replaced(tmp_path, monkeypatch):
+def test_on_battery_it_only_records_and_catches_up_when_plugged_in(tmp_path, monkeypatch):
     mic = FakeMic()
-    seen = []
 
     def script(s):
-        while mic.t < 20:
-            with s.lock:
-                if s.provisional:
-                    seen.append((s.provisional, s.buffer_start, len(s.segments)))
-            time.sleep(0.001)
+        wait_until(lambda: mic.t >= 20)
+        s.seen = len(s.cache.chunks), s.status()["transcribing"]
+        s.on_power_now = True                         # plugged in
+        monkeypatch.setattr(live_session, "POWER_CHECK", 0.0)
+        wait_until(lambda: mic.t >= 40)
         s.command("stop")
 
-    monkeypatch.setattr(live_session, "MIN_CHUNK", 6.0)
-    s = run_session(tmp_path, monkeypatch, mic, script=script, provisional=True)
-    assert seen, "no provisional text appeared"
-    blocks = [int(text.removeprefix("vorläufig")) for (_, text), _, _ in seen]
-    assert min(blocks) >= live_session.PROVISIONAL_MIN * 10                 # not before 3 s of chunk audio
-    assert len(set(blocks)) >= 2                                            # it moved within a chunk
-    starts = {t for (t, _), _, _ in seen}
-    assert len(starts) >= 2                                                 # and followed the next chunk
-    assert s.provisional is None                                            # gone once all is transcribed
-    draft = s.transcript_path.read_text()
-    assert "vorläufig" not in draft and "…*" not in draft
-
-
-def test_provisional_line_is_rendered_in_italics(tmp_path, monkeypatch):
-    mic = FakeMic()
-    s = run_session(tmp_path, monkeypatch, mic, until=8.0)
-    s.provisional = (8.0, "what is being said")
-    s.render()
-    assert "*what is being said …*" in s.transcript_path.read_text()
-
-
-def test_provisional_line_is_off_by_default(tmp_path, monkeypatch):
-    mic = FakeMic()
-    s = run_session(tmp_path, monkeypatch, mic, until=12.0)
-    assert not s.provisional_on and "vorläufig" not in s.transcript_path.read_text()
+    s = run_session(tmp_path, monkeypatch, mic, script=script, on_power=False)
+    assert s.seen == (0, False)                       # on battery: nothing transcribed, the recording goes on
+    assert min(seg["start"] for seg in s.segments) < 1.0   # plugged in: it caught up from the start
+    assert_final_pass_reuses(s)
 
 
 class SwitchableMic(FakeMic):
@@ -343,7 +351,7 @@ def test_switching_the_microphone_ends_the_gap_and_keeps_recording(tmp_path, mon
         wait_until(lambda: mic.t >= 12)
         replies.append(s.command("microphone", "MacBook Air Microphone"))
         replies.append(s.command("microphone", None))
-        wait_until(lambda: mic.t >= 20)
+        wait_until(lambda: mic.t >= 30)
         s.command("stop")
 
     s = run_session(tmp_path, monkeypatch, mic, script=script)
@@ -352,6 +360,7 @@ def test_switching_the_microphone_ends_the_gap_and_keeps_recording(tmp_path, mon
     gaps = [p for p in s.pauses if p[2] == "no input"]
     assert len(gaps) == 1 and 7.9 <= gaps[0][0] <= 8.2 and 11.9 <= gaps[0][1] <= 12.6
     assert any(seg["start"] >= 12.5 for seg in s.segments)          # transcribed from the new microphone
+    assert_final_pass_reuses(s)
     assert LiveInfo.load(s.session_path).microphone == "MacBook Air Microphone"
 
 
@@ -363,14 +372,14 @@ def fake_resources(monkeypatch, disk=10 * resources.GB, pressure=resources.PRESS
     return state
 
 
-def test_low_memory_pauses_the_draft_but_never_the_recording(tmp_path, monkeypatch):
+def test_low_memory_pauses_transcription_but_never_the_recording(tmp_path, monkeypatch):
     state = fake_resources(monkeypatch)
     monkeypatch.setattr(live_session, "DRAFT_RESUME", 0.0)
     mic = FakeMic()
     released = []
 
     def script(s):
-        wait_until(lambda: mic.t >= 10)
+        wait_until(lambda: mic.t >= 10 and s.cache.chunks)  # the model is loaded
         state["pressure"] = 2
         wait_until(lambda: s.draft_paused and s.warning)
         s.engine.release = lambda: released.append(True)
@@ -387,7 +396,7 @@ def test_low_memory_pauses_the_draft_but_never_the_recording(tmp_path, monkeypat
     assert during - before <= 2                      # at most what was on its way when memory ran low
     assert recorded / SAMPLE_RATE >= 24              # the recording went on
     assert s.recorded / SAMPLE_RATE >= 44
-    assert len(s.segments) > during                  # and the draft came back
+    assert len(s.segments) > during                  # and transcription came back
     assert released == [True]
     assert not s.warning
 

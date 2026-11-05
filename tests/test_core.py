@@ -267,17 +267,6 @@ def test_calendar_titles_find_their_course():
     assert {t: (c.name if (c := course_for_title(cs, t)) else None) for t in expect} == expect
 
 
-def test_trim_repeats_cuts_whisper_loops_only():
-    from stenny.textproc import trim_repeats
-    assert trim_repeats("And five of them are can. And five of them are can. And five") == "And five of them are can."
-    assert trim_repeats("divide by 3, then we divide by x3 again, divide by x3 again, divide by x3") == \
-        "divide by 3, then we divide by x3 again,"
-    assert trim_repeats("Right, because we started at zero and then evidence art. Right, because we sta") == \
-        "Right, because we started at zero and then evidence art."
-    assert trim_repeats("very very good, so we have the mean and the variance") == \
-        "very very good, so we have the mean and the variance"
-
-
 def test_glossary_auto_section_ranking_and_prompt_order():
     from stenny.glossary import AUTO_HEADING, Glossary, rank_auto_terms, with_auto_terms
     note = "# Glossary\n\n## Terms\n- Riemann\n\n## Corrections\n- Rimane → Riemann\n"

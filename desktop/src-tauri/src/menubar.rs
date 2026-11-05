@@ -25,7 +25,6 @@ const TRAY: &str = "stenny";
 #[derive(Serialize, Deserialize, Default, Clone)]
 struct Prefs {
     microphone: Option<String>, // None: the system's input device
-    no_draft: bool,             // record only, no live text
     #[serde(default)]
     login_item: bool,           // added itself to the login items once; after that it's the user's choice
 }
@@ -154,10 +153,14 @@ fn status_line(st: &State) -> String {
             "No audio from the microphone · reconnecting …".to_string()
         }
         "recording" if !str_of(s, "warning").is_empty() => str_of(s, "warning").to_string(),
-        "recording" => format!("Recording · {course} · {} words", s.get("words").and_then(Value::as_u64).unwrap_or(0)),
+        // the words transcribed so far, while it transcribes (plugged in); on battery it only records
+        "recording" if s.get("transcribing").and_then(Value::as_bool) == Some(true) => {
+            format!("Recording · {course} · {} words", s.get("words").and_then(Value::as_u64).unwrap_or(0))
+        }
+        "recording" => format!("Recording · {course}"),
         "paused" => format!("Paused for {} · mic off · {course}", clock(num(s, "current_pause_s"))),
-        "stopping" => "Finishing the live draft …".into(),
-        "finalizing" | "done" => "Making the final transcript …".into(),
+        "stopping" => "Stopping …".into(),
+        "finalizing" | "done" => "Making the transcript …".into(),
         "starting" => "Starting …".into(),
         _ if st.idle_message.is_empty() => "Ready".into(),
         _ => st.idle_message.clone(),
@@ -213,11 +216,10 @@ fn build_menu(app: &AppHandle, st: &State) -> tauri::Result<(Menu<Wry>, MenuItem
     let mic_refs: Vec<&dyn IsMenuItem<Wry>> = mics.iter().map(|m| m as &dyn IsMenuItem<Wry>).collect();
     let mic_enabled = state != "starting" && (!active || in_use.is_some());
     items.push(Box::new(Submenu::with_id_and_items(app, "mics", format!("Microphone: {label}"), mic_enabled, &mic_refs)?));
-    if !active && state != "starting" {
-        items.push(Box::new(CheckMenuItem::with_id(app, "draft", "Live Draft While Recording", true, !st.prefs.no_draft, None::<&str>)?));
-    }
     items.push(Box::new(PredefinedMenuItem::separator(app)?));
-    if !str_of(s, "transcript").is_empty() {
+    if active {  // the transcript isn't there yet: the window shows the text so far
+        items.push(Box::new(MenuItem::with_id(app, "open-text", "Show Text So Far…", true, None::<&str>)?));
+    } else if !str_of(s, "transcript").is_empty() {
         items.push(Box::new(MenuItem::with_id(app, "transcript", "Open Transcript", true, None::<&str>)?));
     }
     items.push(Box::new(MenuItem::with_id(app, "open", "Open Stenny…", true, None::<&str>)?));
@@ -235,7 +237,7 @@ fn shape(st: &State) -> String {
     // what the menu's items depend on; the clock goes to the title and the status line is updated in place,
     // because rebuilding the menu closes it while it is open
     format!(
-        "{}|{}|{}|{}|{:?}|{:?}|{:?}|{}|{:?}",
+        "{}|{}|{}|{}|{:?}|{:?}|{:?}|{:?}",
         str_of(s, "state"),
         str_of(s, "course"),
         str_of(s, "microphone"),
@@ -243,7 +245,6 @@ fn shape(st: &State) -> String {
         st.courses,
         st.devices,
         st.prefs.microphone,
-        st.prefs.no_draft,
         st.suggestion,
     )
 }
@@ -327,18 +328,10 @@ fn update(app: &AppHandle, status: Value) {
         }
         st.last_warning = warning;
         let was_session = !matches!(str_of(&st.status, "state"), "idle" | "" | "starting");
+        // after a lecture the menu just says "Ready" (where its final transcript is shows in the window);
+        // only a lecture that ended for a reason, like a full disk, says so here
         if was_session && state == "idle" {
-            let queued = status.get("queued").and_then(Value::as_u64).unwrap_or(0);
-            let on_power = status.get("on_power").and_then(Value::as_bool).unwrap_or(true);
-            st.idle_message = if queued > 0 && !on_power {
-                "Ready · the final transcript waits until the Mac is plugged in".into()
-            } else if queued > 0 {
-                "Ready · the final transcript is made soon".into()
-            } else if !st.last_note.is_empty() {
-                format!("Ready · {}", st.last_note)
-            } else {
-                "Ready · last lecture saved".into()
-            };
+            st.idle_message = if st.last_note.is_empty() { String::new() } else { format!("Ready · {}", st.last_note) };
             st.last_note.clear();
         }
         // a session that ends properly goes through "stopping"; one that goes from recording to gone was killed
@@ -463,9 +456,6 @@ pub fn start(app: &AppHandle, course: &str, event: bool) -> Result<(), String> {
     if let Some(m) = prefs.microphone {
         params["device"] = json!(m);
     }
-    if prefs.no_draft {
-        params["draft"] = json!(false);
-    }
     // development: record an audio file instead of the microphone (with STENNY_HOME pointing at a test copy)
     if let Ok(file) = std::env::var("STENNY_TEST_FILE") {
         params["file"] = json!(file);
@@ -541,20 +531,10 @@ fn on_menu(app: &AppHandle, id: &str) {
         "toggle" => send(&app, "toggle"),
         "stop" => send(&app, "stop"),
         "talk" => crate::show_window(&app, "talk"),
-        "open" => crate::show_window(&app, "library"),
+        "open" | "open-text" => crate::show_window(&app, "library"),
         "feedback" => crate::show_window(&app, "feedback"),
         "updates" => check_updates(&app),
         "transcript" => open_transcript(&app),
-        "draft" => {
-            let prefs = {
-                let bar = app.state::<MenuBar>();
-                let mut st = bar.0.lock().unwrap();
-                st.prefs.no_draft = !st.prefs.no_draft;
-                st.prefs.clone()
-            };
-            save_prefs(&app, &prefs);
-            redraw(&app, true);
-        }
         "quit" => {
             if confirm_quit(&app) {
                 app.exit(0);

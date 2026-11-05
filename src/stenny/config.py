@@ -67,8 +67,7 @@ class Config:
     night_start: str = "01:00"
     night_end: str = "07:00"
     live_device: str | None = None            # microphone name for live mode; None = system input device
-    live_draft: bool = True                   # transcribe while recording (False: record only)
-    live_provisional: bool = False            # draft: show the sentence being spoken, replaced seconds later (costs battery)
+    live_draft: bool = True                   # transcribe during the recording when plugged in (False: record only)
     live_recorder: str = "native"             # native (bundled stenny-rec, CoreAudio) | ffmpeg
     live_backup: str = "auto"                 # second microphone for the main one's gaps: auto | off | device name
     courses: dict[str, Course] = field(default_factory=dict)
@@ -231,7 +230,6 @@ def load(path: Path | None = None) -> Config:
             night_end=proc.get("night_end", Config.night_end),
             live_device=data.get("live", {}).get("device") or None,
             live_draft=data.get("live", {}).get("draft", True),
-            live_provisional=data.get("live", {}).get("provisional", False),
             live_recorder=data.get("live", {}).get("recorder", "native"),
             live_backup=data.get("live", {}).get("backup", "auto"),
             courses=courses,

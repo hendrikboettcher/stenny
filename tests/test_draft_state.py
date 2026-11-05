@@ -1,4 +1,5 @@
-"""A live draft says where its final transcript is: waiting (for power, if the Mac is on battery), or being made."""
+"""A recording without its transcript yet says where the transcript is: waiting (for power, if the Mac is on battery),
+or being made. Its file in the vault is a placeholder without text (Stenny 0.4's live drafts had a rough text)."""
 import json
 from types import SimpleNamespace
 
@@ -12,23 +13,30 @@ from stenny.render import Lecture, set_draft_state, transcript_md
 PARAGRAPHS = [{"start": 4.0, "text": "Bonjour."}]
 
 
-def draft(status="live") -> str:
+def draft(status="live", paragraphs=PARAGRAPHS) -> str:
     lec = Lecture(course="Calculus", date="2026-10-31", start_time="10:00", duration=600, languages=["fr"],
                   language_note="live", model="m", source="live", status=status, number=2,
                   names={"transcript": "Calculus 2026-10-31.md"})
-    return transcript_md(lec, PARAGRAPHS, [])
+    return transcript_md(lec, paragraphs, [])
 
 
-def test_the_draft_says_its_final_transcript_waits_for_power():
-    queued = set_draft_state(draft(), "queued", "battery")
+def test_the_placeholder_says_its_transcript_waits_for_power():
+    queued = set_draft_state(draft(paragraphs=[]), "queued", "battery")
     assert 'status: "queued"\nwaiting: "battery"\n' in queued
-    assert "The recording is finished; the final transcript is made once the Mac is plugged in and then replaces " \
-           "this draft." in queued
-    assert queued.count("Live draft") == 1 and "**[0:00:04]** Bonjour." in queued
+    assert "> **No transcript yet.** The recording is finished; its transcript is made once the Mac is plugged in." \
+        in queued
+    assert queued.count("No transcript yet") == 1
 
     making = set_draft_state(queued, "finalizing")
     assert 'status: "finalizing"\n' in making and "waiting:" not in making
-    assert "the final transcript is being made now" in making and "plugged in" not in making
+    assert "its transcript is being made now" in making and "plugged in" not in making
+
+
+def test_a_live_draft_of_stenny_0_4_gets_the_new_note():
+    old = draft().replace("> **No transcript yet.** ", "> **Live draft** (fast, unpolished). ")
+    queued = set_draft_state(old, "queued")
+    assert "> **No transcript yet.** The recording is finished; its transcript comes later." in queued
+    assert "Live draft" not in queued and "**[0:00:04]** Bonjour." in queued
 
 
 def test_a_final_transcript_is_never_touched():
@@ -78,7 +86,7 @@ def test_any_other_wait_gives_no_reason(cfg, monkeypatch):
     with jobs.QueueLock():  # another final pass is running
         cli.finalize(session, cfg, "auto", True, object())
     assert 'status: "queued"\n' in session.text() and "waiting:" not in session.text()
-    assert "the final transcript comes later and replaces this draft." in session.text()
+    assert "its transcript comes later." in session.text()
 
 
 def test_the_final_pass_marks_the_draft_and_an_unplugged_mac_puts_it_back(cfg, monkeypatch):
@@ -103,7 +111,7 @@ def test_the_window_and_claude_get_the_same_sentence(cfg, monkeypatch):
     cli.mark_draft(cfg.vault / "Lectures/Calculus/2026-10-31/Calculus 2026-10-31.md", "queued", "battery")
     [entry] = share.library(cfg)
     assert entry["status"] == "queued" and "once the Mac is plugged in" in entry["draft_note"]
-    assert _status_note(entry) == f" [live draft, rough text. {entry['draft_note']}]"
+    assert _status_note(entry) == f" [not transcribed yet. {entry['draft_note']}]"
 
 
 def test_the_window_can_start_one_waiting_final_pass_now_also_on_battery(cfg, monkeypatch):

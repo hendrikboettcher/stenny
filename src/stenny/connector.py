@@ -117,7 +117,7 @@ def _title(entry: dict, entries: list[dict]) -> str:
 def _status_note(entry: dict) -> str:
     if entry["status"] == "final":
         return ""
-    return f" [live draft, rough text. {entry.get('draft_note') or 'The final transcript replaces it later.'}]"
+    return f" [not transcribed yet. {entry.get('draft_note') or 'Its transcript comes later.'}]"
 
 
 # ---------------------------------------------------------------- transcripts as paragraphs

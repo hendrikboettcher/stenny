@@ -52,6 +52,7 @@ class LiveInfo:
     source: str = "live recording"
     microphone: str | None = None                 # input device the live session recorded from
     backup: dict | None = None                    # second microphone: {recording, microphone, spans}
+    chunks: Path | None = None                    # chunks transcribed during the recording (ChunkCache)
 
     @classmethod
     def load(cls, path: Path) -> "LiveInfo":
@@ -59,7 +60,51 @@ class LiveInfo:
         return cls(started_at=datetime.fromisoformat(d["started_at"]), folder=d["folder"],
                    spans=[tuple(s) for s in d["spans"]], pauses=[(p[0], p[1], p[2] if len(p) > 2 else "paused") for p in d["pauses"] if p[1] is not None],
                    source=d.get("source", "live recording"), microphone=d.get("microphone"),
-                   backup=d.get("backup"))
+                   backup=d.get("backup"), chunks=chunks_path(path))
+
+
+def chunks_path(session: Path) -> Path:
+    """`<folder>.chunks.jsonl` next to a live recording's `<folder>.session.json`."""
+    return session.with_name(session.name.removesuffix(".session.json") + ".chunks.jsonl")
+
+
+class ChunkCache:
+    """Whisper's output for chunks of a live recording, made while it was being recorded (live/session.py) or by
+    a final pass that was interrupted: one chunk per line of a JSON-lines file next to session.json. The final
+    pass takes a chunk from here only where it would transcribe exactly that chunk (same samples, same
+    language), so its result is the same as transcribing everything after the lecture, only sooner.
+
+    Each line: {"a", "b": recorded samples, "lang", "t": lecture time of sample a (for showing the text so far),
+    "segments": Whisper's segments in seconds from a}."""
+
+    def __init__(self, path: Path | None = None):
+        self.path = path
+        self.chunks: dict[tuple[int, int, str], dict] = {}
+        if path and path.exists():
+            for line in path.read_text(encoding="utf-8").splitlines():
+                try:
+                    d = json.loads(line)
+                    self.chunks[(d["a"], d["b"], d["lang"])] = d
+                except (ValueError, KeyError, TypeError):
+                    continue  # a line cut short by a crash
+
+    def get(self, a: int, b: int, lang: str) -> list[dict] | None:
+        d = self.chunks.get((a, b, lang))
+        return d["segments"] if d else None
+
+    def put(self, a: int, b: int, lang: str, segments: list[dict], t: float) -> None:
+        d = {"a": a, "b": b, "lang": lang, "t": round(t, 3), "segments": segments}
+        self.chunks[(a, b, lang)] = d
+        if self.path:
+            with open(self.path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(d, ensure_ascii=False, default=float) + "\n")
+
+    def text_so_far(self) -> list[dict]:
+        """The segments in lecture time, in order: what has been transcribed of a recording so far."""
+        out = []
+        for d in sorted(self.chunks.values(), key=lambda d: d["t"]):
+            out += [{**seg, "start": seg["start"] + d["t"], "end": seg["end"] + d["t"]} for seg in d["segments"]]
+        return out
 
 
 BREAK_JUMP = 3.0  # a jump in lecture time this large between spans is a real break (pause, lost microphone)
@@ -163,30 +208,25 @@ def fill_from_backup(segments: list[dict], pauses: list[tuple], main: np.ndarray
 
 def transcribe(audio: np.ndarray, course: Course, engine, prompt: str | None, lang_override: str | None = None,
                spans: list[tuple[int, float]] | None = None,
-               skip: list[tuple[float, float]] = (), stop=None) -> tuple[list[dict], list[str], str]:
+               skip: list[tuple[float, float]] = (), stop=None,
+               cache: ChunkCache | None = None) -> tuple[list[dict], list[str], str]:
     """Chunked transcription. `spans` maps recorded audio to lecture time for live recordings; each
     stretch between real breaks is transcribed on its own, so no chunk straddles a pause.
     `skip`: lecture-time ranges left out (gaps where the microphone sent only digital silence).
     `stop`: asked before each chunk; True raises Interrupted.
+    `cache`: chunks already transcribed (during the recording) are taken from it, new ones are added to it.
     Returns (segments in lecture time, languages used by share, language note)."""
     spans = spans or [(0, 0.0)]
-    bounds = span_groups(spans, len(audio))
-    for t0, t1 in skip:
-        for a, b, _ in time_ranges(spans, len(audio), t0, t1):
-            bounds = [piece for s0, s1 in bounds for piece in ((s0, min(s1, a)), (max(s0, b), s1)) if piece[1] > piece[0]]
-    # mixed-language courses use short chunks so a switch is caught at sentence level. Talks keep the normal
-    # long chunks and only check each one's language: short chunks cost whole sentences and take ~6× as long
-    # (measured), a price for lecturers who really switch back and forth, not for every talk.
-    short = course.language == "mixed" and not course.is_event and not lang_override
+    bounds = chunk_bounds(spans, len(audio), skip)
+    max_len, min_len = chunk_lengths(course, lang_override)
     chunks = []  # (start sample, end sample, span index)
     for i, (s0, s1) in enumerate(bounds):
-        piece = audio[s0:s1]
-        cuts = split_at_pauses(piece, max_len=12, min_len=4) if short else split_at_pauses(piece)
+        cuts = split_at_pauses(audio[s0:s1], max_len=max_len, min_len=min_len)
         chunks += [(s0 + a, s0 + b, i) for a, b in cuts]
     langs, note = language.plan(audio, [(a, b) for a, b, _ in chunks], course, engine, lang_override)
     log(f"Language: {note}; {len(chunks)} chunks")
 
-    segments, step, done = [], max(1, len(chunks) // 10), 0
+    segments, step, done, reused = [], max(1, len(chunks) // 10), 0, 0
     for i, (s0, s1) in enumerate(bounds):
         span_chunks = [(a, b, lang) for (a, b, k), lang in zip(chunks, langs) if k == i]
         local = []
@@ -194,7 +234,14 @@ def transcribe(audio: np.ndarray, course: Course, engine, prompt: str | None, la
             if stop and stop():
                 raise Interrupted(f"stopped after {done}/{len(chunks)} chunks")
             off = (a - s0) / SAMPLE_RATE
-            for seg in engine.transcribe(audio[a:b], lang, prompt):
+            segs = cache.get(a, b, lang) if cache else None
+            if segs is None:
+                segs = engine.transcribe(audio[a:b], lang, prompt)
+                if cache:  # an interrupted final pass goes on from here next time
+                    cache.put(a, b, lang, segs, lecture_time(spans, a))
+            else:
+                reused += 1
+            for seg in segs:
                 local.append({**seg, "start": seg["start"] + off, "end": min(seg["end"] + off, (b - s0) / SAMPLE_RATE)})
             done += 1
             if done % step == 0 or done == len(chunks):
@@ -212,8 +259,41 @@ def transcribe(audio: np.ndarray, course: Course, engine, prompt: str | None, la
             local = retry_sparse(local, piece, lambda clip, start: engine.transcribe(clip, lang_at(start), None))
         to_lecture = lambda t, s0=s0: lecture_time(spans, s0 + t * SAMPLE_RATE)
         segments += [{**seg, "start": to_lecture(seg["start"]), "end": to_lecture(seg["end"])} for seg in local]
+    if reused:
+        log(f"  {reused} of {len(chunks)} chunks were transcribed during the recording")
     used = sorted(set(langs), key=langs.count, reverse=True) if langs else [lang_override or course.languages[0]]
     return segments, used, note
+
+
+def chunk_bounds(spans: list[tuple[int, float]], n_samples: int, skip=()) -> list[tuple[int, int]]:
+    """The stretches of a recording transcribed separately: span groups (no chunk straddles a break), minus the
+    `skip` gaps (lecture time; an end of None runs to the end of the recording)."""
+    bounds = span_groups(spans, n_samples)
+    for t0, t1 in skip:
+        for a, b, _ in time_ranges(spans, n_samples, t0, float("inf") if t1 is None else t1):
+            bounds = [piece for s0, s1 in bounds for piece in ((s0, min(s1, a)), (max(s0, b), s1)) if piece[1] > piece[0]]
+    return bounds
+
+
+def chunk_lengths(course: Course, lang_override: str | None = None) -> tuple[float, float]:
+    """(max, min) chunk length in seconds. Mixed-language courses use short chunks so a switch is caught at
+    sentence level. Talks keep the normal long chunks and only check each one's language: short chunks cost whole
+    sentences and take ~6× as long (measured), a price for lecturers who really switch back and forth."""
+    short = course.language == "mixed" and not course.is_event and not lang_override
+    return (12.0, 4.0) if short else (28.0, 18.0)
+
+
+def whisper_prompt(vault: Vault, folder: Path, glossary: Glossary, course: str,
+                   slides_src: Path | None = None, quiet: bool = False) -> tuple[str | None, Slides | None, Path | None]:
+    """Whisper's prompt for a lecture: the glossary, plus terms from its slides. Returns (prompt, slides, slides
+    file to copy into the folder; see find_slides)."""
+    slides, slides_copy = find_slides(vault, folder, slides_src, course)
+    slide_terms = slides.terms(skip=glossary.terms)[:MAX_SLIDE_TERMS] if slides else []
+    prompt = glossary.prompt(slide_terms)
+    if slides and not quiet:
+        used = len([t for t in slide_terms if prompt and t in prompt])
+        log(f"Slides: {slides.count} pages, {used} slide terms in Whisper's prompt")
+    return prompt, slides, slides_copy
 
 
 def ensure_glossary(vault: Vault, course: Course) -> Glossary:
@@ -386,15 +466,12 @@ def process(path: Path, cfg: Config, course: Course, engine, *, lang: str | None
     date = f"{when:%Y-%m-%d}"
     source = live.source if live else path.name
     folder = vault.course_dir(course.name) / live.folder if live else vault.lecture_dir(course.name, date, source)
-    slides, slides_copy = find_slides(vault, folder, slides_src, course.name)
-    slide_terms = slides.terms(skip=glossary.terms)[:MAX_SLIDE_TERMS] if slides else []
-    prompt = glossary.prompt(slide_terms)
-    if slides:
-        used = len([t for t in slide_terms if prompt and t in prompt])
-        log(f"Slides: {slides.count} pages, {used} slide terms in Whisper's prompt")
+    prompt, slides, slides_copy = whisper_prompt(vault, folder, glossary, course.name, slides_src)
 
     gaps = [(p[0], p[1]) for p in pauses if p[2] == "no input"]  # only zeros there, or nothing at all
-    segments, languages, lang_note = transcribe(audio, course, engine, prompt, lang, spans, skip=gaps, stop=stop)
+    cache = ChunkCache(live.chunks) if live and live.chunks else None
+    segments, languages, lang_note = transcribe(audio, course, engine, prompt, lang, spans, skip=gaps, stop=stop,
+                                                cache=cache)
     backup_path = Path(live.backup["recording"]) if live and live.backup else None
     backup_mic, filled = None, 0.0
     if backup_path and backup_path.exists() and backup_path.stat().st_size:
