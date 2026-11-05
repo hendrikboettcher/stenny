@@ -411,6 +411,7 @@ struct LectureDetail: View {
                             if entry.status == "queued" {
                                 Button(finishing ? "Starting…" : "Make Final Transcript Now", action: finishNow)
                                     .buttonStyle(PillButtonStyle(small: true))
+                                    .background(Capsule().fill(Palette.bg))  // the pill's line is the box's own colour
                                     .disabled(finishing)
                             }
                         }
@@ -516,9 +517,12 @@ struct LectureDetail: View {
         let reload = reload
         Task {
             let run = Task.detached { StennyCLI.run(args) }
-            try? await Task.sleep(for: .seconds(4))
-            reload()  // now "Finishing"
+            let started = Task {  // by now the draft says "Finishing"; skipped if the command ended sooner
+                try? await Task.sleep(for: .seconds(4))
+                if !Task.isCancelled { reload() }
+            }
             let result = await run.value
+            started.cancel()
             reload()
             finishing = false
             if let result, !result.ok {
