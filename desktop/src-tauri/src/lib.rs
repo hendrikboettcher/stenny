@@ -1,4 +1,4 @@
-//! Stenny's app: the menu bar (menubar.rs) and its windows (the library, "Record a talk"). The windows'
+//! Stenny's app: a Dock app with a menu bar icon (menubar.rs) and its windows (the library, "Record a talk"). The windows'
 //! interface is the web code in desktop/src; everything about lectures comes from the engine
 //! (`stenny app-server`, see engine.rs).
 //!
@@ -157,9 +157,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, check_updates])
         .setup(move |app| {
             if !library_only {
-                // a menu bar app: no Dock icon; its windows still come up when opened from the menu
+                // A Dock app with the menu bar icon next to it. Info.plist keeps LSUIElement for the helpers in the
+                // bundle (stenny-agent reads the same Info.plist), so the app itself asks for its Dock icon here.
                 #[cfg(target_os = "macos")]
-                app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                app.set_activation_policy(tauri::ActivationPolicy::Regular);
                 menubar::install(app.handle())?;
             } else if let Some(window) = app.get_webview_window("library") {
                 let _ = window.show();
@@ -183,9 +184,18 @@ pub fn run() {
         #[cfg(target_os = "macos")]
         if let RunEvent::Ready = event {
             if !library_only {
+                // opened by the user: the library comes up; opened at login: Stenny waits in the Dock and menu bar
+                if !macos::launched_at_login() {
+                    show_window(app, "library");
+                }
                 let app = app.clone();
                 macos::handle_quit_event(move || quit_as_asked(&app));
             }
+        }
+        // Opened again while running (Dock icon, Spotlight, Finder) with no window showing: the library comes back
+        #[cfg(target_os = "macos")]
+        if let RunEvent::Reopen { has_visible_windows: false, .. } = event {
+            show_window(app, "library");
         }
         // ⌘Q while a lecture records asks first (the menu's Quit does the same)
         if let RunEvent::ExitRequested { api, code: None, .. } = event {

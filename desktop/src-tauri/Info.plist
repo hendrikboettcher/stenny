@@ -2,7 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <!-- merged into Stenny.app's Info.plist by the Tauri bundler -->
+  <!-- merged into Stenny.app's Info.plist by the Tauri bundler. LSUIElement keeps the bundled helpers
+       (stenny-agent) out of the Dock; the app itself turns its Dock icon on at launch (lib.rs). -->
   <key>LSUIElement</key><true/>
   <key>NSMicrophoneUsageDescription</key>
   <string>Stenny records lectures you start from its menu. Audio stays on this Mac; pausing turns the microphone off.</string>

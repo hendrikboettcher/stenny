@@ -120,3 +120,22 @@ pub fn handle_quit_event(on_quit: impl Fn() + Send + Sync + 'static) {
     }
     std::mem::forget(handler); // the manager doesn't retain it; it answers for as long as Stenny runs
 }
+
+/// True when macOS opened Stenny as a login item: the launch's Apple Event says so (keyAEPropData =
+/// keyAELaunchedAsLoginItem). Ask while launching, on the main thread; afterwards there's no launch event to read.
+pub fn launched_at_login() -> bool {
+    let Some(manager_class) = AnyClass::get(c"NSAppleEventManager") else { return false };
+    unsafe {
+        let manager: *mut AnyObject = msg_send![manager_class, sharedAppleEventManager];
+        let event: *mut AnyObject = msg_send![manager, currentAppleEvent];
+        if event.is_null() {
+            return false;
+        }
+        let property: *mut AnyObject = msg_send![event, paramDescriptorForKeyword: u32::from_be_bytes(*b"prdt")];
+        if property.is_null() {
+            return false;
+        }
+        let code: u32 = msg_send![property, enumCodeValue];
+        code == u32::from_be_bytes(*b"lgit")
+    }
+}
