@@ -48,4 +48,4 @@ export const openTranscript = (path: string) => (inApp ? invoke("open_transcript
 export const reveal = (path: string) => (inApp ? invoke("reveal", { path }) : console.log("reveal", path));
 // "Did the lecturer agree?", asked once per course before sharing (in a browser during development: yes)
 export const lecturerAgreed = (e: Entry, use: "share" | "record") =>
-  inApp ? invoke<boolean>("lecturer_agreed", { use_: use, course: e.course, event: e.kind === "event" }) : Promise.resolve(true);
+  inApp ? invoke<boolean>("lecturer_agreed", { purpose: use, course: e.course, event: e.kind === "event" }) : Promise.resolve(true);

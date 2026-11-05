@@ -62,8 +62,8 @@ async fn make_pdf(html: String) -> Result<String, String> {
 
 /// "Did the lecturer agree?" (asked once per course and use); the window asks it before sharing.
 #[tauri::command]
-async fn lecturer_agreed(app: AppHandle, use_: String, course: String, event: bool) -> Result<bool, String> {
-    tauri::async_runtime::spawn_blocking(move || menubar::lecturer_agreed(&app, &use_, &course, event))
+async fn lecturer_agreed(app: AppHandle, purpose: String, course: String, event: bool) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || menubar::lecturer_agreed(&app, &purpose, &course, event))
         .await
         .map_err(|e| e.to_string())
 }

@@ -126,10 +126,10 @@
   async function share(format: string) {
     if (!selected) return;
     shareOpen = false;
-    if (!(await lecturerAgreed(selected, "share"))) return;
     busy = "share";
     notice = null;
     try {
+      if (!(await lecturerAgreed(selected, "share"))) return;
       // a PDF is made from the HTML copy (the engine can't paginate)
       const copy = await makeCopy(selected, format === "pdf" ? "html" : format, withSummary && !!selected.summary);
       const path = format === "pdf" ? await makePdf(copy.path) : copy.path;
