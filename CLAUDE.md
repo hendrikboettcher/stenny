@@ -38,6 +38,8 @@ src/stenny/
                   lectures, transcripts in parts, summaries, search, glossary, slide text; one guarded write
                   (`suggest_glossary_terms`: guard.validate_terms → pipeline.update_glossary, automatic section only)
   mcp_server.py   `stenny mcp`: connector.py as a local MCP server (stdio, official `mcp` SDK) + study instructions
+  app_server.py   `stenny app-server`: the engine behind the new app (desktop/), JSON lines over stdio (library,
+                  lecture, make_copy, finish_now); plain functions of (cfg, params), so a phone page can serve them too
   pipeline.py     audio → segments → paragraphs → files; `postprocess` (text + AI step) and `refresh` (AI step
                   again from segments.json, no re-transcription)
   llm/            backends (claude_code, anthropic_api) + guard (no invented content)
@@ -51,6 +53,8 @@ app/              Swift menu bar app (SwiftPM + build.sh): starts `stenny live`,
                   also builds `stenny-rec`, the native microphone recorder bundled in Stenny.app;
                   build-ffmpeg.sh: the LGPL ffmpeg/ffprobe bundled there; install.sh: installs the built app;
                   release.sh: the release zip, which holds the signed app at app/build.noindex/Stenny.app
+desktop/          the new app (in development, replaces app/): Tauri 2 + Svelte 5/TypeScript, stenny.eu style; talks to
+                  the engine only through `stenny app-server` (src-tauri/src/engine.rs); see desktop/README.md
 connector/        the Claude Desktop extension (.mcpb): manifest.json, server/index.js (finds the installed `stenny`
                   and runs `stenny mcp`), build.sh → dist/Stenny.mcpb (icon from app/make-icon.swift)
 tests/            pytest, no model downloads needed

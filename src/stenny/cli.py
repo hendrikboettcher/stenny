@@ -762,6 +762,9 @@ def main() -> None:
     p.add_argument("--course", help="only this course (default: all configured courses)")
     p.set_defaults(func=cmd_course_files)
 
+    p = sub.add_parser("app-server", help=argparse.SUPPRESS)  # Stenny's app talks to the engine through this
+    p.set_defaults(func=lambda args: __import__("stenny.app_server", fromlist=["serve"]).serve())
+
     p = sub.add_parser("library", help="list every lecture and talk with a transcript")
     p.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
     p.set_defaults(func=cmd_library)
