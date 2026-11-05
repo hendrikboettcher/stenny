@@ -51,11 +51,11 @@ struct State {
     agent_in: Option<std::process::ChildStdin>,
     status_item: Option<MenuItem<Wry>>,      // the menu's first line, updated in place
     icon: String,                            // the icon shown, so it is only set when it changes (no flicker)
-    pause_accel: Option<String>,             // the pause shortcut as a menu accelerator ("Cmd+Shift+BracketLeft")
+    pause_accel: Option<String>,             // the pause shortcut as a physical accelerator ("Cmd+F1"), if not a character
 }
 
-/// The pause shortcut for the menu, by physical key (the agent tells which: "ready 33 ⇧⌘Ü"), so macOS shows it with
-/// the label of the user's keyboard (Ü on a German one). Carbon key codes → the W3C key names muda uses.
+/// The pause shortcut for the menu by physical key (the agent tells which: "ready 122 ⌘F1"), for keys that aren't a
+/// single character; those go through macos.rs. Carbon key codes → the W3C key names muda uses.
 fn accelerator(shortcut: &str, key_code: u32) -> Option<String> {
     let code = match key_code {
         0 => "KeyA", 11 => "KeyB", 8 => "KeyC", 2 => "KeyD", 14 => "KeyE", 3 => "KeyF", 5 => "KeyG", 4 => "KeyH",
@@ -667,7 +667,13 @@ fn start_agent(app: &AppHandle) {
         for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
             if let Some(rest) = line.strip_prefix("ready ") {
                 let code = rest.split(' ').next().and_then(|c| c.parse::<u32>().ok());
-                let accel = code.and_then(|c| accelerator(&shortcut, c));
+                // a character key (Ü) is put on the menu item natively (macos.rs): Tauri's physical accelerator
+                // gets relabelled by macOS (⇧⌘Ö on a German keyboard)
+                #[cfg(target_os = "macos")]
+                let by_char = crate::macos::set_pause_shortcut(&shortcut);
+                #[cfg(not(target_os = "macos"))]
+                let by_char = false;
+                let accel = if by_char { None } else { code.and_then(|c| accelerator(&shortcut, c)) };
                 app.state::<MenuBar>().0.lock().unwrap().pause_accel = accel;
                 redraw(&app, true);
             } else if line == "hotkey" {
@@ -745,6 +751,17 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| on_menu(app, event.id.as_ref()))
         .build(app)?;
+    #[cfg(target_os = "macos")]
+    {
+        crate::macos::watch_menus();
+        if let Some(tray) = app.tray_by_id(TRAY) {
+            let _ = tray.with_inner_tray_icon(|t| {
+                if let Some(item) = t.ns_status_item() {
+                    crate::macos::monospaced_clock(&item);
+                }
+            });
+        }
+    }
     start_polling(app.clone());
     start_agent(app);
     Ok(())

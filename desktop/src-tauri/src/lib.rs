@@ -6,6 +6,8 @@
 //! installed Stenny, which keeps its own icon (one Stenny in the menu bar, never two).
 
 mod engine;
+#[cfg(target_os = "macos")]
+mod macos;
 mod menubar;
 
 use engine::Engine;
