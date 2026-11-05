@@ -101,8 +101,15 @@ def devices(cfg, params: dict) -> dict:
 
 def settings(cfg, params: dict) -> dict:
     """What the app reads at launch: the pause shortcut (as text, like "cmd+shift+ü") and the courses to start."""
-    return {"pause_shortcut": cfg.pause_shortcut,
+    return {"pause_shortcut": cfg.pause_shortcut, "data_dir": str(paths.SYSTEM_DIR),
             "courses": [c.name for c in cfg.courses.values() if not c.hidden]}
+
+
+def match_courses(cfg, params: dict) -> dict:
+    """Which course each calendar event title belongs to (None: none), by the same rules as everywhere
+    (config.course_for_title): {"Calculus I – Lecture": "Calculus", "Dentist": None}."""
+    from .config import course_for_title
+    return {t: (c := course_for_title(cfg.visible_courses, t)) and c.name for t in params.get("titles", [])}
 
 
 def recover(cfg, params: dict) -> dict:
@@ -163,4 +170,5 @@ def give_consent(cfg, params: dict) -> dict:
 
 
 METHODS = {"status": status, "start": start, "command": command, "microphone": microphone, "devices": devices,
-           "settings": settings, "recover": recover, "consent": consent, "give_consent": give_consent}
+           "settings": settings, "match_courses": match_courses, "recover": recover, "consent": consent,
+           "give_consent": give_consent}

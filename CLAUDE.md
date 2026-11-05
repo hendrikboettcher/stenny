@@ -40,6 +40,8 @@ src/stenny/
   mcp_server.py   `stenny mcp`: connector.py as a local MCP server (stdio, official `mcp` SDK) + study instructions
   app_server.py   `stenny app-server`: the engine behind the new app (desktop/), JSON lines over stdio (library,
                   lecture, make_copy, finish_now); plain functions of (cfg, params), so a phone page can serve them too
+  app_live.py     the app's recording methods (status, start → `stenny live` in its own process, pause/resume/stop,
+                  microphone, devices, match_courses, recover) and the consent answers (_System/consent.json)
   pipeline.py     audio → segments → paragraphs → files; `postprocess` (text + AI step) and `refresh` (AI step
                   again from segments.json, no re-transcription)
   llm/            backends (claude_code, anthropic_api) + guard (no invented content)

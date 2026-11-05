@@ -9,6 +9,8 @@
 use crate::engine::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::{HashMap, HashSet};
+use std::io::Write;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::image::Image;
@@ -41,6 +43,16 @@ struct State {
     last_note: String,
     idle_message: String,
     lists_loaded: Option<Instant>,
+    suggestion: Option<Suggestion>,          // the calendar's lecture on now (or within 10 minutes)
+    course_for_title: HashMap<String, Option<String>>,
+    notified: HashSet<String>,               // calendar events already announced
+    agent_in: Option<std::process::ChildStdin>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct Suggestion {
+    course: String,
+    range: String, // "09:40–11:10"
 }
 
 #[derive(Default)]
@@ -134,6 +146,10 @@ fn build_menu(app: &AppHandle, st: &State) -> tauri::Result<Menu<Wry>> {
         items.push(Box::new(MenuItem::with_id(app, "stop", "Stop & Make Final Transcript", true, None::<&str>)?));
         items.push(Box::new(PredefinedMenuItem::separator(app)?));
     } else if state == "idle" || state.is_empty() {
+        if let Some(sg) = &st.suggestion {
+            items.push(Box::new(MenuItem::with_id(app, format!("start:{}", sg.course),
+                format!("Start {} · {}", sg.course, sg.range), true, None::<&str>)?));
+        }
         let starts: Vec<MenuItem<Wry>> = st
             .courses
             .iter()
@@ -184,7 +200,7 @@ fn shape(st: &State) -> String {
     let s = &st.status;
     // the parts of the status the menu shows; the clock goes to the title instead, the word count every 50 words
     format!(
-        "{}|{}|{}|{}|{}|{}|{}|{:?}|{:?}|{:?}|{}|{}",
+        "{}|{}|{}|{}|{}|{}|{}|{:?}|{:?}|{:?}|{}|{}|{:?}",
         str_of(s, "state"),
         str_of(s, "course"),
         str_of(s, "warning"),
@@ -197,6 +213,7 @@ fn shape(st: &State) -> String {
         st.prefs.microphone,
         st.prefs.no_draft,
         st.idle_message,
+        st.suggestion,
     )
 }
 
@@ -236,7 +253,11 @@ fn load_lists(app: &AppHandle) {
     let bar = app.state::<MenuBar>();
     let mut st = bar.0.lock().unwrap();
     if let Some(list) = settings.get("courses").and_then(Value::as_array) {
-        st.courses = list.iter().filter_map(|c| c.as_str().map(String::from)).collect();
+        let courses: Vec<String> = list.iter().filter_map(|c| c.as_str().map(String::from)).collect();
+        if courses != st.courses {
+            st.course_for_title.clear(); // a course was added or removed: match the calendar again
+        }
+        st.courses = courses;
     }
     if let Some(list) = devices.get("devices").and_then(Value::as_array) {
         st.devices = list.iter().filter_map(|d| d.as_str().map(String::from)).collect();
@@ -536,22 +557,71 @@ fn start_agent(app: &AppHandle) {
             .ok()
             .and_then(|s| s.get("pause_shortcut").and_then(Value::as_str).map(String::from))
             .unwrap_or_else(|| "cmd+shift+ü".into());
+        let data_dir = engine(&app)
+            .call("settings", json!({}))
+            .ok()
+            .and_then(|s| s.get("data_dir").and_then(Value::as_str).map(String::from))
+            .unwrap_or_default();
         let child = std::process::Command::new(exe)
-            .args(["--shortcut", &shortcut])
+            .args(["--shortcut", &shortcut, "--calendar", "--data-dir", &data_dir])
             .stdin(std::process::Stdio::piped()) // closes when Stenny quits, and the agent with it
             .stdout(std::process::Stdio::piped())
             .spawn();
         let Ok(mut child) = child else { return };
-        let _stdin = child.stdin.take(); // kept open for the agent's lifetime
+        app.state::<MenuBar>().0.lock().unwrap().agent_in = child.stdin.take(); // open while Stenny runs
         let Some(out) = child.stdout.take() else { return };
         for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
             if line == "hotkey" {
                 toggle_pause(&app);
+            } else if let Some(events) = line.strip_prefix("events ") {
+                calendar(&app, events);
+            } else if let Some(course) = line.strip_prefix("start ") {
+                let (app, course) = (app.clone(), course.to_string());
+                std::thread::spawn(move || if let Err(e) = start(&app, &course, false) { alert(&app, "Stenny", &e) });
             } else if let Some(problem) = line.strip_prefix("error ") {
                 notify(&app, &format!("The pause shortcut doesn't work: {problem}"));
             }
         }
     });
+}
+
+/// The agent's calendar events (on now or within 10 minutes): the first that belongs to a course becomes the
+/// menu's suggestion, announced once by a notification with "Start Recording" unless a recording runs.
+fn calendar(app: &AppHandle, events: &str) {
+    let Ok(Value::Array(events)) = serde_json::from_str::<Value>(events) else { return };
+    let bar = app.state::<MenuBar>();
+    let unknown: Vec<String> = {
+        let st = bar.0.lock().unwrap();
+        events.iter().map(|e| str_of(e, "title").to_string()).filter(|t| !st.course_for_title.contains_key(t)).collect()
+    };
+    if !unknown.is_empty() {
+        if let Ok(Value::Object(matches)) = engine(app).call("match_courses", json!({"titles": unknown})) {
+            let mut st = bar.0.lock().unwrap();
+            for t in unknown {
+                let course = matches.get(&t).and_then(Value::as_str).map(String::from);
+                st.course_for_title.insert(t, course);
+            }
+        }
+    }
+    let mut announce = None;
+    {
+        let mut st = bar.0.lock().unwrap();
+        let first = events.iter().find_map(|e| {
+            let course = st.course_for_title.get(str_of(e, "title")).cloned().flatten()?;
+            Some((Suggestion { course, range: str_of(e, "range").to_string() }, str_of(e, "id").to_string()))
+        });
+        st.suggestion = first.as_ref().map(|(s, _)| s.clone());
+        let busy = !matches!(str_of(&st.status, "state"), "idle" | "");
+        if let Some((sg, id)) = first {
+            if !busy && st.notified.insert(id.clone()) {
+                announce = Some(json!({"id": id, "course": sg.course, "range": sg.range}));
+            }
+        }
+        if let (Some(note), Some(stdin)) = (announce.take(), st.agent_in.as_mut()) {
+            let _ = writeln!(stdin, "notify {note}");
+        }
+    }
+    redraw(app, false);
 }
 
 pub fn install(app: &AppHandle) -> tauri::Result<()> {

@@ -38,7 +38,14 @@ fn stenny_command() -> PathBuf {
 
 fn start() -> Result<Running, String> {
     let exe = stenny_command();
-    let mut child = Command::new(&exe)
+    let mut command = Command::new(&exe);
+    // the recorder bundled with this app (Contents/MacOS), not another Stenny's; `stenny live` reads $STENNY_REC
+    if let Some(rec) = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join("stenny-rec"))) {
+        if rec.exists() && std::env::var_os("STENNY_REC").is_none() {
+            command.env("STENNY_REC", rec);
+        }
+    }
+    let mut child = command
         .arg("app-server")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

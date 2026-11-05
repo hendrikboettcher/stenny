@@ -1,11 +1,18 @@
 import AppKit
 import Carbon
+import EventKit
+import UserNotifications
 
-// stenny-agent: the macOS parts of Stenny's new app (desktop/) that Tauri doesn't have, as a helper it starts:
-// the global pause shortcut. One line per event on stdout; it quits when its stdin closes (the app quit).
+// stenny-agent: the macOS parts of Stenny's new app (desktop/) that Tauri doesn't have, as a helper it starts.
+// One line per event on stdout, one command per line on stdin; it quits when its stdin closes (the app quit).
 //
-//   stenny-agent --shortcut "cmd+shift+ü"   →  "ready ⌘⇧Ü" (or "error …"), then "hotkey" on every press
+//   stenny-agent --shortcut "cmd+shift+ü" [--calendar --data-dir <~/Lectures Data/_System>]
+//   out: "ready ⌘⇧Ü" (or "error …"); "hotkey" on every press;
+//        with --calendar, every 30 s: "events [{title, start, end, range, id}, …]" (on now or within 10 min);
+//        "start <course>" when "Start Recording" is clicked in a lecture notification
+//   in:  "notify {"id": …, "course": …, "range": …}" posts that notification ("Record this lecture?")
 //
+// It runs inside Stenny.app (Contents/MacOS), so the calendar permission and the notifications are Stenny's.
 // The key is given as printed on the keyboard and looked up in the current layout, since Carbon hotkeys use
 // physical key codes (Ü is "[" on a US keyboard). Same rules as the Swift app's Shortcut.swift.
 
@@ -69,9 +76,117 @@ guard let i = args.firstIndex(of: "--shortcut"), i + 1 < args.count else {
 let app = NSApplication.shared
 app.setActivationPolicy(.prohibited)
 
-// quit with the app: its end of our stdin closes
+// MARK: Calendar and the lecture notification (as in the Swift app's CalendarWatcher and LectureController)
+
+let lead: TimeInterval = 10 * 60          // offer a lecture this long before it starts, and until it ends
+let minimumLength: TimeInterval = 20 * 60 // shorter events (deadlines, reminders) are never lectures
+let store = EKEventStore()
+
+func lectureEvents(now: Date = Date()) -> [EKEvent] {
+    let predicate = store.predicateForEvents(withStart: now.addingTimeInterval(-12 * 3600),
+                                             end: now.addingTimeInterval(lead), calendars: nil)
+    return store.events(matching: predicate)
+        .filter { !$0.isAllDay && $0.endDate.timeIntervalSince($0.startDate) >= minimumLength }
+        .filter { $0.endDate > now && $0.startDate <= now.addingTimeInterval(lead) }
+        .sorted { $0.startDate < $1.startDate }
+}
+
+func sayEvents() {
+    let f = DateFormatter()
+    f.dateFormat = "HH:mm"
+    let rows: [[String: Any]] = lectureEvents().compactMap { e in
+        guard let title = e.title else { return nil }
+        return ["title": title, "start": e.startDate.timeIntervalSince1970, "end": e.endDate.timeIntervalSince1970,
+                "range": "\(f.string(from: e.startDate))–\(f.string(from: e.endDate))",
+                "id": e.eventIdentifier ?? "\(title)\(e.startDate.timeIntervalSince1970)"]
+    }
+    if let data = try? JSONSerialization.data(withJSONObject: rows), let text = String(data: data, encoding: .utf8) {
+        say("events " + text)
+    }
+}
+
+/// This term's event titles, so setup can suggest the courses (calendar-titles.json, as the Swift app wrote it).
+func exportTitles(to dir: String) {
+    let now = Date()
+    let predicate = store.predicateForEvents(withStart: now.addingTimeInterval(-28 * 86400),
+                                             end: now.addingTimeInterval(56 * 86400), calendars: nil)
+    var counts: [String: Int] = [:]
+    store.events(matching: predicate)
+        .filter { !$0.isAllDay && $0.endDate.timeIntervalSince($0.startDate) >= minimumLength }
+        .compactMap(\.title).forEach { counts[$0, default: 0] += 1 }
+    let rows = counts.sorted { ($0.value, $1.key) > ($1.value, $0.key) }.map { ["title": $0.key, "count": $0.value] as [String: Any] }
+    guard let data = try? JSONSerialization.data(withJSONObject: rows, options: [.prettyPrinted]) else { return }
+    try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+    try? data.write(to: URL(fileURLWithPath: dir).appendingPathComponent("calendar-titles.json"), options: .atomic)
+}
+
+final class Notifications: NSObject, UNUserNotificationCenterDelegate {
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification)
+        async -> UNNotificationPresentationOptions { [.banner, .sound] }
+
+    /// "Start Recording" starts it; closing it does nothing.
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        if response.actionIdentifier == "start", let course = response.notification.request.content.userInfo["course"] as? String {
+            say("start " + course)
+        }
+    }
+}
+let notifications = Notifications()
+
+/// Laid out like the website's mock-up: "Stenny" / "Record this lecture?" / "<course> · <time>".
+func postLecture(_ json: String) {
+    guard Bundle.main.bundleIdentifier != nil,  // notifications need the app bundle around this helper
+          let data = json.data(using: .utf8),
+          let info = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let id = info["id"] as? String, let course = info["course"] as? String else { return }
+    let content = UNMutableNotificationContent()
+    content.title = "Stenny"
+    content.body = "Record this lecture?\n\(course) · \(info["range"] as? String ?? "")"
+    content.categoryIdentifier = "lecture"
+    content.userInfo = ["course": course]
+    UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: id, content: content, trigger: nil))
+}
+
+if args.contains("--calendar") {
+    let dataDir = args.firstIndex(of: "--data-dir").flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil }
+    if Bundle.main.bundleIdentifier != nil {
+        let center = UNUserNotificationCenter.current()
+        center.delegate = notifications
+        // one action only: with two, macOS folds them into an "Options" menu
+        let start = UNNotificationAction(identifier: "start", title: "Start Recording", options: [])
+        center.setNotificationCategories([UNNotificationCategory(identifier: "lecture", actions: [start], intentIdentifiers: [])])
+    }
+    Task {
+        let granted: Bool
+        switch EKEventStore.authorizationStatus(for: .event) {
+        case .fullAccess: granted = true
+        case .notDetermined: granted = (try? await store.requestFullAccessToEvents()) ?? false
+        default: granted = false
+        }
+        guard granted else {
+            say("calendar-denied")
+            return
+        }
+        if Bundle.main.bundleIdentifier != nil {
+            _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
+        }
+        await MainActor.run {
+            if let dataDir { exportTitles(to: dataDir) }
+            sayEvents()
+            let timer = Timer(timeInterval: 30, repeats: true) { _ in sayEvents() }
+            RunLoop.main.add(timer, forMode: .common)
+        }
+    }
+}
+
+// Commands from the app; quit with it when its end of our stdin closes.
 Thread.detachNewThread {
-    while let _ = readLine() {}
+    while let line = readLine() {
+        if line.hasPrefix("notify ") {
+            let json = String(line.dropFirst("notify ".count))
+            DispatchQueue.main.async { postLecture(json) }
+        }
+    }
     exit(0)
 }
 
