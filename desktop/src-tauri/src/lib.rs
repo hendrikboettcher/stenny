@@ -42,6 +42,24 @@ fn reveal(path: String) -> Result<(), String> {
     tauri_plugin_opener::reveal_item_in_dir(path).map_err(|e| e.to_string())
 }
 
+/// Share… as PDF: the engine's HTML copy (`make_copy` with format "html") turned into a PDF next to it by
+/// stenny-agent (`--pdf`, the macOS text system paginates it); the HTML is removed. Returns the PDF's path.
+#[tauri::command]
+async fn make_pdf(html: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let agent = menubar::agent_path().ok_or("The PDF couldn't be made: stenny-agent is missing.")?;
+        let out = std::process::Command::new(agent).args(["--pdf", &html]).output().map_err(|e| e.to_string())?;
+        let text = String::from_utf8_lossy(&out.stdout);
+        let line = text.lines().last().unwrap_or("");
+        match line.strip_prefix("pdf ") {
+            Some(path) => Ok(path.to_string()),
+            None => Err(line.strip_prefix("error ").unwrap_or("The PDF couldn't be made.").to_string()),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// "Did the lecturer agree?" (asked once per course and use); the window asks it before sharing.
 #[tauri::command]
 async fn lecturer_agreed(app: AppHandle, use_: String, course: String, event: bool) -> Result<bool, String> {
@@ -125,7 +143,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(Arc::new(Engine::default()))
         .manage(MenuBar::default())
-        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, lecturer_agreed, start_talk, show_feedback, check_updates])
+        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, check_updates])
         .setup(move |app| {
             if !library_only {
                 // a menu bar app: no Dock icon; its windows still come up when opened from the menu

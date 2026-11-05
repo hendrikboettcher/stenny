@@ -5,7 +5,7 @@
   import Figure from "$lib/Figure.svelte";
   import { renderMarkdown } from "$lib/markdown";
   import {
-    library, lecture, makeCopy, finishNow, openTranscript, reveal, lecturerAgreed,
+    library, lecture, makeCopy, makePdf, finishNow, openTranscript, reveal, lecturerAgreed,
     type Entry, type Library,
   } from "$lib/engine";
 
@@ -114,9 +114,9 @@
   };
 
   const FORMATS = [
+    { id: "pdf", title: "PDF", help: "Opens on any phone or computer" },
     { id: "docx", title: "Word", help: "To read, print or edit" },
     { id: "md", title: "Markdown", help: "For notes apps and AI chats" },
-    { id: "html", title: "Web page", help: "Opens in any browser" },
   ];
 
   async function share(format: string) {
@@ -126,7 +126,9 @@
     busy = "share";
     notice = null;
     try {
-      const { path } = await makeCopy(selected, format, withSummary && !!selected.summary);
+      // a PDF is made from the HTML copy (the engine can't paginate)
+      const copy = await makeCopy(selected, format === "pdf" ? "html" : format, withSummary && !!selected.summary);
+      const path = format === "pdf" ? await makePdf(copy.path) : copy.path;
       notice = { text: `Saved ${path.split("/").pop()}`, path };
       await reveal(path);
     } catch (e) {

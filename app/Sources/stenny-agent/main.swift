@@ -8,6 +8,7 @@ import UserNotifications
 // One line per event on stdout, one command per line on stdin; it quits when its stdin closes (the app quit).
 //
 //   stenny-agent --shortcut "cmd+shift+ü" [--calendar --data-dir <~/Lectures Data/_System>]
+//   stenny-agent --pdf <copy.html>: makes the shared PDF from the HTML copy ("pdf <path>"), then quits
 //   out: "ready <key code> ⌘⇧Ü" (or "error …"); "hotkey" on every press;
 //        with --calendar, every 30 s: "events [{title, start, end, range, id}, …]" (on now or within 10 min);
 //        "start <course>" when "Start Recording" is clicked in a lecture notification
@@ -70,6 +71,18 @@ func parse(_ text: String) -> (Int, Int, String)? {
 }
 
 let args = CommandLine.arguments
+
+// A one-off job instead of the helper's usual work (PDFExport.swift).
+if let p = args.firstIndex(of: "--pdf"), p + 1 < args.count {
+    _ = NSApplication.shared
+    let result = MainActor.assumeIsolated { makePDF(from: URL(fileURLWithPath: args[p + 1])) }
+    switch result {
+    case .success(let pdf): say("pdf " + pdf.path)
+    case .failure(let failure): say("error " + failure.message)
+    }
+    exit(0)
+}
+
 guard let i = args.firstIndex(of: "--shortcut"), i + 1 < args.count else {
     say("error usage: stenny-agent --shortcut \"cmd+shift+ü\"")
     exit(2)

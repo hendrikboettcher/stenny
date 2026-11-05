@@ -614,7 +614,7 @@ pub fn toggle_pause(app: &AppHandle) {
 
 /// stenny-agent (app/Sources/stenny-agent): the global pause shortcut. Next to Stenny's own program in the app
 /// bundle; $STENNY_AGENT or the Swift build folder during development.
-fn agent_path() -> Option<std::path::PathBuf> {
+pub(crate) fn agent_path() -> Option<std::path::PathBuf> {
     let candidates = [
         std::env::var("STENNY_AGENT").ok().map(std::path::PathBuf::from),
         std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join("stenny-agent"))),
