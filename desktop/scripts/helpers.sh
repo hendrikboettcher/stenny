@@ -14,4 +14,10 @@ mkdir -p "$OUT"
 for helper in stenny-agent stenny-rec; do
     cp "$BIN/$helper" "$OUT/$helper-$TRIPLE"
 done
+# the LGPL ffmpeg/ffprobe (app/build-ffmpeg.sh), so Stenny needs no Homebrew; from an earlier Stenny.app if not built
+for tool in ffmpeg ffprobe; do
+    for from in build.noindex/tools/$tool /Applications/Stenny.app/Contents/MacOS/$tool; do
+        [[ -x "$from" ]] && { cp "$from" "$OUT/$tool-$TRIPLE"; break; }
+    done
+done
 echo "✅ helpers in desktop/src-tauri/binaries ($TRIPLE)"
