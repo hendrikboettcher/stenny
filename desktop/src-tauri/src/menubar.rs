@@ -658,6 +658,8 @@ fn start_agent(app: &AppHandle) {
                 redraw(&app, true);
             } else if line == "hotkey" {
                 toggle_pause(&app);
+            } else if line == "quit" {
+                crate::quit_as_asked(&app); // macOS asked "Stenny" to quit and reached the helper
             } else if let Some(events) = line.strip_prefix("events ") {
                 calendar(&app, events);
             } else if let Some(course) = line.strip_prefix("start ") {

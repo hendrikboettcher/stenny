@@ -6,14 +6,19 @@
 //!   the NSMenuItem when the menu opens, with that localization off.
 //! - The clock next to the icon in a font with equal-width digits, so the icon doesn't move while it counts
 //!   (the Swift app drew both with monospacedDigitSystemFont, app/Sources/Stenny/MenuBarImage.swift).
+//! - Quitting when macOS asks (`osascript -e 'quit app "Stenny"'`, an installer, logging out). AppKit's own
+//!   handler for that Apple Event never ends this menu bar app, so Stenny answers it itself and quits the
+//!   same way as its Quit menu item: right away, or after asking while a lecture records.
 
 use objc2::rc::Retained;
 use objc2_app_kit::{
     NSEventModifierFlags, NSFont, NSFontWeightRegular, NSMenu, NSMenuDidBeginTrackingNotification, NSStatusItem,
 };
 use objc2_foundation::{MainThreadMarker, NSNotification, NSNotificationCenter, NSString};
+use objc2::runtime::{AnyClass, AnyObject, NSObject};
+use objc2::{define_class, msg_send, sel, AnyThread};
 use std::ptr::NonNull;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 
 /// The menu items that show the pause shortcut, by title.
 const PAUSE_TITLES: [&str; 2] = ["Pause", "Resume"];
@@ -79,4 +84,39 @@ pub fn monospaced_clock(status_item: &NSStatusItem) {
         let font = NSFont::monospacedDigitSystemFontOfSize_weight(size, unsafe { NSFontWeightRegular });
         button.setFont(Some(&font));
     }
+}
+
+/// What to do when macOS asks Stenny to quit.
+static ON_QUIT: OnceLock<Box<dyn Fn() + Send + Sync>> = OnceLock::new();
+
+define_class!(
+    #[unsafe(super(NSObject))]
+    #[name = "StennyQuitHandler"]
+    struct QuitHandler;
+
+    impl QuitHandler {
+        #[unsafe(method(handleQuit:withReply:))]
+        fn handle_quit(&self, _event: *mut AnyObject, _reply: *mut AnyObject) {
+            if let Some(on_quit) = ON_QUIT.get() {
+                on_quit();
+            }
+        }
+    }
+);
+
+/// Answers macOS's "quit" Apple Event with `on_quit`, in place of AppKit's handler. Call once, on the main
+/// thread, after the app has finished launching (AppKit installs its own handler while launching).
+pub fn handle_quit_event(on_quit: impl Fn() + Send + Sync + 'static) {
+    if ON_QUIT.set(Box::new(on_quit)).is_err() {
+        return;
+    }
+    let Some(manager_class) = AnyClass::get(c"NSAppleEventManager") else { return };
+    let handler: Retained<QuitHandler> = unsafe { msg_send![QuitHandler::alloc(), init] };
+    let manager: *mut AnyObject = unsafe { msg_send![manager_class, sharedAppleEventManager] };
+    let (core_events, quit) = (u32::from_be_bytes(*b"aevt"), u32::from_be_bytes(*b"quit"));
+    unsafe {
+        let _: () = msg_send![manager, setEventHandler: &*handler, andSelector: sel!(handleQuit:withReply:),
+                              forEventClass: core_events, andEventID: quit];
+    }
+    std::mem::forget(handler); // the manager doesn't retain it; it answers for as long as Stenny runs
 }

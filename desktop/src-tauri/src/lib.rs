@@ -134,6 +134,17 @@ pub fn show_window(app: &AppHandle, label: &str) {
     });
 }
 
+/// Quits as the menu's Quit does, for a quit asked for from outside (macOS, through stenny-agent too):
+/// right away, or after asking while a lecture records.
+pub fn quit_as_asked(app: &AppHandle) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        if menubar::confirm_quit(&app) {
+            app.exit(0);
+        }
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let library_only = std::env::args().any(|a| a == "--library");
@@ -167,6 +178,15 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building Stenny");
     app.run(move |app, event| {
+        // "Quit Stenny" from macOS (an installer, logging out) works like the menu's Quit. Set up once launched:
+        // AppKit puts its own handler in place while launching, over one set up earlier (in `setup`).
+        #[cfg(target_os = "macos")]
+        if let RunEvent::Ready = event {
+            if !library_only {
+                let app = app.clone();
+                macos::handle_quit_event(move || quit_as_asked(&app));
+            }
+        }
         // ⌘Q while a lecture records asks first (the menu's Quit does the same)
         if let RunEvent::ExitRequested { api, code: None, .. } = event {
             if !library_only {

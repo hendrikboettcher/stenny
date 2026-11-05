@@ -11,7 +11,8 @@ import UserNotifications
 //   stenny-agent --pdf <copy.html>: makes the shared PDF from the HTML copy ("pdf <path>"), then quits
 //   out: "ready <key code> ⌘⇧Ü" (or "error …"); "hotkey" on every press;
 //        with --calendar, every 30 s: "events [{title, start, end, range, id}, …]" (on now or within 10 min);
-//        "start <course>" when "Start Recording" is clicked in a lecture notification
+//        "start <course>" when "Start Recording" is clicked in a lecture notification;
+//        "quit" when macOS asks Stenny to quit and reaches this helper (see QuitForwarder)
 //   in:  "notify {"id": …, "course": …, "range": …}" posts that notification ("Record this lecture?");
 //        "login" makes Stenny open at login (System Settings ▸ General ▸ Login Items) → "login ok" / "login error …"
 //
@@ -210,6 +211,22 @@ Thread.detachNewThread {
         }
     }
     exit(0)
+}
+
+// MARK: Quitting
+
+/// To macOS this helper is Stenny too (eu.stenny.Stenny, inside Stenny.app), so "quit Stenny" (osascript, an
+/// installer) can reach it instead of the app. It passes that on: the app quits as from its menu, this helper with it.
+final class QuitForwarder: NSObject {
+    @objc func handleQuit(_ event: NSAppleEventDescriptor, withReply reply: NSAppleEventDescriptor) {
+        say("quit")
+    }
+}
+let quitForwarder = QuitForwarder()
+DispatchQueue.main.async {  // once app.run() has launched: AppKit sets up its own handler while launching
+    NSAppleEventManager.shared().setEventHandler(
+        quitForwarder, andSelector: #selector(QuitForwarder.handleQuit(_:withReply:)),
+        forEventClass: AEEventClass(kCoreEventClass), andEventID: AEEventID(kAEQuitApplication))
 }
 
 guard let (code, modifiers, label) = parse(args[i + 1]) else {
