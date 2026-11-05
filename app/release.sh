@@ -25,6 +25,10 @@ mkdir -p "$WORK/$TOP/app/build.noindex"
 /usr/bin/ditto app/build.noindex/Stenny.app "$WORK/$TOP/app/build.noindex/Stenny.app"
 codesign --verify --deep --strict "$WORK/$TOP/app/build.noindex/Stenny.app"
 
+# The connector for Claude Desktop, at the top of the folder: setup opens it (SETUP.md step 13)
+connector/build.sh
+cp dist/Stenny.mcpb "$WORK/$TOP/Stenny.mcpb"
+
 # Checks the shipped audio tools can do Stenny's job, and that they use nothing outside macOS
 MACOS="$WORK/$TOP/app/build.noindex/Stenny.app/Contents/MacOS"
 if otool -L "$MACOS/ffmpeg" "$MACOS/ffprobe" | grep -E '^\s' | grep -vE '/usr/lib/|/System/Library/'; then
@@ -43,7 +47,7 @@ if [[ "${1:-}" == "--publish" ]]; then
     git tag "$TAG"
     git push origin "$TAG"
     # The LGPL asks that ffmpeg's source stays available next to the binary
-    gh release create "$TAG" dist/Stenny.zip app/build.noindex/tools-src/ffmpeg-*.tar.xz \
+    gh release create "$TAG" dist/Stenny.zip dist/Stenny.mcpb app/build.noindex/tools-src/ffmpeg-*.tar.xz \
         --title "Stenny ${VERSION}" --generate-notes
     echo "✅ Released $TAG"
 fi

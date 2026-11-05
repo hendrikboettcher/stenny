@@ -41,7 +41,7 @@ curl -fL -o /tmp/Stenny.zip https://github.com/hendrikboettcher/stenny/releases/
 ditto -x -k /tmp/Stenny.zip ~/Applications && rm /tmp/Stenny.zip
 ```
 
-**Check:** `ls ~/Applications/stenny.noindex/SETUP.md ~/Applications/stenny.noindex/app/build.noindex/Stenny.app` shows both. From now on, "this folder" means `~/Applications/stenny.noindex`: run every command there (`cd ~/Applications/stenny.noindex && …`), even if your session started somewhere else, and continue with the copy of this file in it (it matches the downloaded version).
+**Check:** `ls ~/Applications/stenny.noindex/SETUP.md ~/Applications/stenny.noindex/Stenny.mcpb ~/Applications/stenny.noindex/app/build.noindex/Stenny.app` shows all three. From now on, "this folder" means `~/Applications/stenny.noindex`: run every command there (`cd ~/Applications/stenny.noindex && …`), even if your session started somewhere else, and continue with the copy of this file in it (it matches the downloaded version).
 
 Stenny's app is signed with its author's own certificate, not one from Apple. Say so in one sentence, and that the code is open at github.com/hendrikboettcher/stenny.
 
@@ -196,7 +196,7 @@ Then restart Stenny, so it matches calendar events against these courses: `pkill
 
 **Check:** `stenny courses` lists exactly their courses with the right languages.
 
-Tell them they can add or hide courses later from Stenny's menu (*Start Lecture ▸ Add Course…*), without you.
+Tell them they can add or remove courses later in Stenny's window (Stenny's icon ▸ *Open Stenny…*: the **+** next to *Courses*, or right-click a course), without you.
 
 ## 9. The AI step (the `claude` command)
 
@@ -255,24 +255,19 @@ Tell the user in one sentence. They can remove it any time by asking in this cha
 
 ## 13. Let Claude read the transcripts
 
-This is what Stenny is for: Claude answers from what was said in class. You can't change Claude's settings yourself, so guide the user, one click at a time.
+This is what Stenny is for: Claude answers from what was said in class. The **Stenny connector** gives Claude your lectures: any chat can search them, read a transcript, and cite it as "Lecture 3 [0:12:30]". It needs the **Claude desktop app** on this Mac (claude.ai/download, if it's missing); Claude on the web and on the phone can't reach it.
 
-**a) Create the folders Claude will read:**
+Check that the connector can start: `stenny mcp --desktop-config` prints a short JSON entry. Then open the extension in Claude:
 
 ```bash
-mkdir -p "<vault>/Lectures" "<vault>/Recordings"
+open -a Claude Stenny.mcpb
 ```
 
-Tell the user both full paths; they'll pick them in a moment.
+The user clicks **Install** in the window Claude shows. You can't click it for them. If no window appears, they can drag `Stenny.mcpb` from this folder onto Claude's Settings window (open the folder for them with `open -a Finder .`).
 
-**b) Turn on the Filesystem connector** in the **Claude desktop app** (claude.ai/download, if it's missing; the chats that read the transcripts must run in the desktop app on this Mac):
-1. Settings ▸ **Connectors** (in some versions **Extensions**) ▸ **Filesystem** ▸ install or enable it.
-2. Add the allowed folders: only the `Lectures` and `Recordings` folders from a). In the folder picker, ⌘⇧G lets them paste a path.
-3. Save, and restart the Claude app if it asks.
+**Check:** Settings ▸ Customize ▸ Connectors lists **Stenny**, switched on. Then, in a new chat in the Claude desktop app, ask: *"Which courses do you have in Stenny?"* Claude should use Stenny's tools (the first time it asks: *Allow*) and list the courses from step 8. If Claude says Stenny isn't set up, it explains why: usually step 2. If the menu looks different, ask the user to describe or screenshot what they see and help from there.
 
-If the menu looks different, ask the user to describe or screenshot what they see and help from there.
-
-**Check:** in a new chat in the Claude desktop app, ask: *"Which folders and files can you see in my Lectures folder?"* Claude should use the Filesystem connector (the first time, it asks: *Allow*). If it says it has no access, go back to b).
+Tell them in one line: they can just ask, in any chat, e.g. *"Quiz me on my last Microeconomics lecture."*
 
 Tell the user: **Stenny works now.** Two short parts are left.
 
@@ -286,23 +281,17 @@ Say in a sentence or two: Stenny offers lectures from the calendar on this Mac, 
 
 # Phase C: Recommended, not required
 
-Stenny works without this. Ask for each part: "Set it up (Recommended)" / "Skip".
+Stenny works without this. Ask for each part, with the recommendation given there.
 
 ## 15. Claude projects (one per course)
 
-A project makes each course's chats read the newest transcripts by themselves, cite them ("Lecture 3 [0:12:30]") and keep the course glossary up to date, which makes later transcripts more accurate. You can't create projects yourself, so guide the user, one click at a time.
+Not needed for the transcripts: the connector from step 13 works in every chat, and keeps the glossaries up to date by itself. A project only helps to keep a course's other material in one place, such as the syllabus, a reading list or old exams. Ask "Skip (Recommended)" / "Set it up".
 
-For each course, one at a time:
-1. Copy the course's instructions for them: `stenny project-instructions --course "<name>" | pbcopy`.
-2. In the Claude desktop app: **Projects ▸ New project**, named after the course.
-3. **Instructions** (*Set project instructions*) ▸ paste (⌘V) ▸ Save.
-4. Optionally add the course's slides, syllabus or reading list as project files.
-
-**Check:** in one of the new projects, ask *"What was my last lecture about?"* once a lecture is recorded. Before that, *"Which files can you see in my Lectures folder?"* is enough.
+If they want it, for each course, one at a time: in the Claude desktop app, **Projects ▸ New project**, named after the course, then add the files. No instructions to paste. You can't create projects yourself, so guide them one click at a time.
 
 ## 16. Obsidian
 
-Obsidian (free) shows the transcripts, topics and slides linked together, and the menu's *Open Transcript* opens the live draft there. The files stay plain text in the same folder; nothing moves.
+Obsidian (free) shows the transcripts, topics and slides linked together, and the menu's *Open Transcript* opens the live draft there. The files stay plain text in the same folder; nothing moves. Ask "Set it up (Recommended)" / "Skip".
 
 Check: `ls -d /Applications/Obsidian.app ~/Applications/Obsidian.app 2>/dev/null`. If it's missing, open https://obsidian.md/download and wait until they've dragged it to Applications. If the folder from step 5 isn't a vault yet, open Obsidian and have them add it. On first launch Obsidian may create a vault by itself and skip its start screen, and its command palette has no such command: then it's the vault name at the bottom left ▸ *Manage vaults…* ▸ *Open folder as vault* (⌘⇧G lets them paste the path).
 
@@ -313,6 +302,7 @@ Check: `ls -d /Applications/Obsidian.app ~/Applications/Obsidian.app 2>/dev/null
 Say clearly: **✅ Setup is finished.** Then, short:
 - Before a lecture: wait for the notification, or click Stenny's icon ▸ *Start Lecture* ▸ course. Keep the MacBook **open** while recording.
 - Stop: click the dot ▸ *Stop & Make Final Transcript*. On power, a 3-hour lecture's transcript is ready after about 20–25 minutes; on battery it waits until they plug in.
+- Afterwards: Stenny's icon ▸ *Open Stenny…* shows every lecture with its summary. *Share…* there makes a clean copy (PDF, Word or Markdown) to send to classmates.
 - If memory or disk runs low, the recording goes on first: the live text pauses, or the final transcript waits. If something crashes, Stenny saves the audio and starts recording again by itself.
 - **Ask the lecturer first.** Many universities need the lecturer's consent before a lecture is recorded. Keep recordings and transcripts to themselves.
 - New versions: Stenny's icon ▸ *Check for Updates…*.

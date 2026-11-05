@@ -1,11 +1,11 @@
 # Stenny
 
-Stenny records your lectures on a Mac and turns them into clean, searchable transcripts, so you can study them later with Claude. It runs in the menu bar: start a lecture, pause with one shortcut, stop. Whisper transcribes everything on your own Mac and saves Markdown files in a folder of your choice, for example an [Obsidian](https://obsidian.md) vault.
+Stenny records your lectures on a Mac and turns them into clean, searchable transcripts, so you can study them later with Claude. It runs in the menu bar: start a lecture, pause with one shortcut, stop. Whisper transcribes everything on your own Mac and saves Markdown files in a folder of your choice, for example an [Obsidian](https://obsidian.md) vault. Stenny's connector lets Claude read them in any chat.
 
 - **Private:** transcription runs locally on the Mac's GPU (Whisper large-v3-turbo through mlx-whisper). Audio never leaves your Mac.
 - **Nothing is lost:** every lecture keeps the raw Whisper output, unfiltered, next to its audio.
 - **Nearly free:** transcription costs nothing. An optional AI step (section headings, a summary, checked fixes for misheard terms) runs through your Claude subscription (Claude Code) or the Anthropic API (about $0.01 per lecture). The AI never rewrites what was said.
-- **Made for studying with Claude:** the files are named, numbered and linked so that a Claude project can read a whole course at once.
+- **Made for studying with Claude:** Stenny's connector lets any Claude chat search your lectures, read them and cite them as "Lecture 3 [0:12:30]".
 - **Your Mac stays usable:** heavy work runs at low priority and can wait until the Mac is plugged in.
 
 Website and docs: [stenny.eu](https://stenny.eu/docs/quickstart/)
@@ -17,11 +17,12 @@ Website and docs: [stenny.eu](https://stenny.eu/docs/quickstart/)
 | | |
 |---|---|
 | Mac | Apple Silicon (M1 or newer), macOS 14.4 (Sonoma) or newer |
-| Disk space | About 5 GB: the Whisper model (1.6 GB), Apple's Command Line Tools (about 1.8 GB, if you don't have them yet) and the tools. Recordings take about 1 GB per semester. |
+| Disk space | About 5 GB: the Whisper model (1.6 GB), the app and the tools. Recordings take about 1 GB per semester. |
 | Memory | 2.5 to 3.5 GB free while transcribing |
-| Optional | [Obsidian](https://obsidian.md) (free) to read the transcripts, a calendar with your lectures, and Claude (Claude Code or an API key) for the AI step |
+| Claude | The Claude desktop app to study with your lectures, and Claude Code to set Stenny up |
+| Optional | [Obsidian](https://obsidian.md) (free) to read the transcripts, and a calendar with your lectures |
 
-Stenny comes as source code, not as a finished app. You build it on your own Mac, so you need no Apple developer account and macOS doesn't block it.
+Stenny comes as a finished app with its source code next to it. Changing the menu bar app's own code later needs Apple's Command Line Tools (about 1.8 GB), which Claude Code can install then.
 
 ## Setup
 
@@ -33,7 +34,7 @@ Paste this sentence into [Claude Code](https://claude.com/claude-code) (in the C
 Install Stenny on my Mac by following https://github.com/hendrikboettcher/stenny/blob/main/SETUP.md
 ```
 
-That's all. Claude Code downloads Stenny to `~/Applications/stenny.noindex`, checks your Mac, installs what's missing and the menu bar app, asks where your transcripts should go and which courses you take, downloads the Whisper model, makes a test recording with you and helps you set up a Claude project per course. It explains each step and asks before anything important. [SETUP.md](SETUP.md) is the exact script it follows; you can read it first.
+That's all. Claude Code downloads Stenny to `~/Applications/stenny.noindex`, checks your Mac, installs what's missing and the menu bar app, asks where your transcripts should go and which courses you take, downloads the Whisper model, makes a test recording with you and adds the Stenny connector to Claude. It explains each step and asks before anything important. [SETUP.md](SETUP.md) is the exact script it follows; you can read it first.
 
 The app is signed with the author's own certificate, not one from Apple, so macOS refuses a copy downloaded in a browser. Claude Code's download doesn't have that problem. To get a new version later: Stenny's menu ▸ *Check for Updates…* (or `stenny update`).
 
@@ -61,6 +62,9 @@ open -e ~/"Lectures Data/_System/config.toml" # replace the example courses with
 stenny download-model
 
 open /Applications/Stenny.app   # allow microphone, calendar and notifications
+
+# 5. The connector for Claude Desktop: click Install
+open -a Claude Stenny.mcpb
 ```
 
 See `config.example.toml` for every setting. The AI step uses the `claude` command (Claude Code in the terminal) by default; the Claude desktop app doesn't install it, so run `curl -fsSL https://claude.ai/install.sh | bash` and `claude auth login` once. For the API instead: `uv tool install -e '.[api]' --python 3.12`, set `ANTHROPIC_API_KEY` and `[llm] backend = "api"`. With `backend = "none"` everything stays offline.
@@ -76,6 +80,10 @@ See `config.example.toml` for every setting. The AI step uses the `claude` comma
 **Stop:** click the dot ▸ *Stop & Make Final Transcript*. On power, the whole recording is transcribed again at full quality (a 3-hour lecture takes about 20–25 minutes) and replaces the draft. On battery it waits until you plug in.
 
 **Keep the lid open while recording.** A closed MacBook on battery sleeps and records nothing.
+
+**Your lectures:** Stenny's menu ▸ *Open Stenny…* opens a window with your courses, each course's lectures (newest first) and the selected lecture's summary, with *Open Transcript* and *Show in Finder*. Add a course with the **+** next to *Courses*; right-click a course to remove it. Removing deletes nothing: its transcripts move to *Past Courses*, and *Bring Back to the Menu* restores it.
+
+**Share with classmates:** *Share…* in the window makes a clean copy as PDF, Word or Markdown (summary on top, if you like): no file paths, microphone names or Obsidian links. The copies are saved in `~/Lectures Data/_Shared/`. Stenny asks once per course whether the lecturer is fine with it.
 
 **Other things you can do:**
 - **Use your iPhone as the microphone** (*Microphone ▸*, via Continuity) and put it closer to the lecturer. The Mac's own microphone records as a backup and fills the gaps when you use the phone.
@@ -100,6 +108,7 @@ stenny check                                      # health check of the last rec
 
 stenny courses                                    # list your courses
 stenny library                                    # every lecture and talk with a transcript
+stenny share calc 2026-10-15 --with-summary       # a clean copy to share (--format docx for Word)
 stenny mcp --desktop-config                       # the connector for Claude Desktop (see Studying with Claude)
 stenny match-course "VL Calculus (Room 1.01)"     # which course a calendar event belongs to
 stenny queue list | run                           # waiting final passes
@@ -108,7 +117,7 @@ stenny schedule install                           # run the queue every 10 min w
 
 ## Studying with Claude
 
-### The Stenny connector (preview)
+### The Stenny connector
 
 `stenny mcp` lets Claude Desktop read your lectures directly: no Filesystem connector, no project per course, no
 instructions to paste. Any chat can then answer *"What did the lecturer say about k-means in lecture 4?"*. Claude
@@ -127,8 +136,9 @@ Everything Claude gets is clean text, like a shared copy: no paths on your Mac, 
 also tells Claude how to study with Stenny (cite as "Lecture 3 [0:12:30]", check terms against the glossary and the
 slides), and offers a *Study a course* prompt.
 
-To add it, double-click `Stenny.mcpb` (made by `connector/build.sh`; or drag it onto Claude's Settings window) and
-click **Install**. It shows up under Settings ▸ Customize ▸ Connectors. The extension starts the `stenny` installed on
+To add it, double-click `Stenny.mcpb` in Stenny's folder (it comes with the download;
+`connector/build.sh` makes it from the code), or drag it onto Claude's Settings window, and click **Install**. Setup
+does this for you. It shows up under Settings ▸ Customize ▸ Connectors. The extension starts the `stenny` installed on
 your computer, so it always reads the same lectures as the app. It only works in the desktop app on this computer:
 Claude on the web and on your phone can't reach it.
 
@@ -136,15 +146,12 @@ Developing the connector? Set `[connector] stenny` in config.toml to your copy's
 config.example.toml), or put the entry `stenny mcp --desktop-config` prints into `mcpServers` in Claude Desktop's
 `claude_desktop_config.json` while Claude Desktop is closed (it rewrites that file when it quits).
 
-### With the Filesystem connector and a project per course
+### Without the connector
 
-The transcripts are meant as context for Claude. Without the connector, the least work is one Claude project per course that reads them straight from your Mac:
-
-1. In the Claude desktop app, turn on the **Filesystem** connector (Settings ▸ Connectors) and give it your lectures folder (and the `Recordings` folder, for talks).
-2. Create a project for each course.
-3. Run `stenny project-instructions` and paste each course's block into that project's instructions.
-
-Every chat in the project can then read the newest transcripts and summaries, cite them as "Lecture 3 [0:12:30]", and keep the course glossary up to date. Claude only changes the glossary, never the transcripts.
+The transcripts are plain Markdown files, so any tool that reads files can use them. In the Claude desktop app, the
+**Filesystem** connector (Settings ▸ Connectors), limited to your lectures folder and the `Recordings` folder, works
+too. Then a project per course, with the block from `stenny project-instructions` pasted into its instructions, makes
+its chats read the newest transcripts, cite them and keep the course glossary up to date.
 
 ## What ends up where
 
@@ -219,7 +226,7 @@ At the default low priority Stenny runs at about 8× realtime. While recording, 
 ```bash
 uv run pytest                          # tests, no model download needed
 uv run stenny live --course calc --file sample.m4a --speed 3   # try live mode without a microphone
-stenny course add "Name" -l en        # or Stenny's menu: Start Lecture ▸ Add Course…
+stenny course add "Name" -l en        # or the + next to Courses in Stenny's window
 app/make-cert.sh                       # once: a signing certificate, so macOS remembers permissions across builds
 app/build.sh                           # build the app and install it (needs Apple's Command Line Tools; --no-install: only build)
 app/release.sh                         # dist/Stenny.zip for a release (--publish: also tag and upload it)
