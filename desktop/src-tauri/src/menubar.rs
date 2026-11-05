@@ -50,6 +50,29 @@ struct State {
     notified: HashSet<String>,               // calendar events already announced
     agent_in: Option<std::process::ChildStdin>,
     status_item: Option<MenuItem<Wry>>,      // the menu's first line, updated in place
+    icon: String,                            // the icon shown, so it is only set when it changes (no flicker)
+    pause_accel: Option<String>,             // the pause shortcut as a menu accelerator ("Cmd+Shift+BracketLeft")
+}
+
+/// The pause shortcut for the menu, by physical key (the agent tells which: "ready 33 ⇧⌘Ü"), so macOS shows it with
+/// the label of the user's keyboard (Ü on a German one). Carbon key codes → the W3C key names muda uses.
+fn accelerator(shortcut: &str, key_code: u32) -> Option<String> {
+    let code = match key_code {
+        0 => "KeyA", 11 => "KeyB", 8 => "KeyC", 2 => "KeyD", 14 => "KeyE", 3 => "KeyF", 5 => "KeyG", 4 => "KeyH",
+        34 => "KeyI", 38 => "KeyJ", 40 => "KeyK", 37 => "KeyL", 46 => "KeyM", 45 => "KeyN", 31 => "KeyO", 35 => "KeyP",
+        12 => "KeyQ", 15 => "KeyR", 1 => "KeyS", 17 => "KeyT", 32 => "KeyU", 9 => "KeyV", 13 => "KeyW", 7 => "KeyX",
+        16 => "KeyY", 6 => "KeyZ", 29 => "Digit0", 18 => "Digit1", 19 => "Digit2", 20 => "Digit3", 21 => "Digit4",
+        23 => "Digit5", 22 => "Digit6", 26 => "Digit7", 28 => "Digit8", 25 => "Digit9", 33 => "BracketLeft",
+        30 => "BracketRight", 41 => "Semicolon", 39 => "Quote", 43 => "Comma", 47 => "Period", 44 => "Slash",
+        42 => "Backslash", 50 => "Backquote", 27 => "Minus", 24 => "Equal", 49 => "Space",
+        122 => "F1", 120 => "F2", 99 => "F3", 118 => "F4", 96 => "F5", 97 => "F6", 98 => "F7", 100 => "F8",
+        101 => "F9", 109 => "F10", 103 => "F11", 111 => "F12",
+        _ => return None,
+    };
+    let mods: Vec<&str> = shortcut.to_lowercase().split('+').filter_map(|m| match m {
+        "cmd" => Some("Cmd"), "shift" => Some("Shift"), "ctrl" => Some("Ctrl"), "opt" => Some("Alt"), _ => None,
+    }).collect();
+    Some(format!("{}+{code}", mods.join("+")))
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -150,7 +173,7 @@ fn build_menu(app: &AppHandle, st: &State) -> tauri::Result<(Menu<Wry>, MenuItem
 
     if active {
         let pause = if state == "paused" { "Resume" } else { "Pause" };
-        items.push(Box::new(MenuItem::with_id(app, "toggle", pause, true, None::<&str>)?));
+        items.push(Box::new(MenuItem::with_id(app, "toggle", pause, true, st.pause_accel.as_deref())?));
         items.push(Box::new(MenuItem::with_id(app, "stop", "Stop && Make Final Transcript", true, None::<&str>)?)); // && shows one &
         items.push(Box::new(PredefinedMenuItem::separator(app)?));
     } else if state == "idle" || state.is_empty() {
@@ -240,8 +263,11 @@ fn redraw(app: &AppHandle, force: bool) {
         "starting" => ("starting", None),
         _ => ("idle", None),
     };
-    let _ = tray.set_icon(Some(icon(name)));
-    let _ = tray.set_icon_as_template(true);
+    if st.icon != name {
+        st.icon = name.to_string();
+        let _ = tray.set_icon(Some(icon(name)));
+        let _ = tray.set_icon_as_template(true);
+    }
     let _ = tray.set_title(title.as_deref());
     let new_shape = shape(&st);
     if force || new_shape != st.shape || st.status_item.is_none() {
@@ -639,7 +665,12 @@ fn start_agent(app: &AppHandle) {
         }
         let Some(out) = child.stdout.take() else { return };
         for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
-            if line == "hotkey" {
+            if let Some(rest) = line.strip_prefix("ready ") {
+                let code = rest.split(' ').next().and_then(|c| c.parse::<u32>().ok());
+                let accel = code.and_then(|c| accelerator(&shortcut, c));
+                app.state::<MenuBar>().0.lock().unwrap().pause_accel = accel;
+                redraw(&app, true);
+            } else if line == "hotkey" {
                 toggle_pause(&app);
             } else if let Some(events) = line.strip_prefix("events ") {
                 calendar(&app, events);

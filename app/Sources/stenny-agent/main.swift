@@ -8,7 +8,7 @@ import UserNotifications
 // One line per event on stdout, one command per line on stdin; it quits when its stdin closes (the app quit).
 //
 //   stenny-agent --shortcut "cmd+shift+ü" [--calendar --data-dir <~/Lectures Data/_System>]
-//   out: "ready ⌘⇧Ü" (or "error …"); "hotkey" on every press;
+//   out: "ready <key code> ⌘⇧Ü" (or "error …"); "hotkey" on every press;
 //        with --calendar, every 30 s: "events [{title, start, end, range, id}, …]" (on now or within 10 min);
 //        "start <course>" when "Start Recording" is clicked in a lecture notification
 //   in:  "notify {"id": …, "course": …, "range": …}" posts that notification ("Record this lecture?");
@@ -211,5 +211,5 @@ InstallEventHandler(GetApplicationEventTarget(), { _, _, _ in
 var ref: EventHotKeyRef?
 let id = EventHotKeyID(signature: OSType(0x53544E59) /* "STNY" */, id: 1)
 let status = RegisterEventHotKey(UInt32(code), UInt32(modifiers), id, GetApplicationEventTarget(), 0, &ref)
-say(status == noErr ? "ready \(label)" : "error \(label) is taken by another app (status \(status)).")
+say(status == noErr ? "ready \(code) \(label)" : "error \(label) is taken by another app (status \(status)).")
 app.run()
