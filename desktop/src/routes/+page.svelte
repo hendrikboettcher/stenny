@@ -4,7 +4,7 @@
   import Figure from "$lib/Figure.svelte";
   import { renderMarkdown } from "$lib/markdown";
   import {
-    library, lecture, makeCopy, finishNow, openTranscript, reveal,
+    library, lecture, makeCopy, finishNow, openTranscript, reveal, lecturerAgreed,
     type Entry, type Library,
   } from "$lib/engine";
 
@@ -121,6 +121,7 @@
   async function share(format: string) {
     if (!selected) return;
     shareOpen = false;
+    if (!(await lecturerAgreed(selected, "share"))) return;
     busy = "share";
     notice = null;
     try {

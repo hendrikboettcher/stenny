@@ -1,17 +1,18 @@
-//! Stenny's app: a menu bar icon and the library window. The window's interface is the web code in desktop/src;
-//! everything about lectures comes from the engine (`stenny app-server`, see engine.rs).
+//! Stenny's app: the menu bar (menubar.rs) and its windows (the library, "Record a talk"). The windows'
+//! interface is the web code in desktop/src; everything about lectures comes from the engine
+//! (`stenny app-server`, see engine.rs).
 //!
-//! `--library` runs the window alone, without the menu bar icon: for trying a build next to the installed
-//! Stenny, which keeps its own icon (one Stenny in the menu bar, never two).
+//! `--library` runs the library window alone, without the menu bar icon: for trying a build next to the
+//! installed Stenny, which keeps its own icon (one Stenny in the menu bar, never two).
 
 mod engine;
+mod menubar;
 
 use engine::Engine;
+use menubar::MenuBar;
 use serde_json::Value;
 use std::sync::Arc;
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
-use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager, WindowEvent};
+use tauri::{AppHandle, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 
 /// One request to the engine, e.g. `engine("library")`. Runs off the main thread: a request can take a moment.
 #[tauri::command]
@@ -39,6 +40,26 @@ fn reveal(path: String) -> Result<(), String> {
     tauri_plugin_opener::reveal_item_in_dir(path).map_err(|e| e.to_string())
 }
 
+/// "Did the lecturer agree?" (asked once per course and use); the window asks it before sharing.
+#[tauri::command]
+async fn lecturer_agreed(app: AppHandle, use_: String, course: String, event: bool) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || menubar::lecturer_agreed(&app, &use_, &course, event))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// From the "Record a talk" window: start recording a talk with this title.
+#[tauri::command]
+async fn start_talk(app: AppHandle, title: String) -> Result<(), String> {
+    let title = title.trim().to_string();
+    if title.is_empty() {
+        return Err("Give the talk a title.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || menubar::start(&app, &title, true))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 fn urlencode(s: &str) -> String {
     s.bytes()
         .map(|b| match b {
@@ -48,61 +69,77 @@ fn urlencode(s: &str) -> String {
         .collect()
 }
 
-fn show_library(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window("library") {
-        let _ = window.show();
-        let _ = window.unminimize();
-        let _ = window.set_focus();
-    }
-}
-
-fn add_tray(app: &AppHandle) -> tauri::Result<()> {
-    let open = MenuItem::with_id(app, "open", "Open Stenny…", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit Stenny", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&open, &PredefinedMenuItem::separator(app)?, &quit])?;
-    let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?;
-    TrayIconBuilder::with_id("stenny")
-        .icon(icon)
-        .icon_as_template(true)
-        .tooltip("Stenny")
-        .menu(&menu)
-        .show_menu_on_left_click(true)
-        .on_menu_event(|app, event| match event.id.as_ref() {
-            "open" => show_library(app),
-            "quit" => app.exit(0),
-            _ => {}
-        })
-        .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::Click { button: MouseButton::Right, button_state: MouseButtonState::Up, .. } = event {
-                show_library(tray.app_handle());
-            }
-        })
-        .build(app)?;
-    Ok(())
+/// Shows a window, creating it the first time: "library" or "talk".
+pub fn show_window(app: &AppHandle, label: &str) {
+    let app2 = app.clone();
+    let label = label.to_string();
+    let _ = app.run_on_main_thread(move || {
+        if let Some(window) = app2.get_webview_window(&label) {
+            let _ = window.show();
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+            return;
+        }
+        let built = match label.as_str() {
+            "talk" => WebviewWindowBuilder::new(&app2, "talk", WebviewUrl::App("talk".into()))
+                .title("Record a Talk or Event")
+                .inner_size(440.0, 230.0)
+                .resizable(false)
+                .minimizable(false)
+                .center()
+                .build(),
+            _ => return,
+        };
+        if let Ok(window) = built {
+            let _ = window.set_focus();
+        }
+    });
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let library_only = std::env::args().any(|a| a == "--library");
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(Arc::new(Engine::default()))
-        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal])
+        .manage(MenuBar::default())
+        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, lecturer_agreed, start_talk])
         .setup(move |app| {
             if !library_only {
-                add_tray(app.handle())?;
+                // a menu bar app: no Dock icon; its windows still come up when opened from the menu
+                #[cfg(target_os = "macos")]
+                app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                menubar::install(app.handle())?;
+            } else if let Some(window) = app.get_webview_window("library") {
+                let _ = window.show();
             }
             Ok(())
         })
         .on_window_event(move |window, event| {
-            // With the menu bar icon, closing the window only hides it; Stenny keeps running for the next lecture.
+            // With the menu bar icon, closing the library only hides it; Stenny keeps running for the next lecture.
             if let WindowEvent::CloseRequested { api, .. } = event {
-                if !library_only {
+                if !library_only && window.label() == "library" {
                     api.prevent_close();
                     let _ = window.hide();
                 }
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running Stenny");
+        .build(tauri::generate_context!())
+        .expect("error while building Stenny");
+    app.run(move |app, event| {
+        // ⌘Q while a lecture records asks first (the menu's Quit does the same)
+        if let RunEvent::ExitRequested { api, code: None, .. } = event {
+            if !library_only {
+                api.prevent_exit();
+                let app = app.clone();
+                std::thread::spawn(move || {
+                    if menubar::confirm_quit(&app) {
+                        app.exit(0);
+                    }
+                });
+            }
+        }
+    });
 }

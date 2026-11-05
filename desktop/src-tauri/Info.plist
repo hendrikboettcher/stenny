@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- merged into Stenny.app's Info.plist by the Tauri bundler -->
+  <key>LSUIElement</key><true/>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Stenny records lectures you start from its menu. Audio stays on this Mac; pausing turns the microphone off.</string>
+  <key>NSCalendarsFullAccessUsageDescription</key>
+  <string>Stenny looks for the lecture that's on now in your calendar, so you can start recording it with one click. Nothing is changed or sent anywhere.</string>
+</dict>
+</plist>

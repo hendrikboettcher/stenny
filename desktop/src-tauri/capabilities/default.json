@@ -3,11 +3,13 @@
   "identifier": "default",
   "description": "What Stenny's library window may do",
   "windows": [
-    "library"
+    "library",
+    "talk"
   ],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
-    "opener:default"
+    "opener:default",
+    "core:window:allow-close"
   ]
 }

@@ -14,7 +14,7 @@ import sys
 from importlib.metadata import version as package_version
 from pathlib import Path
 
-from . import share
+from . import app_live, share
 from . import config as config_mod
 from .config import ConfigError
 
@@ -87,7 +87,8 @@ def ping(cfg, params: dict) -> dict:
     return {"version": package_version("stenny")}
 
 
-METHODS = {"ping": ping, "library": library, "lecture": lecture, "make_copy": make_copy, "finish_now": finish_now}
+METHODS = {"ping": ping, "library": library, "lecture": lecture, "make_copy": make_copy, "finish_now": finish_now,
+           **app_live.METHODS}
 
 
 def handle(cfg, request: dict) -> dict:
@@ -99,7 +100,7 @@ def handle(cfg, request: dict) -> dict:
         return {"id": rid, "error": f"Unknown method '{request.get('method')}'."}
     try:
         return {"id": rid, "result": method(cfg, request.get("params") or {})}
-    except AppError as e:
+    except (AppError, app_live.LiveError) as e:
         return {"id": rid, "error": str(e)}
     except Exception as e:  # noqa: BLE001 — reported to the app, logged to stderr
         print(f"app-server: {request.get('method')} failed: {e!r}", file=sys.stderr)

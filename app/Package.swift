@@ -7,6 +7,8 @@ let package = Package(
     targets: [
         .executableTarget(name: "Stenny", path: "Sources/Stenny"),
         // native microphone recorder used by `stenny live` (bundled inside Stenny.app)
-        .executableTarget(name: "stenny-rec", path: "Sources/stenny-rec")
+        .executableTarget(name: "stenny-rec", path: "Sources/stenny-rec"),
+        // the new app's (desktop/) macOS helper: the global pause shortcut
+        .executableTarget(name: "stenny-agent", path: "Sources/stenny-agent")
     ]
 )

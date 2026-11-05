@@ -42,3 +42,6 @@ export const makeCopy = (e: Entry, format: string, withSummary: boolean) =>
 export const finishNow = (e: Entry) => engine<{ started: boolean }>("finish_now", where(e));
 export const openTranscript = (path: string) => (inApp ? invoke("open_transcript", { path }) : console.log("open", path));
 export const reveal = (path: string) => (inApp ? invoke("reveal", { path }) : console.log("reveal", path));
+// "Did the lecturer agree?", asked once per course before sharing (in a browser during development: yes)
+export const lecturerAgreed = (e: Entry, use: "share" | "record") =>
+  inApp ? invoke<boolean>("lecturer_agreed", { use_: use, course: e.course, event: e.kind === "event" }) : Promise.resolve(true);
