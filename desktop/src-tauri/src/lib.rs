@@ -48,6 +48,17 @@ async fn lecturer_agreed(app: AppHandle, use_: String, course: String, event: bo
         .map_err(|e| e.to_string())
 }
 
+/// The library window's footer: Send Feedback… and Check for Updates…, as in the menu bar.
+#[tauri::command]
+fn show_feedback(app: AppHandle) {
+    show_window(&app, "feedback");
+}
+
+#[tauri::command]
+async fn check_updates(app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || menubar::check_updates(&app)).await.map_err(|e| e.to_string())
+}
+
 /// From the "Record a talk" window: start recording a talk with this title.
 #[tauri::command]
 async fn start_talk(app: AppHandle, title: String) -> Result<(), String> {
@@ -81,6 +92,13 @@ pub fn show_window(app: &AppHandle, label: &str) {
             return;
         }
         let built = match label.as_str() {
+            "feedback" => WebviewWindowBuilder::new(&app2, "feedback", WebviewUrl::App("feedback".into()))
+                .title("Send Feedback")
+                .inner_size(460.0, 430.0)
+                .resizable(false)
+                .minimizable(false)
+                .center()
+                .build(),
             "talk" => WebviewWindowBuilder::new(&app2, "talk", WebviewUrl::App("talk".into()))
                 .title("Record a Talk or Event")
                 .inner_size(440.0, 262.0)
@@ -105,7 +123,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(Arc::new(Engine::default()))
         .manage(MenuBar::default())
-        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, lecturer_agreed, start_talk])
+        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, lecturer_agreed, start_talk, show_feedback, check_updates])
         .setup(move |app| {
             if !library_only {
                 // a menu bar app: no Dock icon; its windows still come up when opened from the menu

@@ -1,6 +1,7 @@
 import AppKit
 import Carbon
 import EventKit
+import ServiceManagement
 import UserNotifications
 
 // stenny-agent: the macOS parts of Stenny's new app (desktop/) that Tauri doesn't have, as a helper it starts.
@@ -10,7 +11,8 @@ import UserNotifications
 //   out: "ready ⌘⇧Ü" (or "error …"); "hotkey" on every press;
 //        with --calendar, every 30 s: "events [{title, start, end, range, id}, …]" (on now or within 10 min);
 //        "start <course>" when "Start Recording" is clicked in a lecture notification
-//   in:  "notify {"id": …, "course": …, "range": …}" posts that notification ("Record this lecture?")
+//   in:  "notify {"id": …, "course": …, "range": …}" posts that notification ("Record this lecture?");
+//        "login" makes Stenny open at login (System Settings ▸ General ▸ Login Items) → "login ok" / "login error …"
 //
 // It runs inside Stenny.app (Contents/MacOS), so the calendar permission and the notifications are Stenny's.
 // The key is given as printed on the keyboard and looked up in the current layout, since Carbon hotkeys use
@@ -182,7 +184,14 @@ if args.contains("--calendar") {
 // Commands from the app; quit with it when its end of our stdin closes.
 Thread.detachNewThread {
     while let line = readLine() {
-        if line.hasPrefix("notify ") {
+        if line == "login" {
+            do {
+                try SMAppService.mainApp.register()  // the app around this helper
+                say("login ok")
+            } catch {
+                say("login error \(error.localizedDescription)")
+            }
+        } else if line.hasPrefix("notify ") {
             let json = String(line.dropFirst("notify ".count))
             DispatchQueue.main.async { postLecture(json) }
         }

@@ -129,6 +129,57 @@ def recover(cfg, params: dict) -> dict:
     return {"recovered": recover_sessions(cfg)}
 
 
+# ---------------------------------------------------------------- feedback and updates
+
+FEEDBACK_URL = "https://stenny.eu/api/feedback"  # the same endpoint serves the website's form
+
+
+def send_feedback(cfg, params: dict) -> dict:
+    """Posts the message (and, if the user ticked the box, Stenny's version, this Mac's model and the last lines
+    of Stenny's log) to stenny.eu, like the Swift app did."""
+    import platform
+    from importlib.metadata import version
+
+    message = (params.get("message") or "").strip()
+    if not message:
+        raise LiveError("Write a few words first.")
+    body = {"source": "app", "message": message, "contact": (params.get("contact") or "").strip()}
+    if params.get("details"):
+        model = subprocess.run(["sysctl", "-n", "hw.model"], capture_output=True, text=True).stdout.strip()
+        memory = int(subprocess.run(["sysctl", "-n", "hw.memsize"], capture_output=True, text=True).stdout or 0) >> 30
+        try:
+            log = (paths.SYSTEM_DIR / "stenny.log").read_text(encoding="utf-8").splitlines()[-40:]
+        except OSError:
+            log = []
+        body.update(version=version("stenny"), system=f"{model}, {memory} GB, macOS {platform.mac_ver()[0]}",
+                    log="\n".join(log))
+    # curl, not urllib: uv's Python doesn't reliably find macOS's certificates (see update.py)
+    try:
+        done = subprocess.run(["/usr/bin/curl", "-sS", "--max-time", "20", "--fail-with-body", "-X", "POST",
+                               "-H", "Content-Type: application/json", "--data-binary", "@-", FEEDBACK_URL],
+                              input=json.dumps(body), capture_output=True, text=True)
+    except OSError:
+        done = None
+    if done is not None and done.returncode == 0:
+        return {"sent": True}
+    if done is not None and done.returncode == 22:  # the server answered with an error
+        try:
+            reason = json.loads(done.stdout or "{}").get("error")
+        except ValueError:
+            reason = None
+        raise LiveError(reason or "The feedback didn't go through.")
+    raise LiveError("Couldn't reach stenny.eu. Check your internet connection and try again.")
+
+
+def check_update(cfg, params: dict) -> dict:
+    """{"current", "latest", "update_available"} from GitHub's releases (update.check)."""
+    from . import update
+    try:
+        return update.check()
+    except Exception as e:  # noqa: BLE001 — no internet, GitHub down
+        raise LiveError("Couldn't check for updates. Check your internet connection and try again.") from e
+
+
 # ---------------------------------------------------------------- "Did the lecturer agree?"
 
 CONSENT = "consent.json"
@@ -182,4 +233,4 @@ def give_consent(cfg, params: dict) -> dict:
 
 METHODS = {"status": status, "start": start, "command": command, "microphone": microphone, "devices": devices,
            "settings": settings, "match_courses": match_courses, "recover": recover, "consent": consent,
-           "give_consent": give_consent}
+           "give_consent": give_consent, "send_feedback": send_feedback, "check_update": check_update}

@@ -26,6 +26,8 @@ const TRAY: &str = "stenny";
 struct Prefs {
     microphone: Option<String>, // None: the system's input device
     no_draft: bool,             // record only, no live text
+    #[serde(default)]
+    login_item: bool,           // added itself to the login items once; after that it's the user's choice
 }
 
 #[derive(Default)]
@@ -196,6 +198,9 @@ fn build_menu(app: &AppHandle, st: &State) -> tauri::Result<(Menu<Wry>, MenuItem
         items.push(Box::new(MenuItem::with_id(app, "transcript", "Open Transcript", true, None::<&str>)?));
     }
     items.push(Box::new(MenuItem::with_id(app, "open", "Open Stenny…", true, None::<&str>)?));
+    items.push(Box::new(PredefinedMenuItem::separator(app)?));
+    items.push(Box::new(MenuItem::with_id(app, "feedback", "Send Feedback…", true, None::<&str>)?));
+    items.push(Box::new(MenuItem::with_id(app, "updates", "Check for Updates…", true, None::<&str>)?));
     items.push(Box::new(PredefinedMenuItem::separator(app)?));
     items.push(Box::new(MenuItem::with_id(app, "quit", "Quit Stenny", true, None::<&str>)?));
     let refs: Vec<&dyn IsMenuItem<Wry>> = items.iter().map(|b| b.as_ref()).collect();
@@ -511,6 +516,8 @@ fn on_menu(app: &AppHandle, id: &str) {
         "stop" => send(&app, "stop"),
         "talk" => crate::show_window(&app, "talk"),
         "open" => crate::show_window(&app, "library"),
+        "feedback" => crate::show_window(&app, "feedback"),
+        "updates" => check_updates(&app),
         "transcript" => open_transcript(&app),
         "draft" => {
             let prefs = {
@@ -538,6 +545,33 @@ fn on_menu(app: &AppHandle, id: &str) {
         }
         _ => {}
     });
+}
+
+/// "Check for Updates…": whether a newer Stenny is out. Installing it comes with the app's own updater; until
+/// then "Download" opens the release page.
+pub fn check_updates(app: &AppHandle) {
+    let result = engine(app).call("check_update", json!({}));
+    let dialog = app.dialog();
+    match result {
+        Err(e) => {
+            dialog.message(e).title("Couldn't check for updates").kind(MessageDialogKind::Warning).blocking_show();
+        }
+        Ok(r) if r.get("update_available").and_then(Value::as_bool) != Some(true) => {
+            let current = str_of(&r, "current").to_string();
+            dialog.message(format!("You have the newest version, {current}.")).title("Stenny is up to date").blocking_show();
+        }
+        Ok(r) => {
+            let (current, latest) = (str_of(&r, "current").to_string(), str_of(&r, "latest").to_string());
+            let download = dialog
+                .message(format!("You have {current}."))
+                .title(format!("Stenny {latest} is available"))
+                .buttons(MessageDialogButtons::OkCancelCustom("Download".into(), "Not Now".into()))
+                .blocking_show();
+            if download {
+                let _ = tauri_plugin_opener::open_url("https://github.com/hendrikboettcher/stenny/releases/latest", None::<&str>);
+            }
+        }
+    }
 }
 
 /// The pause shortcut and other outside callers: pause or resume the running recording, or beep.
@@ -587,7 +621,22 @@ fn start_agent(app: &AppHandle) {
             .stdout(std::process::Stdio::piped())
             .spawn();
         let Ok(mut child) = child else { return };
-        app.state::<MenuBar>().0.lock().unwrap().agent_in = child.stdin.take(); // open while Stenny runs
+        {
+            let bar = app.state::<MenuBar>();
+            let mut st = bar.0.lock().unwrap();
+            st.agent_in = child.stdin.take(); // open while Stenny runs
+            // open at login by default, so the lecture notification works without thinking of it: once, and only
+            // for a copy in an Applications folder (never a build copy)
+            let installed = std::env::current_exe().is_ok_and(|e| {
+                let home = std::env::var("HOME").unwrap_or_default();
+                e.starts_with("/Applications") || e.starts_with(format!("{home}/Applications"))
+            });
+            if installed && !st.prefs.login_item {
+                if let Some(stdin) = st.agent_in.as_mut() {
+                    let _ = writeln!(stdin, "login");
+                }
+            }
+        }
         let Some(out) = child.stdout.take() else { return };
         for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
             if line == "hotkey" {
@@ -597,6 +646,14 @@ fn start_agent(app: &AppHandle) {
             } else if let Some(course) = line.strip_prefix("start ") {
                 let (app, course) = (app.clone(), course.to_string());
                 std::thread::spawn(move || if let Err(e) = start(&app, &course, false) { alert(&app, "Stenny", &e) });
+            } else if line == "login ok" {
+                let prefs = {
+                    let bar = app.state::<MenuBar>();
+                    let mut st = bar.0.lock().unwrap();
+                    st.prefs.login_item = true;
+                    st.prefs.clone()
+                };
+                save_prefs(&app, &prefs);
             } else if let Some(problem) = line.strip_prefix("error ") {
                 notify(&app, &format!("The pause shortcut doesn't work: {problem}"));
             }

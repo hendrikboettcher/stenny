@@ -1,6 +1,7 @@
 <script lang="ts">
   // The library window: courses and talks on the left, their recordings in the middle, one recording on the right.
   import { onMount, untrack } from "svelte";
+  import { invoke } from "@tauri-apps/api/core";
   import Figure from "$lib/Figure.svelte";
   import { renderMarkdown } from "$lib/markdown";
   import {
@@ -175,6 +176,10 @@
       {@render section("Past courses", groups.past)}
       {@render section("Talks & events", groups.talks)}
     </nav>
+    <footer>
+      <button onclick={() => invoke("show_feedback")}>Send Feedback…</button>
+      <button onclick={() => invoke("check_updates")}>Check for Updates…</button>
+    </footer>
   </aside>
 
   <section class="list">
@@ -284,7 +289,10 @@
   .sidebar { background: var(--bar); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
   .brand { display: flex; align-items: center; gap: 9px; padding: 6px 20px 22px; }
   .brand span { font-size: 22px; font-weight: 460; letter-spacing: -0.01em; }
-  nav { overflow-y: auto; padding: 0 10px 20px; }
+  nav { overflow-y: auto; padding: 0 10px 20px; flex: 1; }
+  footer { padding: 10px 10px 14px; border-top: 1px solid var(--line); display: flex; flex-direction: column; }
+  footer button { border: 0; background: none; text-align: left; padding: 4px 10px; color: var(--muted); border-radius: 6px; }
+  footer button:hover { color: var(--ink); }
   .kicker { font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
   nav .kicker { padding: 16px 10px 6px; }
   nav .kicker:first-of-type { padding-top: 0; }

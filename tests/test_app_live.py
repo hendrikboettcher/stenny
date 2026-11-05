@@ -77,3 +77,21 @@ def test_consent_takes_over_the_swift_apps_answers_once(home, monkeypatch):
     assert app_live.consent(None, {"use": "share", "course": "Calculus"}) == {"given": True}
     assert len(calls) == 1  # the Swift app's defaults are read only the first time
     assert "share/course/Calculus" in json.loads((home / "consent.json").read_text(encoding="utf-8"))
+
+
+def test_feedback_needs_words_and_says_when_stenny_eu_is_unreachable(home, monkeypatch):
+    with pytest.raises(app_live.LiveError, match="Write a few words"):
+        app_live.send_feedback(None, {"message": "  "})
+    sent = []
+
+    def curl(args, input=None, **kw):
+        sent.append(json.loads(input))
+        return SimpleNamespace(returncode=6, stdout="")  # 6: couldn't resolve the host
+
+    monkeypatch.setattr(subprocess, "run", curl)
+    with pytest.raises(app_live.LiveError, match="Couldn't reach stenny.eu"):
+        app_live.send_feedback(None, {"message": "The clock froze", "contact": "a@b.c"})
+    assert sent == [{"source": "app", "message": "The clock froze", "contact": "a@b.c"}]  # no details unless ticked
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=22, stdout='{"error": "Too long."}'))
+    with pytest.raises(app_live.LiveError, match="Too long."):
+        app_live.send_feedback(None, {"message": "x"})
