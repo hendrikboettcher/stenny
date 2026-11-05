@@ -248,8 +248,9 @@ def get_transcript(cfg, course: str, lecture: str | int, part: int = 1, at: str 
     head += f" · next: get_transcript with part={part + 1}]" if part < len(parts) else "]"
     times = TIMESTAMP.findall(parts[part - 1])
     if times:
-        head += (f"\n[Cite a passage with its paragraph's full timestamp, e.g. "
-                 f"\"{_cite(entry, entries.index(entry), times[0])}\"; never shorten it to h:mm.]")
+        head += (f"\n[Name this lecture once in your answer ({_cite(entry, entries.index(entry), None)}), then cite a "
+                 f"passage by its paragraph's time only, e.g. [{times[0]}]: at most once per point, never "
+                 f"shortened to h:mm.]")
     return f"{head}\n\n{parts[part - 1]}\n"
 
 
@@ -346,7 +347,8 @@ def search_lectures(cfg, query: str, course: str | None = None, max_results: int
         section = f" — section: {p['section']}" if p["section"] else ""
         lines.append(f"\n- {where}{section}{_status_note(entry)}\n  {_snippet(p['text'], pos, len(terms[0]))}"
                      f"\n  cite as: {_cite(entry, i, p['time'], with_course=not course)}")
-    lines.append("\nCite a hit exactly as its \"cite as\" line shows, with the full h:mm:ss timestamp. "
+    lines.append("\nA hit's \"cite as\" line says which lecture and time it is. In your answer, name each lecture "
+                 "once and then give only the time in brackets, at most once per point, with the full h:mm:ss. "
                  "Read more around a hit with get_transcript(course, lecture, at=\"h:mm:ss\").")
     return "\n".join(lines)
 

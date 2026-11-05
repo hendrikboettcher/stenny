@@ -156,7 +156,8 @@ def test_hits_and_transcripts_say_how_to_cite_with_the_full_timestamp(cfg):
     assert "cite as: Lecture 1 [0:11:40]" in one_course
     talk = connector.search_lectures(cfg, "limits")
     assert "cite as: Some Talk, " in talk
-    assert '"Lecture 1 [0:00:04]"' in connector.get_transcript(cfg, "Calculus", "1")
+    transcript = connector.get_transcript(cfg, "Calculus", "1")
+    assert "Name this lecture once in your answer (Lecture 1)" in transcript and "e.g. [0:00:04]" in transcript
 
 
 def test_search_matching(cfg):
@@ -218,7 +219,8 @@ def test_mcp_server_serves_the_tools(cfg):
     from stenny.mcp_server import build
 
     server = build()
-    assert "search_lectures" in server.instructions and "Lecture N [h:mm:ss]" in server.instructions
+    assert "search_lectures" in server.instructions and "name the lecture once" in server.instructions \
+        and "at most once per point" in server.instructions and "[1:58:41]" in server.instructions
 
     async def session():
         async with Client(server) as client:

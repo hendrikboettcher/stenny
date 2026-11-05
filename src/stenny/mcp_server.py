@@ -25,9 +25,11 @@ subject came up; then read around a hit with get_transcript(course, lecture, at=
 lecture use get_summary first and the transcript for details: the transcript is the source, summaries are \
 AI-written. Long lectures come in parts.
 
-Cite as "Lecture N [h:mm:ss]" (with the course when it isn't clear), so the student can find the passage. \
-Search hits come with a ready "cite as" line: copy it unchanged. Always write the full h:mm:ss timestamp the \
-tools give, like "Lecture 3 [0:02:05]"; never shorten it to "0:02", which reads as two seconds.
+Cite so the student can find a passage without the answer getting cluttered: name the lecture once, at the \
+top ("From Lecture 3:") or where the answer moves to another lecture or course, and then give only the time \
+in brackets, like [1:58:41]. Cite only where it helps to find the passage, at most once per point, and not \
+for general statements. Always write the full h:mm:ss timestamp the tools give; never shorten it to "0:02", \
+which reads as two seconds.
 
 These are automatic transcripts: names and technical terms may be misheard. Prefer the spellings in the \
 course's glossary (get_glossary) and on the slides (get_slides_text), and when a search finds nothing, try \
@@ -45,8 +47,9 @@ STUDY_PROMPT = """I want to study {course} with my lecture transcripts from Sten
 
 Use the Stenny tools: list the lectures of {course} first, read the summaries, and read the transcripts \
 for details. Then help me learn it: give me a short overview of what the lectures covered so far and ask \
-what I want to do (explain a topic, go through a lecture, quiz me, prepare for the exam). Cite passages as \
-"Lecture N [h:mm:ss]", always with the full timestamp (never shortened to h:mm). The transcripts are automatic, so check unclear terms against the glossary and the slides."""
+what I want to do (explain a topic, go through a lecture, quiz me, prepare for the exam). Name the lecture once \
+and then cite passages by their time only, like [1:58:41]: at most once per point, always with the full \
+timestamp (never shortened to h:mm). The transcripts are automatic, so check unclear terms against the glossary and the slides."""
 
 READ = ToolAnnotations(read_only_hint=True, open_world_hint=False)
 
