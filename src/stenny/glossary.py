@@ -56,7 +56,8 @@ course: "{course}"
 
 Terms help Whisper spell names and jargon correctly, and the cleanup step uses them to fix misheard terms.
 Corrections (`wrong → right`) are applied word-for-word to the clean transcript (never to the raw output).
-The course's Claude project keeps this note up to date (see `stenny project-instructions`).
+Stenny adds terms by itself when they are on the slides or were transcribed the same way twice, also when
+Claude suggests them through Stenny's connector. Your own terms and corrections go in the sections below.
 
 ## Terms
 

@@ -156,7 +156,7 @@ enum AppActions {
         let alias = short.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         var args = ["course", "add", course, "--language", languages[language.indexOfSelectedItem].1]
         if !alias.isEmpty { args += ["--alias", alias] }
-        changeCourses(args) { offerProject(course) }
+        changeCourses(args)
     }
 
     /// Takes a course out of the menu and calendar matching (`stenny course hide`); nothing is deleted.
@@ -182,7 +182,7 @@ enum AppActions {
         changeCourses(["course", "add", course, "--language", "auto"])
     }
 
-    private static func changeCourses(_ args: [String], then done: @escaping @MainActor () -> Void = {}) {
+    private static func changeCourses(_ args: [String]) {
         Task.detached {
             let result = StennyCLI.run(args)
             await MainActor.run {
@@ -190,27 +190,6 @@ enum AppActions {
                 guard let result, result.ok else {
                     return show(result?.errors.trimmingCharacters(in: .whitespacesAndNewlines) ?? "The `stenny` command was not found.")
                 }
-                done()
-            }
-        }
-    }
-
-    /// Recommended, never required: Stenny works the same without a Claude project.
-    private static func offerProject(_ course: String) {
-        let alert = NSAlert()
-        alert.messageText = "\(course) is in Stenny's menu"
-        alert.informativeText = "Want a Claude project for it, so its chats read these transcripts? In the Claude desktop app: "
-            + "Projects ▸ New project, name it, Instructions ▸ paste ▸ Save."
-        alert.addButton(withTitle: "Copy Project Instructions")
-        alert.addButton(withTitle: "Not Now")
-        NSApp.activate()
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        Task.detached {
-            let result = StennyCLI.run(["project-instructions", "--course", course])
-            await MainActor.run {
-                guard let result, result.ok else { return show("Couldn't get the instructions.") }
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(result.output, forType: .string)
             }
         }
     }
