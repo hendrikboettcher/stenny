@@ -1,5 +1,6 @@
 """A live draft says where its final transcript is: waiting (for power, if the Mac is on battery), or being made."""
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -103,3 +104,29 @@ def test_the_window_and_claude_get_the_same_sentence(cfg, monkeypatch):
     [entry] = share.library(cfg)
     assert entry["status"] == "queued" and "once the Mac is plugged in" in entry["draft_note"]
     assert _status_note(entry) == f" [live draft, rough text. {entry['draft_note']}]"
+
+
+def test_the_window_can_start_one_waiting_final_pass_now_also_on_battery(cfg, monkeypatch):
+    monkeypatch.setattr(jobs, "on_ac_power", lambda: False)
+    monkeypatch.setattr(jobs, "apply_priority", lambda mode: None)
+    monkeypatch.setattr(jobs, "keep_awake", lambda: None)
+    monkeypatch.setattr(cli, "load_config", lambda: cfg)
+    monkeypatch.setattr(cli, "recover_sessions", lambda cfg: [])
+    monkeypatch.setattr("stenny.engines.get_engine", lambda model: object())
+    session = StoppedSession(cfg)
+    cli.finalize(session, cfg, "auto", True, object())
+    [job] = jobs.pending()
+    assert cli.lecture_job(cfg, "calculus", "2026-10-31") == job
+    assert cli.lecture_job(cfg, "Calculus", "2026-10-30") is None
+    assert cli.lecture_job(cfg, "Calculus", "2026-10-31", event=True) is None
+
+    ran = []
+    monkeypatch.setattr(cli, "run_job", lambda p, cfg, engine, stop=None: ran.append((p, stop)))
+    args = SimpleNamespace(action="run", scheduled=False, lecture=["Calculus", "2026-10-31"], event=False)
+    cli.cmd_queue(args)
+    assert ran == [(job, None)]  # not stopped for being on battery
+
+    with pytest.raises(SystemExit, match="no final transcript waiting"):
+        cli.cmd_queue(SimpleNamespace(**{**vars(args), "lecture": ["Calculus", "2026-10-30"]}))
+    with jobs.QueueLock(), pytest.raises(SystemExit, match="Another final transcript is being made"):
+        cli.cmd_queue(args)

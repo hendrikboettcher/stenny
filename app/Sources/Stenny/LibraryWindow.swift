@@ -337,7 +337,7 @@ struct LibraryView: View {
 
     @ViewBuilder private var detail: some View {
         if let entry = model.selected {
-            LectureDetail(entry: entry).id(entry.id)
+            LectureDetail(entry: entry, reload: model.reload).id(entry.id)
         } else if let group = model.group, model.loaded, !model.failed {
             VStack(spacing: 6) {
                 Text("Nothing recorded for \(group.course) yet").font(Typeface.serif(19, weight: 440))
@@ -387,11 +387,13 @@ struct LiveBadge: View {
 
 struct LectureDetail: View {
     let entry: LibraryEntry
+    let reload: () -> Void
     @AppStorage("shareWithSummary") private var withSummary = true
     @State private var sharing = false
     @State private var error: String?
     @State private var anchor = ShareAnchor()
     @State private var summary: [SummaryLine]?
+    @State private var finishing = false
 
     var body: some View {
         ScrollView {
@@ -403,8 +405,15 @@ struct LectureDetail: View {
                 if !entry.isFinal {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Circle().fill(Palette.rec).frame(width: 7, height: 7)
-                        Text(entry.draftNotice)
-                            .font(Typeface.serif(14.5))
+                        VStack(alignment: .leading, spacing: 9) {
+                            Text(entry.draftNotice)
+                                .font(Typeface.serif(14.5))
+                            if entry.status == "queued" {
+                                Button(finishing ? "Starting…" : "Make Final Transcript Now", action: finishNow)
+                                    .buttonStyle(PillButtonStyle(small: true))
+                                    .disabled(finishing)
+                            }
+                        }
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 11)
@@ -494,6 +503,29 @@ struct LectureDetail: View {
                 ShareSheet.show(url, asText: format == .md, at: view)
             case .failure(let failure):
                 error = failure.message
+            }
+        }
+    }
+
+    /// The waiting final pass, now (also on battery). The draft turns "Finishing" as soon as it starts, and the
+    /// window shows the final transcript once it's done.
+    private func finishNow() {
+        finishing = true
+        error = nil
+        let args = ["queue", "run", "--lecture", entry.course, entry.folder] + (entry.isEvent ? ["--event"] : [])
+        let reload = reload
+        Task {
+            let run = Task.detached { StennyCLI.run(args) }
+            try? await Task.sleep(for: .seconds(4))
+            reload()  // now "Finishing"
+            let result = await run.value
+            reload()
+            finishing = false
+            if let result, !result.ok {
+                let reason = result.errors.trimmingCharacters(in: .whitespacesAndNewlines)
+                error = reason.split(separator: "\n").last.map(String.init) ?? "The final transcript couldn't be made."
+            } else if result == nil {
+                error = "The `stenny` command was not found."
             }
         }
     }

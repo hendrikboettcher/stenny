@@ -289,9 +289,31 @@ def cmd_course_files(args) -> None:
             print(f"{name}: no final lectures yet")
 
 
+def lecture_job(cfg, course: str, folder: str, event: bool = False) -> Path | None:
+    """The queued final pass of one live recording (course, lecture folder), if it is still waiting."""
+    from .vault import safe_name
+    for p in jobs.pending():
+        try:
+            job = json.loads(p.read_text(encoding="utf-8"))
+            if not job.get("live") or (job.get("kind") == "event") != event:
+                continue
+            if json.loads(Path(job["live"]).read_text(encoding="utf-8"))["folder"] == folder and \
+                    safe_name(job["course"]).casefold() == safe_name(course).casefold():
+                return p
+        except (OSError, ValueError, KeyError):
+            continue
+    return None
+
+
 def cmd_queue(args) -> None:
     cfg = load_config()
     items = jobs.pending()
+    lecture = getattr(args, "lecture", None)
+    if lecture:  # "Make Final Transcript Now" in Stenny's window: this one, now, also on battery
+        job = lecture_job(cfg, *lecture, event=args.event)
+        if not job:
+            sys.exit("This lecture has no final transcript waiting.")
+        items = [job]
     if args.action == "list":
         for p in items:
             print(p.name)
@@ -308,6 +330,8 @@ def cmd_queue(args) -> None:
     jobs.apply_priority(cfg.priority if not args.scheduled else "background")
     with jobs.QueueLock() as lock:
         if lock is None:
+            if lecture:
+                sys.exit("Another final transcript is being made right now. Try again when it's done.")
             print("Another queue run is active.")
             return
         jobs.keep_awake()
@@ -316,7 +340,7 @@ def cmd_queue(args) -> None:
 
         engine = get_engine(cfg.model)
         unplugged = jobs.unplugged_check() if args.scheduled and cfg.require_ac_for_queue else None
-        for p in jobs.pending():
+        for p in items if lecture else jobs.pending():
             if unplugged and unplugged():
                 log("Unplugged; stopping, remaining jobs wait.")
                 break
@@ -331,6 +355,8 @@ def cmd_queue(args) -> None:
             except Exception as e:  # keep the job, move on to the next one
                 log(f"Job {p.name} failed: {e}")
                 p.rename(p.with_suffix(".failed"))
+                if lecture:
+                    sys.exit("The final transcript couldn't be made. The recording is kept; please use Send Feedback.")
 
 
 def draft_path(cfg, course, folder: str) -> Path | None:
@@ -807,6 +833,9 @@ def main() -> None:
     p = sub.add_parser("queue", help="list or process queued jobs")
     p.add_argument("action", choices=["list", "run"])
     p.add_argument("--scheduled", action="store_true", help=argparse.SUPPRESS)
+    p.add_argument("--lecture", nargs=2, metavar=("COURSE", "FOLDER"),
+                   help="run only this live recording's final pass, now (also on battery)")
+    p.add_argument("--event", action="store_true", help="--lecture names a talk")
     p.set_defaults(func=cmd_queue)
 
     p = sub.add_parser("schedule", help="install/remove the launchd agent that runs the queue")

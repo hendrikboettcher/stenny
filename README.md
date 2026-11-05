@@ -111,7 +111,7 @@ stenny library                                    # every lecture and talk with 
 stenny share calc 2026-10-15 --with-summary       # a clean copy to share (--format docx for Word)
 stenny mcp --desktop-config                       # the connector for Claude Desktop (see Studying with Claude)
 stenny match-course "VL Calculus (Room 1.01)"     # which course a calendar event belongs to
-stenny queue list | run                           # waiting final passes
+stenny queue list | run                           # waiting final passes (run --lecture COURSE FOLDER: just that one, now)
 stenny schedule install                           # run the queue every 10 min when plugged in (launchd)
 ```
 
