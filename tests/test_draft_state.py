@@ -1,0 +1,105 @@
+"""A live draft says where its final transcript is: being recorded, waiting (and why), or being made."""
+import json
+
+import pytest
+
+from stenny import cli, jobs, pipeline, resources, share
+from stenny.config import Config, Course
+from stenny.connector import _status_note
+from stenny.render import Lecture, set_draft_state, transcript_md
+
+PARAGRAPHS = [{"start": 4.0, "text": "Bonjour."}]
+
+
+def draft(status="live") -> str:
+    lec = Lecture(course="Calculus", date="2026-10-31", start_time="10:00", duration=600, languages=["fr"],
+                  language_note="live", model="m", source="live", status=status, number=2,
+                  names={"transcript": "Calculus 2026-10-31.md"})
+    return transcript_md(lec, PARAGRAPHS, [])
+
+
+def test_the_draft_says_why_its_final_transcript_waits_and_when_it_starts():
+    queued = set_draft_state(draft(), "queued", "battery")
+    assert 'status: "queued"\nwaiting: "battery"\n' in queued
+    assert "the final transcript is waiting because the Mac is on battery. It starts by itself once the Mac is " \
+           "plugged in. It then replaces this draft." in queued
+    assert queued.count("Live draft") == 1 and "**[0:00:04]** Bonjour." in queued
+
+    making = set_draft_state(queued, "finalizing")
+    assert 'status: "finalizing"\n' in making and "waiting:" not in making
+    assert "the final transcript is being made now" in making and "on battery" not in making
+
+
+def test_a_final_transcript_is_never_touched():
+    assert set_draft_state(draft("final"), "queued", "battery") is None
+    assert set_draft_state("no frontmatter", "queued", "battery") is None
+
+
+@pytest.fixture
+def cfg(tmp_path, monkeypatch):
+    monkeypatch.setattr(jobs, "QUEUE_DIR", tmp_path / "data/_Queue")
+    monkeypatch.setattr(jobs, "DATA_DIR", tmp_path / "data/_System")
+    monkeypatch.setattr(jobs, "lower_own_priority", lambda mode: None)
+    monkeypatch.setattr(resources, "enough_memory_for_final_pass", lambda: True)
+    return Config(vault=tmp_path / "vault", lectures_dir="Lectures", data_dir=tmp_path / "data",
+                  courses={"Calculus": Course("Calculus", language="fr", languages=["fr"])})
+
+
+class StoppedSession:
+    def __init__(self, cfg):
+        folder = cfg.data_dir / "Calculus"
+        folder.mkdir(parents=True)
+        self.pcm_path, self.session_path = folder / "2026-10-31.live.pcm", folder / "2026-10-31.session.json"
+        self.pcm_path.write_bytes(b"\0" * 32000)
+        self.session_path.write_text(json.dumps({
+            "course": "Calculus", "started_at": "2026-10-31T10:00:00", "folder": "2026-10-31", "spans": [[0, 0.0]],
+            "pauses": [], "recording": str(self.pcm_path), "state": "stopped", "recorded_samples": 16000}))
+        self.transcript_path = cfg.vault / "Lectures/Calculus/2026-10-31/Calculus 2026-10-31.md"
+        self.transcript_path.parent.mkdir(parents=True)
+        self.transcript_path.write_text(draft(), encoding="utf-8")
+        self.course, self.lang_override, self.backup = Course(name="Calculus"), None, None
+        self.recorded, self.final_note, self.state = 16000, "", "stopped"
+
+    def text(self) -> str:
+        return self.transcript_path.read_text(encoding="utf-8")
+
+
+def test_stopping_on_battery_says_so_in_the_draft(cfg, monkeypatch):
+    monkeypatch.setattr(jobs, "on_ac_power", lambda: False)
+    session = StoppedSession(cfg)
+    cli.finalize(session, cfg, "auto", True, object())
+    assert 'waiting: "battery"' in session.text() and len(jobs.pending()) == 1
+
+
+def test_waiting_for_another_final_pass_says_so(cfg, monkeypatch):
+    monkeypatch.setattr(jobs, "on_ac_power", lambda: True)
+    session = StoppedSession(cfg)
+    with jobs.QueueLock():
+        cli.finalize(session, cfg, "auto", True, object())
+    assert 'waiting: "busy"' in session.text()
+
+
+def test_the_final_pass_marks_the_draft_and_an_unplugged_mac_puts_it_back(cfg, monkeypatch):
+    monkeypatch.setattr(jobs, "on_ac_power", lambda: False)
+    session = StoppedSession(cfg)
+    cli.finalize(session, cfg, "auto", True, object())
+    seen = []
+
+    def unplugged(*a, **kw):
+        seen.append(session.text())
+        raise pipeline.Interrupted("stopped")
+
+    monkeypatch.setattr(pipeline, "process", unplugged)
+    with pytest.raises(pipeline.Interrupted):
+        cli.run_job(jobs.pending()[0], cfg, object())
+    assert 'status: "finalizing"' in seen[0]
+    assert 'waiting: "unplugged"' in session.text() and len(jobs.pending()) == 1
+
+
+def test_the_window_and_claude_get_the_reason(cfg, monkeypatch):
+    monkeypatch.setattr(jobs, "on_ac_power", lambda: False)
+    StoppedSession(cfg)
+    cli.mark_draft(cfg.vault / "Lectures/Calculus/2026-10-31/Calculus 2026-10-31.md", "queued", "memory")
+    [entry] = share.library(cfg)
+    assert entry["status"] == "queued" and entry["waiting_note"].startswith("there isn't enough free memory")
+    assert _status_note(entry).startswith(" [live draft: rough text; the final transcript is waiting because there")

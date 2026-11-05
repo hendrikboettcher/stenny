@@ -15,7 +15,8 @@ struct LibraryEntry: Identifiable, Hashable, Sendable {
     let start: String?
     let duration: String?
     let language: String?
-    let status: String         // final | draft | live
+    let status: String         // final | draft | live | queued | finalizing (the last three: the live draft)
+    let waitingNote: String?   // queued: why, and when it starts ("the Mac is on battery. It starts by itself …")
     let transcript: String
     let summary: String?
 
@@ -32,12 +33,23 @@ struct LibraryEntry: Identifiable, Hashable, Sendable {
         duration = json["duration"] as? String
         language = json["language"] as? String
         status = json["status"] as? String ?? "final"
+        waitingNote = json["waiting_note"] as? String
         summary = json["summary"] as? String
     }
 
     var id: String { "\(kind)/\(course)/\(folder)" }
     var isEvent: Bool { kind == "event" }
     var isFinal: Bool { status == "final" }
+    /// Where the final transcript is, so a draft never looks forgotten.
+    var draftNotice: String {
+        switch status {
+        case "live": "This is still the live draft. The final transcript replaces it once the recording is finished."
+        case "queued": "This is still the live draft. The final transcript is waiting because "
+            + (waitingNote ?? "it hasn't been made yet") + "."
+        case "finalizing": "This is still the live draft. The final transcript is being made now and replaces it when it's done."
+        default: "This is still the draft. The final transcript replaces it once the recording is finished."
+        }
+    }
     var group: LibraryGroup { LibraryGroup(course: course, isEvent: isEvent) }
 
     var prettyDate: String {
@@ -356,13 +368,21 @@ struct LibraryView: View {
     }
 }
 
-/// "Live draft" or "Draft", with the website's recording dot.
+/// "Live draft", "Waiting", "Finishing" or "Draft", with the website's recording dot.
 struct LiveBadge: View {
     let status: String
+    private var label: String {
+        switch status {
+        case "live": "Live draft"
+        case "queued": "Waiting"
+        case "finalizing": "Finishing"
+        default: "Draft"
+        }
+    }
     var body: some View {
         HStack(spacing: 5) {
             Circle().fill(status == "live" ? Palette.rec : Palette.warn).frame(width: 6, height: 6)
-            Text(status == "live" ? "Live draft" : "Draft").font(Typeface.sans(10.5, weight: .medium))
+            Text(label).font(Typeface.sans(10.5, weight: .medium))
         }
         .foregroundStyle(status == "live" ? Palette.rec : Palette.warn)
         .padding(.horizontal, 7)
@@ -389,8 +409,7 @@ struct LectureDetail: View {
                 if !entry.isFinal {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Circle().fill(Palette.rec).frame(width: 7, height: 7)
-                        Text("This is still the \(entry.status == "live" ? "live draft" : "draft"). The final "
-                             + "transcript replaces it once the recording is finished.")
+                        Text(entry.draftNotice)
                             .font(Typeface.serif(14.5))
                     }
                     .padding(.horizontal, 14)

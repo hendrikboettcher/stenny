@@ -11,6 +11,52 @@ from .vault import TOPICS_DIR, safe_name
 LANG_NAMES = {"fr": "French", "de": "German", "en": "English", "it": "Italian", "es": "Spanish"}
 TIME_SECTION_SECONDS = 600
 
+# A live draft says where its final transcript is, so nobody wonders why it is still a draft (frontmatter `status`)
+DRAFT_STATES = ("live", "queued", "finalizing")
+# queued: why the final transcript isn't made yet, and when it will be (frontmatter `waiting`)
+WAITING = {
+    "battery": "the Mac is on battery. It starts by itself once the Mac is plugged in",
+    "memory": "there isn't enough free memory right now. It starts by itself once there is, while the Mac is "
+              "plugged in",
+    "busy": "another final transcript is being made. This one starts by itself after it, while the Mac is "
+            "plugged in",
+    "unplugged": "the Mac was unplugged while it was being made. It starts over by itself once the Mac is "
+                 "plugged in",
+    "later": "it was set to be made later. It starts by itself once the Mac is plugged in",
+    "recovered": "Stenny stopped unexpectedly, but the recording was saved. It starts by itself once the Mac is "
+                 "plugged in",
+    "failed": "something went wrong while making it. The recording is kept; please use Send Feedback in "
+              "Stenny's menu",
+}
+
+
+def draft_note(status: str, waiting: str | None = None) -> str:
+    """The note at the top of a live draft."""
+    head = "> **Live draft** (fast, unpolished). "
+    if status == "queued":
+        why = WAITING.get(waiting or "", "it hasn't been made yet")
+        return head + f"The recording is finished; the final transcript is waiting because {why}. It then replaces this draft."
+    if status == "finalizing":
+        return head + "The recording is finished and the final transcript is being made now. It replaces this draft when it's done."
+    return head + "After the recording it is replaced by the final transcript, made from the full recording."
+
+
+DRAFT_NOTE = re.compile(r"^> \*\*Live draft\*\*.*$", re.M)
+
+
+def set_draft_state(text: str, status: str, waiting: str | None = None) -> str | None:
+    """A live draft's text with a new status (and reason) in the frontmatter and the note; None if the file is
+    no live draft (a final transcript is never touched)."""
+    if not text.startswith("---\n") or (end := text.find("\n---\n", 3)) < 0:
+        return None
+    fm, body = text[:end], text[end:]
+    if not re.search(rf'^status: "({"|".join(DRAFT_STATES)})"$', fm, re.M):
+        return None
+    fm = re.sub(r'\nwaiting: ".*"', "", fm)
+    fm = re.sub(r'^status: ".*"$', lambda m: f'status: "{status}"' + (f'\nwaiting: "{waiting}"' if waiting else ""),
+                fm, count=1, flags=re.M)
+    return fm + DRAFT_NOTE.sub(lambda m: draft_note(status, waiting), body, count=1)
+
 
 @dataclass
 class Lecture:
@@ -24,7 +70,8 @@ class Lecture:
     source: str
     tags: list[str] = field(default_factory=list)
     audio: str | None = None
-    status: str = "final"      # live | draft | final
+    status: str = "final"      # live | queued | finalizing (all three: the live draft) | draft | final
+    waiting: str | None = None  # queued: why (a key of WAITING)
     structure: str = "time"    # "time" or e.g. "ai (claude-code haiku)"
     pauses: list = field(default_factory=list)  # (start, end) lecture-time intervals not recorded
     microphone: str | None = None  # live: input device; file: recording device/app from its metadata
@@ -153,7 +200,7 @@ def transcript_md(lec: Lecture, paragraphs: list[dict], sections: list[dict]) ->
         **lec.who, "lecture": lec.number or None, "date": lec.date, "start": lec.start_time,
         "duration": fmt_hms(lec.duration),
         "language": lec.languages[0] if len(lec.languages) == 1 else "mixed", "languages": lec.languages,
-        "tags": [lec.base_tag, *lec.tags], "status": lec.status, "model": lec.model, "structure": lec.structure,
+        "tags": [lec.base_tag, *lec.tags], "status": lec.status, "waiting": lec.waiting, "model": lec.model, "structure": lec.structure,
         "paused": fmt_hms(sum(p[1] - p[0] for p in not_filled)) if not_filled else None,
         "source": lec.source, "microphone": lec.microphone, "backup_microphone": lec.backup_microphone,
         "audio": lec.audio,
@@ -170,9 +217,8 @@ def transcript_md(lec: Lecture, paragraphs: list[dict], sections: list[dict]) ->
                else f"Every segment, unfiltered, is in {lec.link('raw')}.")
             + "\n>\n> " + AUDIO_ONLY
             + (" Slide links on the headings are an AI's best guess." if ai and lec.slides else ""))
-    if lec.status == "live":
-        note = ("> **Live draft** (fast, unpolished). After the recording it is replaced by the final transcript, "
-                "made from the full recording.")
+    if lec.status in DRAFT_STATES:
+        note = draft_note(lec.status, lec.waiting)
     out = [fm, f"# {lec.title}", "", note, ""]
     starts = {s["at"]: s for s in sections}
     pending = sorted(tuple(p) for p in lec.pauses if p[1] is not None)

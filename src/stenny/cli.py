@@ -322,6 +322,8 @@ def cmd_queue(args) -> None:
                 break
             if args.scheduled and not resources.enough_memory_for_final_pass():
                 log("Not enough free memory now; remaining jobs wait.")
+                for waiting in jobs.pending():
+                    mark_job_draft(cfg, waiting, "queued", "memory")
                 break
             try:
                 run_job(p, cfg, engine, stop=unplugged)
@@ -333,10 +335,46 @@ def cmd_queue(args) -> None:
                 p.rename(p.with_suffix(".failed"))
 
 
+def draft_path(cfg, course, folder: str) -> Path | None:
+    """A live recording's transcript file (its live draft until the final pass replaces it)."""
+    from .vault import LectureFiles, Vault
+    return LectureFiles(Vault(cfg.root_for(course)).course_dir(course.name) / folder, course.name).existing("transcript")
+
+
+def mark_draft(path: Path | None, status: str, waiting: str | None = None) -> None:
+    """Tells the reader of a live draft where its final transcript is (render.set_draft_state). Does nothing to a
+    final transcript or a missing file, and never stops the work around it."""
+    from .render import set_draft_state
+    try:
+        if not path or not path.exists():
+            return
+        text = path.read_text(encoding="utf-8")
+        new = set_draft_state(text, status, waiting)
+        if new and new != text:
+            tmp = path.with_name(f".{path.name}.tmp")
+            tmp.write_text(new, encoding="utf-8")
+            tmp.replace(path)
+    except OSError:
+        pass
+
+
+def mark_job_draft(cfg, job_path: Path, status: str, waiting: str | None = None) -> None:
+    """mark_draft for a queued job, if it is a live recording's."""
+    try:
+        job = json.loads(job_path.read_text(encoding="utf-8"))
+        if not job.get("live"):
+            return
+        folder = json.loads(Path(job["live"]).read_text(encoding="utf-8"))["folder"]
+        course = cfg.event(job["course"]) if job.get("kind") == "event" else resolve_course(cfg, job["course"], job.get("lang"))
+    except (OSError, ValueError, KeyError, SystemExit, ConfigError):
+        return
+    mark_draft(draft_path(cfg, course, folder), status, waiting)
+
+
 def run_job(job_path: Path, cfg, engine, stop=None) -> dict:
     """Process one queued job; on success remove it (and a live recording's temporary .pcm).
     `stop`: see pipeline.transcribe(); an interrupted job stays queued."""
-    from .pipeline import LiveInfo, process
+    from .pipeline import Interrupted, LiveInfo, process
 
     job = json.loads(job_path.read_text(encoding="utf-8"))
     course = cfg.event(job["course"]) if job.get("kind") == "event" else resolve_course(cfg, job["course"], job.get("lang"))
@@ -344,8 +382,17 @@ def run_job(job_path: Path, cfg, engine, stop=None) -> dict:
     live = LiveInfo.load(Path(job["live"])) if job.get("live") else None
     src = Path(job["file"])
     slides = Path(job["slides"]) if job.get("slides") else None
-    info = process(src, cfg, course, engine, lang=job.get("lang"), use_llm=job.get("llm", True), live=live,
-                   slides_src=slides if slides and slides.exists() else None, stop=stop)
+    draft = draft_path(cfg, course, live.folder) if live else None
+    mark_draft(draft, "finalizing")
+    try:
+        info = process(src, cfg, course, engine, lang=job.get("lang"), use_llm=job.get("llm", True), live=live,
+                       slides_src=slides if slides and slides.exists() else None, stop=stop)
+    except Interrupted:
+        mark_draft(draft, "queued", "unplugged")
+        raise
+    except Exception:
+        mark_draft(draft, "queued", "failed")
+        raise
     job_path.unlink()
     if live and src.suffix == ".pcm":
         src.unlink(missing_ok=True)  # archived as .opus by process() (or keep_audio = false)
@@ -431,7 +478,8 @@ def recover_sessions(cfg) -> list[dict]:
             backup["recorded_samples"] = Path(backup["recording"]).stat().st_size // 2
         path.write_text(json.dumps(d, indent=1), encoding="utf-8")
         kind = d.get("kind") or ("event" if path.parent.parent.name == "_Recordings" else "lecture")
-        jobs.enqueue(pcm, d["course"], d.get("lang"), True, live=path, kind=kind)
+        job = jobs.enqueue(pcm, d["course"], d.get("lang"), True, live=path, kind=kind)
+        mark_job_draft(cfg, job, "queued", "recovered")
         log(f"Recovered the recording {pcm.name} of {d['course']}: final pass queued")
         recovered.append({"course": d["course"], "kind": kind})
     return recovered
@@ -464,6 +512,7 @@ def finalize(session, cfg, policy: str, use_llm: bool, engine) -> None:
     if not run_now:
         why = "as requested" if policy != "auto" else "memory is low" if on_power else "on battery"
         session.final_note = session.final_note or f"final pass queued ({why})"
+        mark_draft(session.transcript_path, "queued", "later" if policy != "auto" else "memory" if on_power else "battery")
         log(f"Live draft kept. Final pass queued {why}: {job.name} — runs with `stenny queue run` "
             "or the schedule (`stenny schedule install`).")
         return
@@ -472,6 +521,7 @@ def finalize(session, cfg, policy: str, use_llm: bool, engine) -> None:
     with jobs.QueueLock() as lock:
         if lock is None:  # a scheduled run is busy; a later one picks this job up
             session.final_note = session.final_note or "final pass queued (another one is running)"
+            mark_draft(session.transcript_path, "queued", "busy")
             log(f"Live draft kept. Another final pass is running; this one waits in the queue: {job.name}")
             return
         session.state = "finalizing"

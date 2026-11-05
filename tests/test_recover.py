@@ -109,6 +109,7 @@ class FinishedSession:
         self.pcm_path, self.session_path = crashed_session(cfg)
         self.course, self.lang_override, self.backup = Course(name="Calculus"), None, None
         self.recorded, self.final_note, self.state = 16000, "", "stopped"
+        self.transcript_path = cfg.vault / "Lectures/Calculus/2026-10-31/Calculus 2026-10-31.md"
 
 
 @pytest.fixture
