@@ -83,7 +83,7 @@ See `config.example.toml` for every setting. The AI step uses the `claude` comma
 
 **Your lectures:** Stenny's menu ▸ *Open Stenny…* opens a window with your courses, each course's lectures (newest first) and the selected lecture's summary, with *Open Transcript* and *Show in Finder*. Add a course with the **+** next to *Courses*; right-click a course to remove it. Removing deletes nothing: its transcripts move to *Past Courses*, and *Bring Back to the Menu* restores it.
 
-**Share with classmates:** *Share…* in the window makes a clean copy as PDF, Word or Markdown (summary on top, if you like): no file paths, microphone names or Obsidian links. The copies are saved in `~/Lectures Data/_Shared/`. Stenny asks once per course whether the lecturer is fine with it.
+**Share with classmates:** *Share…* in the window makes a clean copy as PDF, Word or Markdown (summary on top, if you like): no file paths, microphone names or Obsidian links. PDF and Word end with a small "Transcribed with Stenny · stenny.eu" line; Markdown doesn't. The copies are saved in `~/Lectures Data/_Shared/`. Stenny asks once per course whether the lecturer is fine with it.
 
 **Other things you can do:**
 - **Use your iPhone as the microphone** (*Microphone ▸*, via Continuity) and put it closer to the lecturer. The Mac's own microphone records as a backup and fills the gaps when you use the phone.

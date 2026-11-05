@@ -1,3 +1,4 @@
+import subprocess
 from types import SimpleNamespace
 
 import pytest
@@ -91,3 +92,14 @@ def test_share_writes_word_and_html(cfg, tmp_path):
         "Calculus – Lecture 3 (2026-10-20).docx", "Calculus – Lecture 3 (2026-10-20).html"]
     with pytest.raises(share.ShareError):
         share.share(entry, fmt="pdf")
+
+
+def test_word_and_pdf_end_with_the_credit_markdown_does_not(cfg, tmp_path):
+    entry = share.find(cfg, "Calculus", "2026-10-20")
+    page = share.share(entry, out_dir=tmp_path, fmt="html").read_text(encoding="utf-8")
+    assert page.rstrip().endswith(share.CREDIT + "\n</body></html>") and 'href="https://stenny.eu"' in page
+    docx = share.share(entry, out_dir=tmp_path, fmt="docx")
+    words = subprocess.run(["textutil", "-convert", "txt", "-stdout", str(docx)], capture_output=True, text=True).stdout
+    assert words.rstrip().endswith("Transcribed with Stenny · stenny.eu")
+    assert "Stenny ·" not in share.share(entry, out_dir=tmp_path).read_text(encoding="utf-8")
+    assert "credit" not in share.to_html("# Title\n", "Title").split("<body>")[1]

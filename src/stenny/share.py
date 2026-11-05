@@ -4,7 +4,8 @@ A shared copy is the transcript as a classmate should get it: no frontmatter (au
 source …), no pointer to the raw output on this Mac, Obsidian links turned into plain text. The disclaimer, the
 "audio only" note, headings and timestamps stay. Copies go to `~/Lectures Data/_Shared/`, outside the vault.
 
-Formats: Markdown as it is, Word (.docx, through macOS's textutil) and HTML. Stenny's window turns the HTML
+Formats: Markdown as it is, Word (.docx, through macOS's textutil) and HTML. Word and HTML (so the PDF too) end
+with a small "Transcribed with Stenny · stenny.eu" line; Markdown doesn't, as it gets pasted into chats. Stenny's window turns the HTML
 into a PDF (paginated by macOS's text system); there is no PDF converter on a Mac without the app.
 """
 
@@ -143,7 +144,13 @@ blockquote { margin: 0 0 8px; padding-left: 8px; border-left: 2px solid #ddd6cc;
 blockquote p { margin: 0 0 4px; }
 hr { border: none; border-top: 1px solid #ddd6cc; margin: 12px 0; }
 .ts { font-size: 8.5px; color: #8a847b; }
+p.credit { margin-top: 18px; font-size: 8.5px; color: #8a847b; }
+p.credit a { color: #8a847b; }
 """
+
+# The last line of a shared PDF or Word file. Not in Markdown, which gets pasted into chats and notes.
+CREDIT = '<p class="credit">Transcribed with Stenny · <a href="https://stenny.eu">stenny.eu</a></p>'
+
 
 TIMESTAMP = re.compile(r"(\*\*)?\[(\d+:\d{2}:\d{2})\](\*\*)?")
 
@@ -155,10 +162,10 @@ def _inline(text: str) -> str:
     return re.sub(r"(?<![*\w])\*(?![\s*])(.+?)(?<![\s*])\*(?![*\w])", r"<em>\1</em>", out)
 
 
-def to_html(markdown: str, title: str, bullet_lines: bool = False) -> str:
+def to_html(markdown: str, title: str, bullet_lines: bool = False, credit: bool = False) -> str:
     """The Markdown Stenny writes (headings, paragraphs, quotes, bullets, bold, italics, rules) as a page.
     `bullet_lines`: bullets as "• …" paragraphs instead of a list, for textutil, whose Word lists come out with
-    the text pushed far right of the bullet."""
+    the text pushed far right of the bullet. `credit`: end with "Transcribed with Stenny · stenny.eu"."""
     out: list[str] = []
     para: list[str] = []
     quote: list[list[str]] = []
@@ -211,6 +218,8 @@ def to_html(markdown: str, title: str, bullet_lines: bool = False) -> str:
                 flush()
             para.append(line)
     flush()
+    if credit:
+        out.append(CREDIT)
     return (f'<!DOCTYPE html>\n<html><head><meta charset="utf-8"><title>{html.escape(title)}</title>'
             f"<style>{CSS}</style></head>\n<body>\n" + "\n".join(out) + "\n</body></html>\n")
 
@@ -245,7 +254,7 @@ def share(entry: dict, with_summary: bool = False, out_dir: Path | None = None, 
         if fmt == "md":
             tmp.write_text(text, encoding="utf-8")
         else:
-            page = to_html(text, path.stem, bullet_lines=fmt == "docx")
+            page = to_html(text, path.stem, bullet_lines=fmt == "docx", credit=True)
             if fmt == "html":
                 tmp.write_text(page, encoding="utf-8")
             else:
