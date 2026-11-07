@@ -594,8 +594,9 @@
   .group-row:hover .more, .more:focus-visible { opacity: 1; }
   .more:hover, .add:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 8%, transparent); }
   /* "Courses" and its +: the + centred on the label's line, its right edge where the rows' ⋯ sits */
-  nav .kicker.with-add { display: flex; align-items: center; justify-content: space-between; padding-bottom: 10px; }
-  .add { position: static; transform: none; width: 20px; height: 20px; margin: -3px -6px -3px 0; font-size: 16px; font-weight: 500; flex: none; }
+  nav .kicker.with-add { display: flex; align-items: center; justify-content: space-between; padding-bottom: 7px; }
+  /* no negative margin above: the list scrolls, and its edge would cut the top of the hover box off */
+  .add { position: static; transform: none; width: 20px; height: 20px; margin: 0 -6px 0 0; flex: none; }
   .quiet-add { color: var(--muted); font-size: 14px; }
 
   /* List */
