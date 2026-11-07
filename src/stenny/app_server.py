@@ -138,6 +138,12 @@ def rename_course(cfg, params: dict) -> dict:
                              event=bool(params.get("event")))}
 
 
+def delete_course(cfg, params: dict) -> dict:
+    """A whole course (or with `event`, a talk) and all its recordings to the Trash."""
+    from . import manage
+    return {"message": _managed(manage.delete_course, cfg, params["course"], event=bool(params.get("event")))}
+
+
 def add_course(cfg, params: dict) -> dict:
     """A new course (`name`, `language`, optional `alias`), or a removed one back with its settings."""
     from . import courses
@@ -156,7 +162,7 @@ def ping(cfg, params: dict) -> dict:
 
 
 METHODS = {"ping": ping, "library": library, "lecture": lecture, "make_copy": make_copy, "finish_now": finish_now,
-           "rename_lecture": rename_lecture, "delete_lecture": delete_lecture, "rename_course": rename_course,
+           "rename_lecture": rename_lecture, "delete_lecture": delete_lecture, "rename_course": rename_course, "delete_course": delete_course,
            "add_course": add_course, "remove_course": remove_course, **app_live.METHODS}
 
 

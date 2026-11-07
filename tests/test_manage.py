@@ -175,3 +175,26 @@ def test_the_app_server_reports_problems_as_messages(env):
     reply = app_server.handle(cfg, {"id": 3, "method": "add_course", "params": {"name": "Stats", "language": "de"}})
     assert reply["result"]["message"] == "Added Stats."
     assert app_live._consent() == {f"record/course/{NAME}", "share/course/Other"}
+
+
+def test_delete_course_trashes_it_all_and_leaves_the_config(env):
+    cfg, trashed = env
+    manage.delete_course(cfg, "da")
+    root = cfg.lectures_root
+    assert not (root / NAME).exists() and not (cfg.data_dir / NAME).exists()
+    assert {p.name for p in trashed.iterdir()} >= {NAME, f"{NAME} (glossary).md", f"{NAME} (overview).md", "j.json"}
+    left = config_mod.load(cfg.path)
+    assert list(left.courses) == ["Other"] and "# mine" not in cfg.path.read_text()
+    assert json.loads((paths.SYSTEM_DIR / "consent.json").read_text()) == ["share/course/Other"]
+    assert share.library(left) == []
+
+
+def test_delete_a_talk(env, tmp_path):
+    cfg, trashed = env
+    talk = cfg.events_root / "Guest Talk" / "2026-10-22"
+    talk.mkdir(parents=True)
+    (talk / "Guest Talk 2026-10-22.md").write_text('---\nevent: "Guest Talk"\n---\n# Guest Talk – 2026-10-22\n')
+    (cfg.data_dir / "_Recordings" / "Guest Talk").mkdir(parents=True)
+    manage.delete_course(cfg, "Guest Talk", event=True)
+    assert not (cfg.events_root / "Guest Talk").exists() and not (cfg.data_dir / "_Recordings" / "Guest Talk").exists()
+    assert list(config_mod.load(cfg.path).courses) == [NAME, "Other"]

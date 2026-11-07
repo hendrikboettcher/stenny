@@ -355,3 +355,52 @@ def _rename_consent(old: str, new: str, key: str) -> None:
              for c in given for use in [c.split("/", 1)[0]]}
     if moved != given:
         app_live._save_consent(moved)
+
+
+def delete_course(cfg: Config, name: str, event: bool = False) -> str:
+    """A whole course (or talk) to the Trash: every lecture in the vault and in ~/Lectures Data (audio, raw
+    output, session files), its glossary and course files, queued final passes; a course leaves the config."""
+    target = _target(cfg, name, event)
+    name = target.name
+    if (rec := _recording()) and rec.get("course") == name:
+        raise ManageError(f"{name} is recording right now. Delete it when the recording is done.")
+    vault = Vault(cfg.root_for(target))
+    data = cfg.data_for(target)
+    with _Quiet():
+        items = [vault.course_dir(name), data]
+        if not event:
+            items += [vault.glossary_path(name), *(vault.root / COURSE_FILES_DIR).glob(f"{safe_name(name)} (*).md")]
+        prefix = str(data) + "/"
+        for job in _queue_jobs():
+            try:
+                d = json.loads(job.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if d.get("course") == name or str(d.get("file", "")).startswith(prefix):
+                items.append(job)
+        trash(items)
+        if not event and name in cfg.courses:
+            _remove_from_config(cfg, name)
+        from . import app_live
+        kind = "event" if event else "course"
+        given = app_live._consent()
+        kept = {c for c in given if c.split("/", 1)[-1] != f"{kind}/{name}"}
+        if kept != given:
+            app_live._save_consent(kept)
+        if not event:
+            course_files.rebuild_topics(vault, log=lambda *_: None)
+    return f"Moved {name} to the Trash."
+
+
+def _remove_from_config(cfg: Config, name: str) -> None:
+    """The course's table goes from config.toml, header and settings (comments elsewhere stay)."""
+    text = cfg.path.read_text(encoding="utf-8")
+    for m in courses.HEADER.finditer(text):
+        if name in tomllib.loads(f"{m.group(1)} = 1"):
+            break
+    else:
+        raise ManageError(f"'{name}' isn't written as its own table in the config.")
+    _, end = courses._section(text, name)
+    rest = text[end:]
+    new = text[:m.start()].rstrip("\n") + ("\n\n" + rest.lstrip("\n") if rest.strip() else "\n")
+    courses._write(cfg.path, new)

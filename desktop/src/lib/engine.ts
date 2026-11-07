@@ -59,6 +59,9 @@ export const renameCourse = (course: string, event: boolean, name: string) =>
   engine<{ name: string }>("rename_course", { course, event, name });
 export const addCourse = (name: string, language: string, alias: string) =>
   engine<{ message: string }>("add_course", { name, language, alias });
+// a whole course or talk and all its recordings to the Trash
+export const deleteCourse = (course: string, event: boolean) =>
+  engine<{ message: string }>("delete_course", { course, event });
 export const removeCourse = (course: string) => engine<{ message: string }>("remove_course", { course });
 // a removed course back: `add` restores it with its earlier settings (the language counts only for a new one)
 export const bringBack = (course: string) => engine<{ message: string }>("add_course", { name: course, language: "auto" });

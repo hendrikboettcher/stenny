@@ -7,7 +7,7 @@
   import { renderMarkdown } from "$lib/markdown";
   import {
     library, lecture, makeCopy, makePdf, finishNow, openTranscript, reveal, lecturerAgreed,
-    renameLecture, deleteLecture, renameCourse, addCourse, removeCourse, bringBack,
+    renameLecture, deleteLecture, renameCourse, addCourse, removeCourse, deleteCourse, bringBack,
     type Entry, type Library,
   } from "$lib/engine";
 
@@ -21,6 +21,7 @@
   let progress = $state<string | null>(null); // the text so far, while there is no transcript yet
   let withSummary = $state(localStorage.getItem("withSummary") !== "false");
   let shareOpen = $state(false);
+  let shareStenny = $state<"open" | "copied" | null>(null); // the footer's Share Stenny… menu
   let busy = $state<string | null>(null);   // "share" | "finish"
   let notice = $state<{ text: string; path?: string; error?: boolean } | null>(null);
 
@@ -28,6 +29,7 @@
   type Menu = { x: number; y: number; group?: Group; entry?: Entry };
   type Ask =
     | { kind: "add" } | { kind: "rename-group"; group: Group } | { kind: "remove-course"; group: Group }
+    | { kind: "delete-group"; group: Group }
     | { kind: "rename-lecture"; entry: Entry } | { kind: "delete-lecture"; entry: Entry };
   let menu = $state<Menu | null>(null);
   let ask = $state<Ask | null>(null);
@@ -154,6 +156,10 @@
       } else if (a.kind === "remove-course") {
         await removeCourse(a.group.course);
         await reload();
+      } else if (a.kind === "delete-group") {
+        await deleteCourse(a.group.course, a.group.event);
+        if (same(group, a.group)) group = null;
+        await reload();
       } else if (a.kind === "rename-lecture") {
         await renameLecture(a.entry, field);
         await reload();
@@ -180,6 +186,22 @@
     } catch (e) {
       notice = { text: String(e), error: true };
     }
+  }
+
+  // Share Stenny…: the website, where friends get it
+  const STENNY_URL = "https://stenny.eu";
+  async function copyStennyLink() {
+    await navigator.clipboard.writeText(STENNY_URL).catch(() => {});
+    shareStenny = "copied";
+    setTimeout(() => { if (shareStenny === "copied") shareStenny = null; }, 1600);
+  }
+  async function emailStenny() {
+    shareStenny = null;
+    const subject = "Stenny: lectures, transcribed on your Mac";
+    const body = `I record and transcribe my lectures with Stenny, right on my Mac. Have a look: ${STENNY_URL}`;
+    const url = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    if ("__TAURI_INTERNALS__" in window) (await import("@tauri-apps/plugin-opener")).openUrl(url);
+    else window.open(url);
   }
 
   const count = (g: Group) => data?.entries.filter((e) => e.course === g.course && (e.kind === "event") === g.event).length ?? 0;
@@ -247,8 +269,8 @@
   }
 </script>
 
-<svelte:window onclick={() => { shareOpen = false; menu = null; }}
-               onkeydown={(e) => { if (e.key === "Escape") { shareOpen = false; menu = null; } }}
+<svelte:window onclick={() => { shareOpen = false; menu = null; if (shareStenny === "open") shareStenny = null; }}
+               onkeydown={(e) => { if (e.key === "Escape") { shareOpen = false; menu = null; shareStenny = null; } }}
                onblur={() => (menu = null)} />
 
 <div class="window">
@@ -285,6 +307,19 @@
       {@render section("Talks & events", groups.talks)}
     </nav>
     <footer>
+      <div class="share-stenny">
+        <button onclick={(ev) => { ev.stopPropagation(); menu = null; shareStenny = shareStenny === "open" ? null : "open"; }}>
+          {shareStenny === "copied" ? "Link copied" : "Share Stenny…"}
+        </button>
+        {#if shareStenny === "open"}
+          <div class="menu up" role="menu">
+            <button role="menuitem" onclick={(ev) => { ev.stopPropagation(); copyStennyLink(); }}>
+              <span>Copy Link</span><small>stenny.eu, where friends get it</small>
+            </button>
+            <button role="menuitem" onclick={emailStenny}><span>Email…</span></button>
+          </div>
+        {/if}
+      </div>
       <button onclick={() => invoke("show_settings")}>Settings…</button>
       <button onclick={() => invoke("show_feedback")}>Send Feedback…</button>
       <button onclick={() => invoke("check_updates")}>Check for Updates…</button>
@@ -424,6 +459,10 @@
           <span>Bring Back to the Menu</span>
         </button>
       {/if}
+      <div class="menu-line"></div>
+      <button role="menuitem" class="danger" onclick={() => open({ kind: "delete-group", group: g })}>
+        <span>{g.event ? "Delete Talk…" : "Delete Course…"}</span>
+      </button>
     {:else if menu.entry}
       {@const e = menu.entry}
       {#if isBusy(e)}
@@ -472,6 +511,14 @@
               : n === 1 ? 'Its transcript and glossary stay, under Past courses in this window.'
               : `Its ${n} transcripts and glossary stay, under Past courses in this window.`} You can bring it back from there."
             oncancel={() => (ask = null)} onconfirm={answer} />
+  {:else if ask.kind === "delete-group"}
+    {@const n = count(ask.group)}
+    {@const what = ask.group.event ? "talk" : "course"}
+    <Dialog title="Delete {ask.group.course}?" confirm="Delete {ask.group.event ? 'Talk' : 'Course'}" danger
+            busy={askBusy} error={askError}
+            text="This deletes the {what} and also {n === 0 ? 'everything Stenny saved for it' : n === 1
+              ? 'its recording' : `all ${n} of its ${ask.group.event ? 'recordings' : 'lectures'}`}: transcripts, summaries, audio and everything else in Stenny's folders{ask.group.event ? '' : ', its glossary included'}. {ask.group.event ? '' : 'It also leaves the menu. '}Everything goes to the Trash; once the Trash is emptied, it's gone for good."
+            oncancel={() => (ask = null)} onconfirm={answer} />
   {:else if ask.kind === "rename-lecture"}
     <Dialog title="Rename {ask.entry.number > 0 ? `Lecture ${ask.entry.number}` : 'this recording'}" confirm="Rename"
             busy={askBusy} error={askError}
@@ -501,6 +548,10 @@
   footer { padding: 10px 10px 14px; border-top: 1px solid var(--line); display: flex; flex-direction: column; }
   footer button { border: 0; background: none; text-align: left; padding: 4px 10px; color: var(--muted); border-radius: 6px; }
   footer button:hover { color: var(--ink); }
+  footer .share-stenny { position: relative; }
+  footer .share-stenny > button { width: 100%; }
+  .menu.up { top: auto; bottom: calc(100% + 4px); left: 0; min-width: 220px; }
+  .menu.up button { color: var(--ink); }
   .kicker { font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
   nav .kicker { padding: 16px 10px 6px; }
   nav .kicker:first-of-type { padding-top: 0; }
@@ -571,6 +622,7 @@
   .menu small { color: var(--muted); font-size: 11.5px; }
   .menu.floating { position: fixed; top: 0; left: 0; z-index: 40; min-width: 200px; max-width: 260px; }
   .menu .danger { color: var(--rec); }
+  .menu-line { height: 1px; background: var(--line); margin: 4px 6px; }
   .menu-note { margin: 0; padding: 7px 10px; color: var(--muted); font-size: 12px; line-height: 1.4; }
   .check { display: flex; align-items: center; gap: 7px; margin-top: 12px; color: var(--muted); }
   .check input { accent-color: var(--ink); margin: 0; }
