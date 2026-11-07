@@ -59,6 +59,8 @@ export const renameCourse = (course: string, event: boolean, name: string) =>
   engine<{ name: string }>("rename_course", { course, event, name });
 export const addCourse = (name: string, language: string, alias: string) =>
   engine<{ message: string }>("add_course", { name, language, alias });
+// to the clipboard (in a browser during development: the browser's)
+export const copyText = (text: string) => (inApp ? invoke<void>("copy_text", { text }) : navigator.clipboard.writeText(text));
 // a whole course or talk and all its recordings to the Trash
 export const deleteCourse = (course: string, event: boolean) =>
   engine<{ message: string }>("delete_course", { course, event });

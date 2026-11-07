@@ -74,6 +74,23 @@ fn show_feedback(app: AppHandle) {
     show_window(&app, "feedback");
 }
 
+/// Share Stenny in the library window's footer: text to the clipboard (pbcopy; the web view's own clipboard
+/// isn't reliable in a WKWebView).
+#[tauri::command]
+fn copy_text(text: String) -> Result<(), String> {
+    use std::io::Write;
+    let mut child = std::process::Command::new("/usr/bin/pbcopy")
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    child.stdin.take().ok_or("no stdin")?.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
+    match child.wait() {
+        Ok(s) if s.success() => Ok(()),
+        Ok(s) => Err(format!("pbcopy: {s}")),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
 /// The library window's footer: Settings… (for now a page saying they're still being built).
 #[tauri::command]
 fn show_settings(app: AppHandle) {
@@ -167,7 +184,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(Arc::new(Engine::default()))
         .manage(MenuBar::default())
-        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, show_settings, check_updates])
+        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, show_settings, copy_text, check_updates])
         .setup(move |app| {
             if !library_only {
                 // A Dock app with the menu bar icon next to it. Info.plist keeps LSUIElement for the helpers in the

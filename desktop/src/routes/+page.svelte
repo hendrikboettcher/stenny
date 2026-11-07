@@ -7,7 +7,7 @@
   import { renderMarkdown } from "$lib/markdown";
   import {
     library, lecture, makeCopy, makePdf, finishNow, openTranscript, reveal, lecturerAgreed,
-    renameLecture, deleteLecture, renameCourse, addCourse, removeCourse, deleteCourse, bringBack,
+    renameLecture, deleteLecture, renameCourse, addCourse, removeCourse, deleteCourse, bringBack, copyText,
     type Entry, type Library,
   } from "$lib/engine";
 
@@ -21,7 +21,8 @@
   let progress = $state<string | null>(null); // the text so far, while there is no transcript yet
   let withSummary = $state(localStorage.getItem("withSummary") !== "false");
   let shareOpen = $state(false);
-  let shareStenny = $state<"open" | "copied" | null>(null); // the footer's Share Stenny… menu
+  let linkCopied = $state(false); // the footer's Share Stenny: "Link copied" for a moment
+  let copiedTimer: ReturnType<typeof setTimeout> | undefined;
   let busy = $state<string | null>(null);   // "share" | "finish"
   let notice = $state<{ text: string; path?: string; error?: boolean } | null>(null);
 
@@ -190,18 +191,16 @@
 
   // Share Stenny…: the website, where friends get it
   const STENNY_URL = "https://stenny.eu";
-  async function copyStennyLink() {
-    await navigator.clipboard.writeText(STENNY_URL).catch(() => {});
-    shareStenny = "copied";
-    setTimeout(() => { if (shareStenny === "copied") shareStenny = null; }, 1600);
-  }
-  async function emailStenny() {
-    shareStenny = null;
-    const subject = "Stenny: lectures, transcribed on your Mac";
-    const body = `I record and transcribe my lectures with Stenny, right on my Mac. Have a look: ${STENNY_URL}`;
-    const url = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    if ("__TAURI_INTERNALS__" in window) (await import("@tauri-apps/plugin-opener")).openUrl(url);
-    else window.open(url);
+  async function shareStenny() {
+    try {
+      await copyText(STENNY_URL);
+    } catch (e) {
+      notice = { text: `Couldn't copy the link (${e}). It's ${STENNY_URL}.`, error: true };
+      return;
+    }
+    linkCopied = true;
+    clearTimeout(copiedTimer);
+    copiedTimer = setTimeout(() => (linkCopied = false), 1800);
   }
 
   const count = (g: Group) => data?.entries.filter((e) => e.course === g.course && (e.kind === "event") === g.event).length ?? 0;
@@ -269,8 +268,8 @@
   }
 </script>
 
-<svelte:window onclick={() => { shareOpen = false; menu = null; if (shareStenny === "open") shareStenny = null; }}
-               onkeydown={(e) => { if (e.key === "Escape") { shareOpen = false; menu = null; shareStenny = null; } }}
+<svelte:window onclick={() => { shareOpen = false; menu = null; }}
+               onkeydown={(e) => { if (e.key === "Escape") { shareOpen = false; menu = null; } }}
                onblur={() => (menu = null)} />
 
 <div class="window">
@@ -307,22 +306,21 @@
       {@render section("Talks & events", groups.talks)}
     </nav>
     <footer>
-      <div class="share-stenny">
-        <button onclick={(ev) => { ev.stopPropagation(); menu = null; shareStenny = shareStenny === "open" ? null : "open"; }}>
-          {shareStenny === "copied" ? "Link copied" : "Share Stenny…"}
-        </button>
-        {#if shareStenny === "open"}
-          <div class="menu up" role="menu">
-            <button role="menuitem" onclick={(ev) => { ev.stopPropagation(); copyStennyLink(); }}>
-              <span>Copy Link</span><small>stenny.eu, where friends get it</small>
-            </button>
-            <button role="menuitem" onclick={emailStenny}><span>Email…</span></button>
-          </div>
-        {/if}
-      </div>
       <button onclick={() => invoke("show_settings")}>Settings…</button>
       <button onclick={() => invoke("show_feedback")}>Send Feedback…</button>
       <button onclick={() => invoke("check_updates")}>Check for Updates…</button>
+      <!-- copies stenny.eu, where friends get it; says so for a moment -->
+      <button class="share-stenny" class:copied={linkCopied} onclick={shareStenny} title="Copy the link to stenny.eu"
+              aria-label={linkCopied ? "Link copied" : "Share Stenny: copy the link to stenny.eu"}>
+        <span class="icon" aria-hidden="true">
+          <svg class="idle" viewBox="0 0 16 16"><path d="M5.5 6H4.5a1 1 0 0 0-1 1v6.5a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-1M8 1.5v8.5M5.5 4 8 1.5 10.5 4" /></svg>
+          <svg class="done" viewBox="0 0 16 16"><path d="M3.5 8.5 6.5 11.5 12.5 4.5" /></svg>
+        </span>
+        <span class="labels">
+          <span class="idle">Share Stenny</span>
+          <span class="done">Link copied</span>
+        </span>
+      </button>
     </footer>
   </aside>
 
@@ -548,10 +546,18 @@
   footer { padding: 10px 10px 14px; border-top: 1px solid var(--line); display: flex; flex-direction: column; }
   footer button { border: 0; background: none; text-align: left; padding: 4px 10px; color: var(--muted); border-radius: 6px; }
   footer button:hover { color: var(--ink); }
-  footer .share-stenny { position: relative; }
-  footer .share-stenny > button { width: 100%; }
-  .menu.up { top: auto; bottom: calc(100% + 4px); left: 0; min-width: 220px; }
-  .menu.up button { color: var(--ink); }
+  /* Share Stenny: the share symbol and label turn into a check and "Link copied", crossfading in place */
+  footer .share-stenny { display: flex; align-items: center; gap: 6px; }
+  .share-stenny .icon, .share-stenny .labels { display: grid; }
+  .share-stenny .icon > *, .share-stenny .labels > * { grid-area: 1 / 1; transition: opacity 0.22s ease, transform 0.22s ease; }
+  .share-stenny svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+  .share-stenny .done { opacity: 0; transform: translateY(4px); }
+  .share-stenny.copied { color: var(--good); }
+  .share-stenny.copied .idle { opacity: 0; transform: translateY(-4px); }
+  .share-stenny.copied .done { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) {
+    .share-stenny .icon > *, .share-stenny .labels > * { transition: none; transform: none; }
+  }
   .kicker { font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
   nav .kicker { padding: 16px 10px 6px; }
   nav .kicker:first-of-type { padding-top: 0; }
