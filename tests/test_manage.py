@@ -198,3 +198,9 @@ def test_delete_a_talk(env, tmp_path):
     manage.delete_course(cfg, "Guest Talk", event=True)
     assert not (cfg.events_root / "Guest Talk").exists() and not (cfg.data_dir / "_Recordings" / "Guest Talk").exists()
     assert list(config_mod.load(cfg.path).courses) == [NAME, "Other"]
+
+
+def test_deleting_what_isnt_there_says_so(env):
+    cfg, _ = env
+    with pytest.raises(manage.ManageError, match="no talk called"):
+        manage.delete_course(cfg, "Nope", event=True)

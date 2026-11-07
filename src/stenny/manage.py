@@ -366,6 +366,8 @@ def delete_course(cfg: Config, name: str, event: bool = False) -> str:
         raise ManageError(f"{name} is recording right now. Delete it when the recording is done.")
     vault = Vault(cfg.root_for(target))
     data = cfg.data_for(target)
+    if not (vault.course_dir(name).exists() or data.exists() or (not event and name in cfg.courses)):
+        raise ManageError(f"There's no {'talk' if event else 'course'} called '{name}'.")
     with _Quiet():
         items = [vault.course_dir(name), data]
         if not event:
