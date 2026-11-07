@@ -341,6 +341,7 @@
         <p class="empty">No recordings yet.</p>
       {/each}
     {/if}
+    <div class="bottombar" aria-hidden="true"></div>
   </section>
 
   <main class="detail">
@@ -437,6 +438,7 @@
     {:else if !data}
       <div class="center"><p class="quiet serif">Loading…</p></div>
     {/if}
+    <div class="bottombar" aria-hidden="true"></div>
   </main>
 </div>
 
@@ -540,6 +542,9 @@
   /* the scrolling columns keep a solid band under the window's title bar, like the sidebar's */
   .list > .titlebar, .detail > .titlebar { position: sticky; top: 0; z-index: 5; background: var(--bg); }
   .list > .titlebar { margin: 0 -10px; }
+  /* ... and at the bottom, so text never runs into the window's rounded corner */
+  .bottombar { position: sticky; bottom: 0; height: 18px; flex: none; background: var(--bg); z-index: 5; }
+  .list > .bottombar { margin: 0 -10px; }
 
   /* Sidebar */
   .sidebar { background: var(--bar); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
@@ -586,7 +591,7 @@
   .quiet-add { color: var(--muted); font-size: 14px; }
 
   /* List */
-  .list { border-right: 1px solid var(--line); overflow-y: auto; padding: 0 10px 20px; }
+  .list { border-right: 1px solid var(--line); overflow-y: auto; padding: 0 10px; }  /* the bottom band is its end space */
   .list-head { padding: 0 12px 10px; }
   .row {
     display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 2px 8px; width: 100%; text-align: left;
@@ -654,7 +659,7 @@
   .summary :global(.ts) { font-family: var(--sans); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; margin-left: 2px; }
   .summary :global(strong) { font-weight: 560; }
 
-  .center { height: calc(100% - var(--titlebar)); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; padding: 0 40px; }
+  .center { height: calc(100% - var(--titlebar) - 18px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; padding: 0 40px; }
   .big { font-size: 20px; margin: 0; }
   .center p { margin: 0; }
 </style>
