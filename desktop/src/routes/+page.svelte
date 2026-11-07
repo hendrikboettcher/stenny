@@ -537,6 +537,9 @@
 <style>
   .window { display: grid; grid-template-columns: 220px 290px minmax(0, 1fr); height: 100vh; }
   .titlebar { height: var(--titlebar); flex: none; }
+  /* the scrolling columns keep a solid band under the window's title bar, like the sidebar's */
+  .list > .titlebar, .detail > .titlebar { position: sticky; top: 0; z-index: 5; background: var(--bg); }
+  .list > .titlebar { margin: 0 -10px; }
 
   /* Sidebar */
   .sidebar { background: var(--bar); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
@@ -577,8 +580,9 @@
   .more { opacity: 0; }
   .group-row:hover .more, .more:focus-visible { opacity: 1; }
   .more:hover, .add:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 8%, transparent); }
-  .with-add { position: relative; display: flex; align-items: center; }
-  .add { right: 4px; font-size: 16px; font-weight: 500; }
+  /* "Courses" and its +: the + centred on the label's line, its right edge where the rows' ⋯ sits */
+  nav .kicker.with-add { display: flex; align-items: center; justify-content: space-between; padding-bottom: 10px; }
+  .add { position: static; transform: none; width: 20px; height: 20px; margin: -3px -6px -3px 0; font-size: 16px; font-weight: 500; flex: none; }
   .quiet-add { color: var(--muted); font-size: 14px; }
 
   /* List */
