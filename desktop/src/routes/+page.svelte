@@ -285,7 +285,9 @@
         <div class="group-row" class:active={same(g, group)} oncontextmenu={(ev) => showMenu(ev, { group: g })}>
           <button class="group" onclick={() => pick(g)} title={g.course}>{g.course}</button>
           <button class="more" aria-label="Options for {g.course}" title="Options"
-                  onclick={(ev) => showMenu(ev, { group: g })}>⋯</button>
+                  onclick={(ev) => showMenu(ev, { group: g })}>
+            <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.25" /><circle cx="8" cy="8" r="1.25" /><circle cx="12.5" cy="8" r="1.25" /></svg>
+          </button>
         </div>
       {/snippet}
       {#snippet section(title: string, list: Group[])}
@@ -296,7 +298,9 @@
       {/snippet}
       <div class="kicker with-add">
         <span>Courses</span>
-        <button class="add" aria-label="Add Course" title="Add a course" onclick={() => open({ kind: "add" })}>+</button>
+        <button class="add" aria-label="Add Course" title="Add a course" onclick={() => open({ kind: "add" })}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" /></svg>
+        </button>
       </div>
       {#each groups.courses as g (g.course)}{@render row(g)}{/each}
       {#if data && !groups.courses.length}
@@ -580,8 +584,12 @@
   .group-row .group { padding-right: 28px; }
   .more, .add {
     position: absolute; right: 4px; top: 50%; transform: translateY(-50%); border: 0; background: none;
-    color: var(--muted); width: 22px; height: 22px; border-radius: 5px; padding: 0; line-height: 1; font-size: 14px;
+    color: var(--muted); width: 22px; height: 22px; border-radius: 5px; padding: 0;
+    display: grid; place-items: center;  /* drawn icons, so they sit in the middle (text glyphs sit on the baseline) */
   }
+  .more svg, .add svg { width: 14px; height: 14px; display: block; }
+  .more svg { fill: currentColor; }
+  .add svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
   .more { opacity: 0; }
   .group-row:hover .more, .more:focus-visible { opacity: 1; }
   .more:hover, .add:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 8%, transparent); }
