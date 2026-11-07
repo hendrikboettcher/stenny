@@ -84,9 +84,9 @@ def start(cfg, params: dict) -> dict:
 
 
 def command(cfg, params: dict) -> dict:
-    """pause, resume, toggle or stop the running recording."""
+    """pause, resume, toggle, stop or cancel (no transcript, files to the Trash) the running recording."""
     cmd = params.get("cmd")
-    if cmd not in ("pause", "resume", "toggle", "stop"):
+    if cmd not in ("pause", "resume", "toggle", "stop", "cancel"):
         raise LiveError(f"Unknown command '{cmd}'.")
     try:
         return control.send(cmd)

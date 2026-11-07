@@ -106,12 +106,58 @@ def finish_now(cfg, params: dict) -> dict:
     return {"started": True}
 
 
+def _managed(fn, *args, **kw):
+    from .manage import ManageError
+    try:
+        return fn(*args, **kw)
+    except (ManageError, ConfigError) as e:
+        raise AppError(str(e)) from None
+    except KeyError as e:
+        raise AppError(f"Missing '{e.args[0]}'.") from None
+
+
+def rename_lecture(cfg, params: dict) -> dict:
+    """A lecture's own title (empty: "Lecture N" again)."""
+    from . import manage
+    title = _managed(manage.rename_lecture, cfg, params["course"], params["folder"], params.get("title") or "",
+                     event=bool(params.get("event")))
+    return {"title": title or None}
+
+
+def delete_lecture(cfg, params: dict) -> dict:
+    """A lecture to the Trash."""
+    from . import manage
+    return {"message": _managed(manage.delete_lecture, cfg, params["course"], params["folder"],
+                                event=bool(params.get("event")))}
+
+
+def rename_course(cfg, params: dict) -> dict:
+    """A course (or with `event`, a talk) renamed everywhere."""
+    from . import manage
+    return {"name": _managed(manage.rename_course, cfg, params["course"], params["name"],
+                             event=bool(params.get("event")))}
+
+
+def add_course(cfg, params: dict) -> dict:
+    """A new course (`name`, `language`, optional `alias`), or a removed one back with its settings."""
+    from . import courses
+    return {"message": _managed(courses.add, cfg, params["name"], params.get("language") or "auto",
+                                None, params.get("alias") or None)}
+
+
+def remove_course(cfg, params: dict) -> dict:
+    """A course out of the menu and calendar matching; its recordings stay, under Past Courses."""
+    from . import courses
+    return {"message": _managed(courses.hide, cfg, params["course"])}
+
+
 def ping(cfg, params: dict) -> dict:
     return {"version": package_version("stenny")}
 
 
 METHODS = {"ping": ping, "library": library, "lecture": lecture, "make_copy": make_copy, "finish_now": finish_now,
-           **app_live.METHODS}
+           "rename_lecture": rename_lecture, "delete_lecture": delete_lecture, "rename_course": rename_course,
+           "add_course": add_course, "remove_course": remove_course, **app_live.METHODS}
 
 
 def handle(cfg, request: dict) -> dict:

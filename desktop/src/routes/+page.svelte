@@ -3,9 +3,11 @@
   import { onMount, untrack } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import Figure from "$lib/Figure.svelte";
+  import Dialog from "$lib/Dialog.svelte";
   import { renderMarkdown } from "$lib/markdown";
   import {
     library, lecture, makeCopy, makePdf, finishNow, openTranscript, reveal, lecturerAgreed,
+    renameLecture, deleteLecture, renameCourse, addCourse, removeCourse, bringBack, onAddCourse,
     type Entry, type Library,
   } from "$lib/engine";
 
@@ -22,9 +24,25 @@
   let busy = $state<string | null>(null);   // "share" | "finish"
   let notice = $state<{ text: string; path?: string; error?: boolean } | null>(null);
 
+  // renaming, deleting, the course list: a right-click (or ⋯) menu, then a dialog
+  type Menu = { x: number; y: number; group?: Group; entry?: Entry };
+  type Ask =
+    | { kind: "add" } | { kind: "rename-group"; group: Group } | { kind: "remove-course"; group: Group }
+    | { kind: "rename-lecture"; entry: Entry } | { kind: "delete-lecture"; entry: Entry };
+  let menu = $state<Menu | null>(null);
+  let ask = $state<Ask | null>(null);
+  let askBusy = $state(false);
+  let askError = $state<string | null>(null);
+  let field = $state("");
+  let alias = $state("");
+  let language = $state("en");
+  const LANGUAGES = [["en", "English"], ["de", "German"], ["fr", "French"], ["mixed", "Mixed"], ["auto", "Auto"]];
+
   const id = (e: Entry) => `${e.kind}/${e.course}/${e.folder}`;
   const same = (a: Group | null, b: Group | null) => !!a && !!b && a.course === b.course && a.event === b.event;
   const isDraft = (e: Entry) => e.status !== "final";
+  const isBusy = (e: Entry) => e.status === "live" || e.status === "finalizing"; // can't be renamed or deleted now
+  const configured = (g: Group) => !g.event && !!data?.courses.some((c) => c.name === g.course && !c.hidden);
 
   // Courses from the config first (in its order), then past courses that only have recordings, then talks.
   let groups = $derived.by(() => {
@@ -95,8 +113,79 @@
     reload();
     const onFocus = () => reload();
     window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
+    const unlisten = onAddCourse(() => open({ kind: "add" }));
+    return () => { window.removeEventListener("focus", onFocus); unlisten.then((f) => f()); };
   });
+
+  function showMenu(ev: MouseEvent, target: { group?: Group; entry?: Entry }) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    shareOpen = false;
+    const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+    // from a ⋯ button: under it; from a right-click: at the pointer
+    const [x, y] = ev.type === "contextmenu" ? [ev.clientX, ev.clientY] : [r.left, r.bottom + 4];
+    menu = { x: Math.min(x, window.innerWidth - 230), y: Math.min(y, window.innerHeight - 120), ...target };
+  }
+
+  function open(a: Ask) {
+    menu = null;
+    askError = null;
+    askBusy = false;
+    field = a.kind === "rename-group" ? a.group.course : a.kind === "rename-lecture" ? a.entry.title ?? "" : "";
+    alias = "";
+    language = "en";
+    ask = a;
+  }
+
+  async function answer() {
+    if (!ask) return;
+    const a = ask;
+    askBusy = true;
+    askError = null;
+    try {
+      if (a.kind === "add") {
+        await addCourse(field, language, alias);
+        await reload();
+        pick({ course: field.trim().normalize("NFC"), event: false });
+      } else if (a.kind === "rename-group") {
+        const { name } = await renameCourse(a.group.course, a.group.event, field);
+        const wasOpen = same(group, a.group);
+        await reload();
+        if (wasOpen) group = { course: name, event: a.group.event };
+      } else if (a.kind === "remove-course") {
+        await removeCourse(a.group.course);
+        await reload();
+      } else if (a.kind === "rename-lecture") {
+        await renameLecture(a.entry, field);
+        await reload();
+      } else if (a.kind === "delete-lecture") {
+        const at = entries.findIndex((e) => id(e) === id(a.entry));
+        await deleteLecture(a.entry);
+        await reload();
+        const next = entries[Math.min(at, entries.length - 1)];
+        selectedId = next ? id(next) : null;
+      }
+      ask = null;
+    } catch (e) {
+      askError = String(e);
+    } finally {
+      askBusy = false;
+    }
+  }
+
+  async function bring(g: Group) {
+    menu = null;
+    try {
+      await bringBack(g.course);
+      await reload();
+    } catch (e) {
+      notice = { text: String(e), error: true };
+    }
+  }
+
+  const count = (g: Group) => data?.entries.filter((e) => e.course === g.course && (e.kind === "event") === g.event).length ?? 0;
+  const lectureName = (e: Entry) =>
+    e.title ? `“${e.title}”` : e.kind === "event" ? `${e.course} (${prettyDate(e, false)})` : `${rowTitle(e)} of ${e.course}`;
 
   const languageName = (code: string | null) => {
     if (!code) return null;
@@ -109,10 +198,12 @@
     const second = e.folder.length > 10 ? ` ${e.folder.slice(10).trim()}` : "";
     return text + second;
   };
-  const rowTitle = (e: Entry) => (e.number > 0 ? `Lecture ${e.number}` : prettyDate(e));
-  const rowDetail = (e: Entry) => [e.number > 0 ? prettyDate(e) : e.start, e.duration].filter(Boolean).join(" · ");
+  const rowTitle = (e: Entry) => e.title ?? (e.number > 0 ? `Lecture ${e.number}` : prettyDate(e));
+  const number = (e: Entry) => (e.title && e.number > 0 ? `Lecture ${e.number}` : null); // its title took the number's place
+  const rowDetail = (e: Entry) =>
+    [number(e), e.number > 0 || e.title ? prettyDate(e) : e.start, e.duration].filter(Boolean).join(" · ");
   const details = (e: Entry) =>
-    [prettyDate(e) + (e.start ? `, ${e.start}` : ""), e.duration, languageName(e.language)].filter(Boolean).join(" · ");
+    [number(e), prettyDate(e) + (e.start ? `, ${e.start}` : ""), e.duration, languageName(e.language)].filter(Boolean).join(" · ");
   const statusLabel: Record<string, string> = {
     live: "Recording", queued: "Waiting", finalizing: "Finishing", draft: "Draft",
   };
@@ -157,7 +248,9 @@
   }
 </script>
 
-<svelte:window onclick={() => (shareOpen = false)} onkeydown={(e) => e.key === "Escape" && (shareOpen = false)} />
+<svelte:window onclick={() => { shareOpen = false; menu = null; }}
+               onkeydown={(e) => { if (e.key === "Escape") { shareOpen = false; menu = null; } }}
+               onblur={() => (menu = null)} />
 
 <div class="window">
   <aside class="sidebar">
@@ -168,17 +261,27 @@
     </div>
 
     <nav>
+      {#snippet row(g: Group)}
+        <div class="group-row" class:active={same(g, group)} oncontextmenu={(ev) => showMenu(ev, { group: g })}>
+          <button class="group" onclick={() => pick(g)} title={g.course}>{g.course}</button>
+          <button class="more" aria-label="Options for {g.course}" title="Options"
+                  onclick={(ev) => showMenu(ev, { group: g })}>⋯</button>
+        </div>
+      {/snippet}
       {#snippet section(title: string, list: Group[])}
         {#if list.length}
           <div class="kicker">{title}</div>
-          {#each list as g (g.course + g.event)}
-            <button class="group" class:active={same(g, group)} onclick={() => pick(g)} title={g.course}>
-              {g.course}
-            </button>
-          {/each}
+          {#each list as g (g.course + g.event)}{@render row(g)}{/each}
         {/if}
       {/snippet}
-      {@render section("Courses", groups.courses)}
+      <div class="kicker with-add">
+        <span>Courses</span>
+        <button class="add" aria-label="Add Course" title="Add a course" onclick={() => open({ kind: "add" })}>+</button>
+      </div>
+      {#each groups.courses as g (g.course)}{@render row(g)}{/each}
+      {#if data && !groups.courses.length}
+        <button class="group quiet-add" onclick={() => open({ kind: "add" })}>Add your first course</button>
+      {/if}
       {@render section("Past courses", groups.past)}
       {@render section("Talks & events", groups.talks)}
     </nav>
@@ -195,7 +298,8 @@
         {entries.length} {entries.length === 1 ? "recording" : "recordings"}
       </div>
       {#each entries as e (id(e))}
-        <button class="row" class:active={id(e) === selectedId} onclick={() => (selectedId = id(e))}>
+        <button class="row" class:active={id(e) === selectedId} onclick={() => (selectedId = id(e))}
+                oncontextmenu={(ev) => { selectedId = id(e); showMenu(ev, { entry: e }); }}>
           <span class="row-title serif">{rowTitle(e)}</span>
           {#if isDraft(e)}<span class="status {e.status}">{statusLabel[e.status] ?? "Draft"}</span>{/if}
           <span class="row-detail">{rowDetail(e)}</span>
@@ -225,6 +329,10 @@
                 {busy === "finish" ? "Starting…" : "Make final transcript now"}
               </button>
             {/if}
+            {#if !isBusy(selected)}
+              <button class="pill small" aria-label="More" title="Rename or move to the Trash"
+                      onclick={(ev) => showMenu(ev, { entry: selected! })}>⋯</button>
+            {/if}
           </div>
         {/if}
 
@@ -247,6 +355,8 @@
           </div>
           <button class="pill" onclick={() => openTranscript(selected!.transcript)}>Open transcript</button>
           <button class="pill" onclick={() => reveal(selected!.transcript)}>Show in Finder</button>
+          <button class="pill" aria-label="More" title="Rename or move to the Trash"
+                  onclick={(ev) => showMenu(ev, { entry: selected! })}>⋯</button>
         </div>
         {/if}
         {#if selected.summary && !isDraft(selected)}
@@ -297,6 +407,88 @@
   </main>
 </div>
 
+{#if menu}
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+  <div class="menu floating" role="menu" style="left: {menu.x}px; top: {menu.y}px" onclick={(ev) => ev.stopPropagation()}>
+    {#if menu.group}
+      {@const g = menu.group}
+      <button role="menuitem" onclick={() => open({ kind: "rename-group", group: g })}>
+        <span>Rename…</span>
+      </button>
+      {#if configured(g)}
+        <button role="menuitem" onclick={() => open({ kind: "remove-course", group: g })}>
+          <span>Remove Course…</span><small>Its recordings stay, under Past courses</small>
+        </button>
+      {:else if !g.event}
+        <button role="menuitem" onclick={() => bring(g)}>
+          <span>Bring Back to the Menu</span>
+        </button>
+      {/if}
+    {:else if menu.entry}
+      {@const e = menu.entry}
+      {#if isBusy(e)}
+        <p class="menu-note">{e.status === "live"
+          ? "Still recording. To throw it away, use Cancel Recording… in Stenny's menu bar."
+          : "Its transcript is being made. Rename or delete it when that's done."}</p>
+      {:else}
+        <button role="menuitem" onclick={() => open({ kind: "rename-lecture", entry: e })}>
+          <span>Rename…</span>
+        </button>
+        <button role="menuitem" class="danger" onclick={() => open({ kind: "delete-lecture", entry: e })}>
+          <span>Move to Trash…</span>
+        </button>
+      {/if}
+    {/if}
+  </div>
+{/if}
+
+{#if ask}
+  {#if ask.kind === "add"}
+    <Dialog title="Add a course" confirm="Add Course" busy={askBusy} error={askError}
+            text="Mixed is for lecturers who switch languages within a lecture. Auto is for one language per lecture, but not always the same one."
+            oncancel={() => (ask = null)} onconfirm={answer}>
+      <label for="course-name">Name</label>
+      <input id="course-name" bind:value={field} placeholder="e.g. Microeconomics" autocomplete="off" spellcheck="false" />
+      <label for="course-language">Language</label>
+      <select id="course-language" bind:value={language}>
+        {#each LANGUAGES as [code, name]}<option value={code}>{name}</option>{/each}
+      </select>
+      <label for="course-alias">Short name (optional)</label>
+      <input id="course-alias" bind:value={alias} placeholder="e.g. micro" autocomplete="off" spellcheck="false" />
+    </Dialog>
+  {:else if ask.kind === "rename-group"}
+    <Dialog title={ask.group.event ? "Rename this talk" : "Rename this course"} confirm="Rename" busy={askBusy} error={askError}
+            text={ask.group.event
+              ? "Its folder and files are renamed too."
+              : "Its folder, files and Obsidian links are renamed too. The old name still finds it in your calendar."}
+            oncancel={() => (ask = null)} onconfirm={answer}>
+      <input bind:value={field} aria-label="New name" autocomplete="off" spellcheck="false" />
+    </Dialog>
+  {:else if ask.kind === "remove-course"}
+    {@const n = count(ask.group)}
+    <Dialog title="Remove {ask.group.course}?" confirm="Remove Course" busy={askBusy} error={askError}
+            text="It leaves the menu and calendar matching. {n === 0
+              ? 'Nothing was recorded for it yet. Its glossary, if it has one, stays.'
+              : n === 1 ? 'Its transcript and glossary stay, under Past courses in this window.'
+              : `Its ${n} transcripts and glossary stay, under Past courses in this window.`} You can bring it back from there."
+            oncancel={() => (ask = null)} onconfirm={answer} />
+  {:else if ask.kind === "rename-lecture"}
+    <Dialog title="Rename {ask.entry.number > 0 ? `Lecture ${ask.entry.number}` : 'this recording'}" confirm="Rename"
+            busy={askBusy} error={askError}
+            text={ask.entry.number > 0
+              ? `The title shows instead of “Lecture ${ask.entry.number}”. Leave it empty to show the number again.`
+              : "The title shows instead of the date. Leave it empty to show the date again."}
+            oncancel={() => (ask = null)} onconfirm={answer}>
+      <input bind:value={field} aria-label="Title" placeholder="e.g. Decision trees" autocomplete="off" />
+    </Dialog>
+  {:else if ask.kind === "delete-lecture"}
+    <Dialog title="Move {lectureName(ask.entry)} to the Trash?" confirm="Move to Trash" danger busy={askBusy} error={askError}
+            text="Its transcript, summary and audio go to the Trash, where you can put them back.{ask.entry.kind === 'lecture'
+              ? ' Later lectures of the course move up a number.' : ''}"
+            oncancel={() => (ask = null)} onconfirm={answer} />
+  {/if}
+{/if}
+
 <style>
   .window { display: grid; grid-template-columns: 220px 290px minmax(0, 1fr); height: 100vh; }
   .titlebar { height: var(--titlebar); flex: none; }
@@ -317,7 +509,20 @@
     font-family: var(--serif); font-size: 15px; line-height: 1.25; color: var(--ink-2); text-wrap: pretty; hyphens: auto; overflow-wrap: break-word;
   }
   .group:hover { color: var(--ink); }
-  .group.active { background: var(--mark); color: var(--ink); }
+  .group-row { position: relative; border-radius: 7px; }
+  .group-row.active { background: var(--mark); }
+  .group-row.active .group { color: var(--ink); }
+  .group-row .group { padding-right: 28px; }
+  .more, .add {
+    position: absolute; right: 4px; top: 50%; transform: translateY(-50%); border: 0; background: none;
+    color: var(--muted); width: 22px; height: 22px; border-radius: 5px; padding: 0; line-height: 1; font-size: 14px;
+  }
+  .more { opacity: 0; }
+  .group-row:hover .more, .more:focus-visible { opacity: 1; }
+  .more:hover, .add:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 8%, transparent); }
+  .with-add { position: relative; display: flex; align-items: center; }
+  .add { right: 4px; font-size: 16px; font-weight: 500; }
+  .quiet-add { color: var(--muted); font-size: 14px; }
 
   /* List */
   .list { border-right: 1px solid var(--line); overflow-y: auto; padding: 0 10px 20px; }
@@ -364,6 +569,9 @@
   .menu button { display: flex; flex-direction: column; width: 100%; text-align: left; border: 0; background: none; padding: 7px 10px; border-radius: 6px; }
   .menu button:hover { background: var(--mark); }
   .menu small { color: var(--muted); font-size: 11.5px; }
+  .menu.floating { position: fixed; top: 0; left: 0; z-index: 40; min-width: 200px; max-width: 260px; }
+  .menu .danger { color: var(--rec); }
+  .menu-note { margin: 0; padding: 7px 10px; color: var(--muted); font-size: 12px; line-height: 1.4; }
   .check { display: flex; align-items: center; gap: 7px; margin-top: 12px; color: var(--muted); }
   .check input { accent-color: var(--ink); margin: 0; }
   .notice { margin: 12px 0 0; color: var(--muted); }

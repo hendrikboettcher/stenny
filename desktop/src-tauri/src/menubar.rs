@@ -160,6 +160,7 @@ fn status_line(st: &State) -> String {
         "recording" => format!("Recording · {course}"),
         "paused" => format!("Paused for {} · mic off · {course}", clock(num(s, "current_pause_s"))),
         "stopping" => "Stopping …".into(),
+        "cancelling" => "Cancelling …".into(),
         "finalizing" | "done" => "Making the transcript …".into(),
         "starting" => "Starting …".into(),
         _ if st.idle_message.is_empty() => "Ready".into(),
@@ -198,6 +199,7 @@ fn build_menu(app: &AppHandle, st: &State) -> tauri::Result<(Menu<Wry>, MenuItem
         };
         items.push(Box::new(start));
         items.push(Box::new(MenuItem::with_id(app, "talk", "Record a Talk or Event…", true, None::<&str>)?));
+        items.push(Box::new(MenuItem::with_id(app, "add-course", "Add Course…", true, None::<&str>)?));
         items.push(Box::new(PredefinedMenuItem::separator(app)?));
     }
 
@@ -224,6 +226,11 @@ fn build_menu(app: &AppHandle, st: &State) -> tauri::Result<(Menu<Wry>, MenuItem
     }
     items.push(Box::new(MenuItem::with_id(app, "open", "Open Stenny…", true, None::<&str>)?));
     items.push(Box::new(PredefinedMenuItem::separator(app)?));
+    // far from Stop, and it asks first: it throws the recording away
+    if active {
+        items.push(Box::new(MenuItem::with_id(app, "cancel", "Cancel Recording…", true, None::<&str>)?));
+        items.push(Box::new(PredefinedMenuItem::separator(app)?));
+    }
     items.push(Box::new(MenuItem::with_id(app, "feedback", "Send Feedback…", true, None::<&str>)?));
     items.push(Box::new(MenuItem::with_id(app, "updates", "Check for Updates…", true, None::<&str>)?));
     items.push(Box::new(PredefinedMenuItem::separator(app)?));
@@ -260,7 +267,7 @@ fn redraw(app: &AppHandle, force: bool) {
         "recording" if lost => ("warning", Some(clock(num(&s, "elapsed_s") - num(&s, "paused_s")))),
         "recording" => ("recording", Some(clock(num(&s, "elapsed_s") - num(&s, "paused_s")))),
         "paused" => ("paused", Some(clock(num(&s, "elapsed_s") - num(&s, "paused_s")))),
-        "stopping" | "finalizing" | "done" => ("finishing", None),
+        "stopping" | "cancelling" | "finalizing" | "done" => ("finishing", None),
         "starting" => ("starting", None),
         _ => ("idle", None),
     };
@@ -408,7 +415,7 @@ pub fn start_polling(app: AppHandle) {
             load_lists(&app);
         }
         let status = engine(&app).call("status", json!({})).unwrap_or_else(|_| json!({"state": "idle"}));
-        let fast = matches!(str_of(&status, "state"), "recording" | "paused" | "starting" | "stopping");
+        let fast = matches!(str_of(&status, "state"), "recording" | "paused" | "starting" | "stopping" | "cancelling");
         update(&app, status);
         std::thread::sleep(Duration::from_secs(if fast { 1 } else { 3 }));
     });
@@ -464,6 +471,30 @@ pub fn start(app: &AppHandle, course: &str, event: bool) -> Result<(), String> {
     let status = engine(app).call("start", params)?;
     update(app, status);
     Ok(())
+}
+
+/// "Cancel Recording…": the recording ends without a transcript and its files go to the Trash. Asked first, with
+/// Keep Recording as the default button, so Return or a hasty click keeps it.
+fn cancel_recording(app: &AppHandle) {
+    let course = {
+        let st = app.state::<MenuBar>();
+        let st = st.0.lock().unwrap();
+        if !is_active(&st.status) {
+            return;
+        }
+        str_of(&st.status, "course").to_string()
+    };
+    let answer = app
+        .dialog()
+        .message(format!("The recording of {course} stops without a transcript. Its audio and the text so far \
+                          go to the Trash."))
+        .title("Delete this recording?")
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom("Keep Recording".into(), "Delete Recording".into()))
+        .blocking_show_with_result();
+    if matches!(&answer, MessageDialogResult::Custom(t) if t == "Delete Recording") {
+        send(app, "cancel");
+    }
 }
 
 fn send(app: &AppHandle, cmd: &str) {
@@ -530,6 +561,8 @@ fn on_menu(app: &AppHandle, id: &str) {
     std::thread::spawn(move || match id.as_str() {
         "toggle" => send(&app, "toggle"),
         "stop" => send(&app, "stop"),
+        "cancel" => cancel_recording(&app),
+        "add-course" => crate::add_course(&app),
         "talk" => crate::show_window(&app, "talk"),
         "open" | "open-text" => crate::show_window(&app, "library"),
         "feedback" => crate::show_window(&app, "feedback"),

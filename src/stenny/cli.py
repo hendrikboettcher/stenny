@@ -453,7 +453,10 @@ def cmd_live(args) -> None:
     try:
         log("Controls: `stenny pause` / `stenny resume` / `stenny toggle` / `stenny stop` (or Stenny, ⌘⇧Ü)")
         session.run()
-        finalize(session, cfg, args.final, not args.no_llm, engine)
+        if session.cancelled:
+            discard(session, cfg)
+        else:
+            finalize(session, cfg, args.final, not args.no_llm, engine)
     finally:
         server.close()
 
@@ -516,6 +519,18 @@ def cmd_recover(args) -> None:
         recovered = recover_sessions(load_config())
     if args.json:  # for Stenny
         print(json.dumps(recovered, ensure_ascii=False))
+
+
+def discard(session, cfg) -> None:
+    """A cancelled recording: its audio, session files and placeholder go to the Trash."""
+    from .manage import ManageError, discard_recording
+    from .pipeline import log
+
+    try:
+        discard_recording(cfg, session.course, session.folder.name)
+        log(f"Recording cancelled: {session.course.name} {session.folder.name} moved to the Trash")
+    except (ManageError, OSError) as e:
+        log(f"Recording cancelled, but its files couldn't go to the Trash: {e}")
 
 
 def finalize(session, cfg, policy: str, use_llm: bool, engine) -> None:

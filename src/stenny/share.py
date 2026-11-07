@@ -51,6 +51,7 @@ def _entries(root: Path, kind: str) -> list[dict]:
                 "course": fm.get("course") or fm.get("event") or course_dir.name,
                 "folder": folder.name,
                 "number": fm.get("lecture") or 0,
+                "title": fm.get("title") or None,  # its own title, given in Stenny's window
                 "date": str(fm.get("date") or folder.name[:10]),
                 "start": fm.get("start"),
                 "duration": fm.get("duration"),
@@ -118,6 +119,9 @@ def clean_summary(text: str) -> str:
 
 def shared_text(entry: dict, with_summary: bool = False) -> str:
     transcript = clean_transcript(Path(entry["transcript"]).read_text(encoding="utf-8"))
+    if entry.get("title"):  # its own title, after "Lecture 3" (or the talk's name)
+        transcript = re.sub(r"(?m)^(# .*?)( \(\d{4}-\d{2}-\d{2}[^)]*\))?$",
+                            lambda m: f"{m.group(1)}: {entry['title']}{m.group(2) or ''}", transcript, count=1)
     if not (with_summary and entry.get("summary")):
         return transcript
     summary = clean_summary(Path(entry["summary"]).read_text(encoding="utf-8"))
@@ -228,7 +232,8 @@ def to_html(markdown: str, title: str, bullet_lines: bool = False, credit: bool 
 def share_name(entry: dict, fmt: str = "md") -> str:
     """'Calculus – Lecture 3 (2026-10-20).md', 'Some Talk (2026-10-20).docx'."""
     number = f" – Lecture {entry['number']}" if entry["kind"] == "lecture" and entry.get("number") else ""
-    return f"{safe_name(entry['course'])}{number} ({entry['folder']}).{fmt}"
+    title = f" – {safe_name(entry['title'])}" if entry.get("title") else ""
+    return f"{safe_name(entry['course'])}{number}{title} ({entry['folder']}).{fmt}"
 
 
 def _docx(page: str, path: Path) -> None:

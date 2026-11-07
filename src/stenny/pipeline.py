@@ -363,6 +363,15 @@ def raw_path(cfg: Config, course: "Course | str", folder: Path) -> Path:
     return base / f"{safe_name(name)} {folder.name} (raw).md"
 
 
+def own_title(files) -> str | None:
+    """The title given to a lecture in Stenny's window, kept when its transcript is written again."""
+    transcript = files.existing("transcript")
+    if not transcript:
+        return None
+    with transcript.open(encoding="utf-8", errors="replace") as f:
+        return parse_frontmatter(f.read(16384)).get("title") or None
+
+
 def home_relative(path: Path) -> str:
     return str(path).replace(str(Path.home()), "~", 1)
 
@@ -527,6 +536,7 @@ def process(path: Path, cfg: Config, course: Course, engine, *, lang: str | None
                   microphone=microphone, backup_microphone=backup_mic,
                   number=0 if course.is_event else vault.lecture_number(course.name, folder), kind=course.kind)
     files = vault.files(course.name, folder)
+    lec.name = own_title(files)
 
     # 1. raw output first, so it exists no matter what happens later
     if slides_copy:
@@ -621,6 +631,7 @@ def refresh(cfg: Config, course: Course, folder_name: str, *, use_llm: bool = Tr
     lec.slides = slides.count if slides else 0
     lec.number = 0 if course.is_event else vault.lecture_number(course.name, folder)
     lec.names, lec.kind = files.names(), course.kind
+    lec.name = own_title(files)
     raw = raw_path(cfg, course, folder)
     lec.raw_file = home_relative(raw) if raw.exists() else None
     log(f"Refreshing {course.name} {folder.name}" + (f" with {slides.count} slides" if slides else "")

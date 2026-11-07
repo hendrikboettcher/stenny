@@ -472,3 +472,36 @@ def test_virtual_devices_are_not_offered_as_microphones(monkeypatch):
     monkeypatch.setattr(sources.subprocess, "run", lambda cmd, **kw: SimpleNamespace(
         stdout=profile if cmd[0] == "system_profiler" else "", stderr=listing))
     assert sources.input_devices() == ["Alex's iPhone Microphone", "Built-in Microphone"]
+
+
+def test_cancel_ends_without_a_transcript_and_trashes_the_recording(tmp_path, monkeypatch):
+    import shutil
+    from types import SimpleNamespace
+
+    from stenny import cli, manage
+    (tmp_path / "vault" / "Areas").mkdir(parents=True)
+    cfg = Config(vault=tmp_path / "vault", lectures_dir="Areas/Lectures", data_dir=tmp_path / "audio")
+    mic = FakeMic()
+    s = LiveSession(cfg, Course("Calculus", language="fr"), mic, FakeEngine())
+    short_chunks(s, monkeypatch)
+    monkeypatch.setattr(s, "now", lambda: mic.t)
+    monkeypatch.setattr(live_session, "POLL", 0.002)
+    trashed = tmp_path / "Trash"
+    trashed.mkdir()
+    monkeypatch.setattr(manage, "trash", lambda items: [shutil.move(p, trashed / p.name) for p in items if p.exists()])
+
+    def script():
+        wait_until(lambda: mic.t >= 8)
+        s.command("cancel")
+
+    threading.Thread(target=script, daemon=True).start()
+    s.run()
+    assert s.cancelled and s.state == "cancelling" and s.recorded > 0
+    queued = []
+    monkeypatch.setattr(jobs, "enqueue", lambda *a, **k: queued.append(a))
+    cli.discard(s, cfg)
+    assert not queued
+    assert not (cfg.lectures_root / "Calculus").exists()       # the placeholder (and its now empty course)
+    assert not list((tmp_path / "audio" / "Calculus").iterdir())
+    names = {p.name for p in trashed.iterdir()}
+    assert {s.folder.name, s.pcm_path.name, s.session_path.name} <= names

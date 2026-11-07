@@ -101,6 +101,13 @@ fn urlencode(s: &str) -> String {
 }
 
 /// Shows a window, creating it the first time: "library" or "talk".
+/// "Add Course…" in the menu bar: the library window, with its Add Course dialog open.
+pub fn add_course(app: &AppHandle) {
+    use tauri::Emitter;
+    show_window(app, "library");
+    let _ = app.emit_to("library", "add-course", ());
+}
+
 pub fn show_window(app: &AppHandle, label: &str) {
     let app2 = app.clone();
     let label = label.to_string();

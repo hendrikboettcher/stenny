@@ -74,6 +74,7 @@ class Lecture:
     names: dict = field(default_factory=dict)  # file names of the other files, for links (vault.LectureFiles.names)
     topics: list = field(default_factory=list)
     kind: str = "lecture"      # "lecture" | "event" (a talk or event: no course, no lecture number)
+    name: str | None = None    # the lecture's own title, given in Stenny's window (frontmatter `title`)
     raw_file: str | None = None  # where the raw output is (outside the vault, "~/…"); None: old lectures, linked in the vault  # main topics (AI step, checked by the guard); notes in _Topics/
 
     @property
@@ -190,7 +191,7 @@ def transcript_md(lec: Lecture, paragraphs: list[dict], sections: list[dict]) ->
     ai = lec.structure.startswith("ai")
     not_filled = [p for p in lec.pauses if reason(p) != "backup"]
     fm = frontmatter({
-        **lec.who, "lecture": lec.number or None, "date": lec.date, "start": lec.start_time,
+        **lec.who, "lecture": lec.number or None, "title": lec.name, "date": lec.date, "start": lec.start_time,
         "duration": fmt_hms(lec.duration),
         "language": lec.languages[0] if len(lec.languages) == 1 else "mixed", "languages": lec.languages,
         "tags": [lec.base_tag, *lec.tags], "status": lec.status, "waiting": lec.waiting, "model": lec.model, "structure": lec.structure,

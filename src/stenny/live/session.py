@@ -166,6 +166,7 @@ class LiveSession:
         self.pauses: list[list] = []      # [start, end, reason] in lecture time; end None while ongoing;
                                           # reason "paused" (by you) or "no input" (microphone lost)
         self.ended_at: float | None = None
+        self.cancelled = False            # Cancel Recording: no transcript, its files go to the Trash
         # The microphone needs a moment (seconds, if macOS asks for permission) before audio arrives,
         # so a span's lecture time is taken from its first block, not from the button press.
         self.span_waiting = False
@@ -558,6 +559,8 @@ class LiveSession:
             self.resume()
         elif cmd == "stop":
             self.stop()
+        elif cmd == "cancel":
+            self.cancel()
         elif cmd == "microphone":
             if error := self.switch_microphone(device):
                 return {"ok": False, "error": error}
@@ -646,6 +649,15 @@ class LiveSession:
     def stop(self) -> None:
         with self.lock:
             self._stop_locked()
+
+    def cancel(self) -> None:
+        """Stop without a transcript: the recording and its placeholder go to the Trash (cli.cmd_live)."""
+        with self.lock:
+            if self.state not in ("recording", "paused"):
+                return
+            self.cancelled = True
+            self._stop_locked()
+            self.state = "cancelling"
 
     def _stop_locked(self) -> None:
         if self.state not in ("recording", "paused"):

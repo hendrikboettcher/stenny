@@ -8,6 +8,7 @@ export interface Entry {
   course: string;
   folder: string;           // "2026-10-20" or "2026-10-20 (2)"
   number: number;           // 0 for talks
+  title: string | null;     // its own title, given in this window ("Decision trees")
   date: string;
   start: string | null;
   duration: string | null;
@@ -49,3 +50,21 @@ export const reveal = (path: string) => (inApp ? invoke("reveal", { path }) : co
 // "Did the lecturer agree?", asked once per course before sharing (in a browser during development: yes)
 export const lecturerAgreed = (e: Entry, use: "share" | "record") =>
   inApp ? invoke<boolean>("lecturer_agreed", { purpose: use, course: e.course, event: e.kind === "event" }) : Promise.resolve(true);
+
+// Renaming, deleting (to the Trash) and the course list (src/stenny/manage.py, courses.py)
+export const renameLecture = (e: Entry, title: string) =>
+  engine<{ title: string | null }>("rename_lecture", { ...where(e), title });
+export const deleteLecture = (e: Entry) => engine<{ message: string }>("delete_lecture", where(e));
+export const renameCourse = (course: string, event: boolean, name: string) =>
+  engine<{ name: string }>("rename_course", { course, event, name });
+export const addCourse = (name: string, language: string, alias: string) =>
+  engine<{ message: string }>("add_course", { name, language, alias });
+export const removeCourse = (course: string) => engine<{ message: string }>("remove_course", { course });
+// a removed course back: `add` restores it with its earlier settings (the language counts only for a new one)
+export const bringBack = (course: string) => engine<{ message: string }>("add_course", { name: course, language: "auto" });
+// "Add Course…" in the menu bar opens this window with the dialog
+export async function onAddCourse(handler: () => void): Promise<() => void> {
+  if (!inApp) return () => {};
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen("add-course", handler);
+}
