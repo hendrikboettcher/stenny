@@ -199,7 +199,6 @@ fn build_menu(app: &AppHandle, st: &State) -> tauri::Result<(Menu<Wry>, MenuItem
         };
         items.push(Box::new(start));
         items.push(Box::new(MenuItem::with_id(app, "talk", "Record a Talk or Event…", true, None::<&str>)?));
-        items.push(Box::new(MenuItem::with_id(app, "add-course", "Add Course…", true, None::<&str>)?));
         items.push(Box::new(PredefinedMenuItem::separator(app)?));
     }
 
@@ -562,7 +561,6 @@ fn on_menu(app: &AppHandle, id: &str) {
         "toggle" => send(&app, "toggle"),
         "stop" => send(&app, "stop"),
         "cancel" => cancel_recording(&app),
-        "add-course" => crate::add_course(&app),
         "talk" => crate::show_window(&app, "talk"),
         "open" | "open-text" => crate::show_window(&app, "library"),
         "feedback" => crate::show_window(&app, "feedback"),

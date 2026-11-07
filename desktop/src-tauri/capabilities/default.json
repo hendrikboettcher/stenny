@@ -5,7 +5,8 @@
   "windows": [
     "library",
     "talk",
-    "feedback"
+    "feedback",
+    "settings"
   ],
   "permissions": [
     "core:default",

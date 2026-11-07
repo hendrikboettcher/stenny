@@ -74,6 +74,12 @@ fn show_feedback(app: AppHandle) {
     show_window(&app, "feedback");
 }
 
+/// The library window's footer: Settings… (for now a page saying they're still being built).
+#[tauri::command]
+fn show_settings(app: AppHandle) {
+    show_window(&app, "settings");
+}
+
 #[tauri::command]
 async fn check_updates(app: AppHandle) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || menubar::check_updates(&app)).await.map_err(|e| e.to_string())
@@ -101,13 +107,6 @@ fn urlencode(s: &str) -> String {
 }
 
 /// Shows a window, creating it the first time: "library" or "talk".
-/// "Add Course…" in the menu bar: the library window, with its Add Course dialog open.
-pub fn add_course(app: &AppHandle) {
-    use tauri::Emitter;
-    show_window(app, "library");
-    let _ = app.emit_to("library", "add-course", ());
-}
-
 pub fn show_window(app: &AppHandle, label: &str) {
     let app2 = app.clone();
     let label = label.to_string();
@@ -122,6 +121,13 @@ pub fn show_window(app: &AppHandle, label: &str) {
             "feedback" => WebviewWindowBuilder::new(&app2, "feedback", WebviewUrl::App("feedback".into()))
                 .title("Send Feedback")
                 .inner_size(460.0, 430.0)
+                .resizable(false)
+                .minimizable(false)
+                .center()
+                .build(),
+            "settings" => WebviewWindowBuilder::new(&app2, "settings", WebviewUrl::App("settings".into()))
+                .title("Settings")
+                .inner_size(440.0, 240.0)
                 .resizable(false)
                 .minimizable(false)
                 .center()
@@ -161,7 +167,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(Arc::new(Engine::default()))
         .manage(MenuBar::default())
-        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, check_updates])
+        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, show_settings, check_updates])
         .setup(move |app| {
             if !library_only {
                 // A Dock app with the menu bar icon next to it. Info.plist keeps LSUIElement for the helpers in the

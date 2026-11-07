@@ -62,9 +62,3 @@ export const addCourse = (name: string, language: string, alias: string) =>
 export const removeCourse = (course: string) => engine<{ message: string }>("remove_course", { course });
 // a removed course back: `add` restores it with its earlier settings (the language counts only for a new one)
 export const bringBack = (course: string) => engine<{ message: string }>("add_course", { name: course, language: "auto" });
-// "Add Course…" in the menu bar opens this window with the dialog
-export async function onAddCourse(handler: () => void): Promise<() => void> {
-  if (!inApp) return () => {};
-  const { listen } = await import("@tauri-apps/api/event");
-  return listen("add-course", handler);
-}

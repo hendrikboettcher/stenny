@@ -7,7 +7,7 @@
   import { renderMarkdown } from "$lib/markdown";
   import {
     library, lecture, makeCopy, makePdf, finishNow, openTranscript, reveal, lecturerAgreed,
-    renameLecture, deleteLecture, renameCourse, addCourse, removeCourse, bringBack, onAddCourse,
+    renameLecture, deleteLecture, renameCourse, addCourse, removeCourse, bringBack,
     type Entry, type Library,
   } from "$lib/engine";
 
@@ -113,8 +113,7 @@
     reload();
     const onFocus = () => reload();
     window.addEventListener("focus", onFocus);
-    const unlisten = onAddCourse(() => open({ kind: "add" }));
-    return () => { window.removeEventListener("focus", onFocus); unlisten.then((f) => f()); };
+    return () => window.removeEventListener("focus", onFocus);
   });
 
   function showMenu(ev: MouseEvent, target: { group?: Group; entry?: Entry }) {
@@ -286,6 +285,7 @@
       {@render section("Talks & events", groups.talks)}
     </nav>
     <footer>
+      <button onclick={() => invoke("show_settings")}>Settings…</button>
       <button onclick={() => invoke("show_feedback")}>Send Feedback…</button>
       <button onclick={() => invoke("check_updates")}>Check for Updates…</button>
     </footer>
