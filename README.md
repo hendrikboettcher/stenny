@@ -69,7 +69,13 @@ open -a Claude Stenny.mcpb
 
 **Language:** Stenny's windows, menus, dialogs and notifications are in English or German. By default they follow the system's language; *Settings… ▸ General ▸ Language* switches between *System default*, *English* and *Deutsch* at once, without restarting (`[app] language` in the config). Transcripts and summaries keep each course's own language.
 
-See `config.example.toml` for every setting. The AI step uses the `claude` command (Claude Code in the terminal) by default; the Claude desktop app doesn't install it, so run `curl -fsSL https://claude.ai/install.sh | bash` and `claude auth login` once. For the API instead: `uv tool install -e '.[api]' --python 3.12`, set `ANTHROPIC_API_KEY` and `[llm] backend = "api"`. With `backend = "none"` everything stays offline.
+See `config.example.toml` for every setting.
+
+**The AI step** (section headings linked to the slides, checked fixes for misheard terms, topics, the summary) runs one of three ways, chosen in *Settings… ▸ Transcripts & AI*, which also says whether the chosen one works and how to fix it:
+
+- **Claude Code** (default): your Claude subscription, no extra cost. Needs the `claude` command, which the Claude desktop app doesn't install: `curl -fsSL https://claude.ai/install.sh | bash`, then `claude auth login` once (Settings has a *Sign in…* button for that).
+- **Anthropic API**: pay as you go with your own key, about $0.01 per lecture. Paste the key in Settings, or run `stenny api-key`: Stenny checks it with Anthropic (a free call) and keeps it in the macOS Keychain (Windows: Credential Manager), never in config.toml. `ANTHROPIC_API_KEY` still works and wins when it's set.
+- **Off** (`backend = "none"`): everything stays offline. Transcripts stay complete, just without headings, term fixes, topics and summaries.
 
 ## Daily use
 
@@ -112,6 +118,7 @@ stenny courses                                    # list your courses
 stenny library                                    # every lecture and talk with a transcript
 stenny share calc 2026-10-15 --with-summary       # a clean copy to share (--format docx for Word)
 stenny mcp --desktop-config                       # the connector for Claude Desktop (see Studying with Claude)
+stenny api-key [status | remove]                  # the Anthropic API key, in the system keychain
 stenny match-course "VL Calculus (Room 1.01)"     # which course a calendar event belongs to
 stenny queue list | run                           # waiting final passes (run --lecture COURSE FOLDER: just that one, now)
 stenny schedule install                           # run the queue every 10 min when plugged in (launchd)
@@ -138,9 +145,10 @@ Everything Claude gets is clean text, like a shared copy: no paths on your Mac, 
 also tells Claude how to study with Stenny (cite as "Lecture 3 [0:12:30]", check terms against the glossary and the
 slides), and offers a *Study a course* prompt.
 
-To add it, double-click `Stenny.mcpb` in Stenny's folder (it comes with the download;
-`connector/build.sh` makes it from the code), or drag it onto Claude's Settings window, and click **Install**. Setup
-does this for you. It shows up under Settings ▸ Customize ▸ Connectors. The extension starts the `stenny` installed on
+To add it, open Stenny's *Settings… ▸ Use with Claude* and click **Install…** (it also shows whether Claude has it,
+and adds it to Claude Code with one more click). Or double-click `Stenny.mcpb` in Stenny's folder (it comes with the
+download; `connector/build.sh` makes it from the code), or drag it onto Claude's Settings window, and click
+**Install**. Setup does this for you. It shows up under Settings ▸ Customize ▸ Connectors. The extension starts the `stenny` installed on
 your computer, so it always reads the same lectures as the app. It only works in the desktop app on this computer:
 Claude on the web and on your phone can't reach it.
 

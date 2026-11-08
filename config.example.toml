@@ -11,6 +11,7 @@ model = "mlx-community/whisper-large-v3-turbo"
 
 [llm]
 backend = "claude-code"      # claude-code (subscription, `claude -p`) | api (Anthropic API key) | none
+# the API key is never in this file: Settings ▸ Transcripts & AI or `stenny api-key` keep it in the system keychain
 model = "claude-haiku-5-5"   # model for claude-code
 api_model = "claude-haiku-5-5"
 summary = true               # write the AI summary (… (summary).md)

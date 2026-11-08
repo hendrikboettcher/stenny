@@ -1,4 +1,4 @@
-"""Anthropic API backend (pay per token). Needs `uv sync --extra api` and ANTHROPIC_API_KEY."""
+"""Anthropic API backend (pay per token), with the key from the system keychain (keychain.py) or $ANTHROPIC_API_KEY."""
 
 from . import LLMError, Usage
 
@@ -8,11 +8,13 @@ PRICES = {"claude-haiku-5-5": (0.10, 0.50)}
 
 class AnthropicBackend:
     def __init__(self, model: str = "claude-haiku-5-5"):
-        try:
-            import anthropic
-        except ImportError:
-            raise LLMError("The anthropic package is missing: run `uv sync --extra api`.") from None
-        self.client = anthropic.Anthropic()
+        import anthropic
+
+        from ..keychain import api_key
+        key = api_key()
+        if not key:
+            raise LLMError("No Anthropic API key: add one in Settings ▸ Transcripts & AI, or run `stenny api-key`.")
+        self.client = anthropic.Anthropic(api_key=key)
         self.model = model
         self.name = f"Anthropic API ({model})"
 
@@ -28,7 +30,7 @@ class AnthropicBackend:
                 messages=[{"role": "user", "content": prompt}],
             )
         except anthropic.AuthenticationError:
-            raise LLMError("Anthropic API key missing or invalid (set ANTHROPIC_API_KEY).") from None
+            raise LLMError("Anthropic didn't accept the API key: check it in Settings ▸ Transcripts & AI.") from None
         except anthropic.APIError as e:
             raise LLMError(f"Anthropic API error: {e}") from None
         if response.stop_reason == "refusal":

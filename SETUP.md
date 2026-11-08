@@ -213,8 +213,9 @@ claude auth status 2>/dev/null
 - **Missing:** ask "Install it (Recommended)" / "Skip the AI step". To install, run Anthropic's installer yourself (no password needed): `curl -fsSL https://claude.ai/install.sh | bash`.
 - **Not signed in:** run `~/.local/bin/claude auth login` in the background. It opens the browser: the user signs in and clicks *Authorize*. Then check again.
 - **Skip:** set `[llm] backend = "none"` in the config. Transcripts work the same, just without headings and summaries.
+- **They'd rather pay per use with an Anthropic API key** (no subscription): they run `stenny api-key` in their own terminal and paste the key there (never into this chat), then set `[llm] backend = "api"`. Stenny checks the key and keeps it in the system keychain. Later they can do all of this in Stenny's *Settings… ▸ Transcripts & AI*.
 
-**Check:** `claude auth status` shows `"loggedIn": true` (or the backend is `"none"`).
+**Check:** `claude auth status` shows `"loggedIn": true` (or `stenny api-key status` says the key works, or the backend is `"none"`).
 
 ## 10. Wait for Whisper
 

@@ -172,6 +172,54 @@ def set_course_language(cfg, params: dict) -> dict:
     return _managed(settings.course_language, cfg, params["course"], params["language"], params.get("languages"))
 
 
+def _setup(fn, *args):
+    from .claude_setup import SetupError
+    try:
+        return fn(*args)
+    except SetupError as e:
+        raise AppError(str(e)) from None
+
+
+def ai_status(cfg, params: dict) -> dict:
+    """Whether the chosen option of the AI step works right now (claude_setup.py); spends no tokens."""
+    from . import claude_setup
+    return claude_setup.ai_status(cfg)
+
+
+def set_api_key(cfg, params: dict) -> dict:
+    """An Anthropic API key, checked and saved in the system keychain; ai_status again."""
+    from . import claude_setup
+    return _setup(claude_setup.set_api_key, cfg, params.get("key") or "")
+
+
+def remove_api_key(cfg, params: dict) -> dict:
+    from . import claude_setup
+    return _setup(claude_setup.remove_api_key, cfg)
+
+
+def claude_sign_in(cfg, params: dict) -> dict:
+    """A terminal window with `claude auth login`."""
+    from . import claude_setup
+    return _setup(claude_setup.claude_sign_in, cfg)
+
+
+def connector_status(cfg, params: dict) -> dict:
+    """The Stenny connector: in Claude Desktop or not, in Claude Code or not."""
+    from . import claude_setup
+    return claude_setup.connector_status(cfg)
+
+
+def install_connector(cfg, params: dict) -> dict:
+    """Stenny.mcpb opened with Claude Desktop, which shows its own Install dialog."""
+    from . import claude_setup
+    return _setup(claude_setup.install_connector, cfg)
+
+
+def add_to_claude_code(cfg, params: dict) -> dict:
+    from . import claude_setup
+    return _setup(claude_setup.add_to_claude_code, cfg)
+
+
 def ping(cfg, params: dict) -> dict:
     return {"version": package_version("stenny")}
 
@@ -179,7 +227,10 @@ def ping(cfg, params: dict) -> dict:
 METHODS = {"ping": ping, "library": library, "lecture": lecture, "make_copy": make_copy, "finish_now": finish_now,
            "rename_lecture": rename_lecture, "delete_lecture": delete_lecture, "rename_course": rename_course, "delete_course": delete_course,
            "add_course": add_course, "remove_course": remove_course, "preferences": preferences,
-           "set_preference": set_preference, "set_course_language": set_course_language, **app_live.METHODS}
+           "set_preference": set_preference, "set_course_language": set_course_language,
+           "ai_status": ai_status, "set_api_key": set_api_key, "remove_api_key": remove_api_key,
+           "claude_sign_in": claude_sign_in, "connector_status": connector_status,
+           "install_connector": install_connector, "add_to_claude_code": add_to_claude_code, **app_live.METHODS}
 
 
 def handle(cfg, request: dict) -> dict:

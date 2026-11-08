@@ -268,13 +268,37 @@ def cmd_project_instructions(args) -> None:
 def cmd_mcp(args) -> None:
     """The connector for Claude: an MCP server on stdin/stdout, started by Claude Desktop."""
     if args.desktop_config:
-        command = Path(sys.argv[0]).resolve() if Path(sys.argv[0]).name in ("stenny", "lecture") else None
-        server = {"command": str(command), "args": ["mcp"]} if command else \
-            {"command": sys.executable, "args": ["-m", "stenny", "mcp"]}
+        from .claude_setup import stenny_command
+        command, *rest = stenny_command()
+        server = {"command": command, "args": [*rest, "mcp"]}
         print(json.dumps({"mcpServers": {"stenny": server}}, indent=2, ensure_ascii=False))
         return
     from .mcp_server import main as serve
     serve()
+
+
+def cmd_api_key(args) -> None:
+    """The Anthropic API key for `[llm] backend = "api"`, in the system keychain (never in config.toml)."""
+    import getpass
+
+    from . import claude_setup, keychain
+    if args.action == "remove":
+        keychain.delete_key()
+        print("Removed the API key from the keychain.")
+        return
+    if args.action == "status":
+        status = claude_setup.api_status()
+        source = " (from $ANTHROPIC_API_KEY)" if status.get("source") == "environment" else ""
+        print({"no_key": "No API key saved.", "ready": f"The key {status.get('hint')} works{source}.",
+               "bad_key": f"Anthropic doesn't accept the key {status.get('hint')}{source}.",
+               "unchecked": f"Couldn't check the key: {status.get('detail')}"}[status["state"]])
+        return
+    key = getpass.getpass("Anthropic API key (from platform.claude.com, not shown as you paste): ")
+    try:
+        claude_setup.set_api_key(load_config(), key)
+    except claude_setup.SetupError as e:
+        sys.exit(str(e))
+    print("Saved in the keychain. Set [llm] backend = \"api\" to use it (Settings ▸ Transcripts & AI).")
 
 
 def cmd_course_files(args) -> None:
@@ -770,6 +794,11 @@ def main() -> None:
     p.add_argument("--desktop-config", action="store_true",
                    help="print the entry for Claude Desktop's claude_desktop_config.json instead of serving")
     p.set_defaults(func=cmd_mcp)
+
+    p = sub.add_parser("api-key", help="save the Anthropic API key for the AI step in the system keychain")
+    p.add_argument("action", nargs="?", choices=["set", "remove", "status"], default="set",
+                   help="set (default, asks for the key), remove, or status (checks it, costs nothing)")
+    p.set_defaults(func=cmd_api_key)
 
     p = sub.add_parser("match-course", help="which course a calendar event title belongs to")
     p.add_argument("titles", nargs="+")
