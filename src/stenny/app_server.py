@@ -84,7 +84,7 @@ def lecture(cfg, params: dict) -> dict:
 
 
 def make_copy(cfg, params: dict) -> dict:
-    """A clean copy to share (md, docx or html) in ~/Lectures Data/_Shared; returns its path."""
+    """A clean copy to share (md, docx or html) in Stenny's cache folder (paths.SHARED_DIR); returns its path."""
     entry = _entry(cfg, params)
     try:
         path = share.share(entry, with_summary=bool(params.get("with_summary")), fmt=params.get("format", "md"))
@@ -294,9 +294,12 @@ def serve(stdin=sys.stdin, stdout=sys.stdout) -> None:
     """Reads requests until stdin closes (the app quit), each in its own thread: a slow one (the microphone
     list, a share copy) mustn't hold up the recording's status. Replies carry their request's id, so their order
     doesn't matter. The config is read again for every request, so a course added in the config shows up
-    without restarting. Anything else printed goes to stderr, so stdout carries only replies."""
+    without restarting. Anything else printed goes to stderr, so stdout carries only replies.
+    First it moves an older install into today's places, or starts a config if there is none (migrate.on_start)."""
     lock = threading.Lock()
     sys.stdout = sys.stderr
+    from .migrate import on_start
+    on_start()
 
     def reply(line: str) -> None:
         answer = _answer(line)

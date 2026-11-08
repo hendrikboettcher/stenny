@@ -53,7 +53,7 @@ def waiting() -> dict:
 
 def last_log_line() -> str | None:
     try:
-        lines = [l.strip() for l in (paths.SYSTEM_DIR / "live.log").read_text(encoding="utf-8").splitlines() if l.strip()]
+        lines = [l.strip() for l in (paths.LOGS_DIR / "live.log").read_text(encoding="utf-8").splitlines() if l.strip()]
     except OSError:
         return None
     return lines[-1] if lines else None
@@ -82,8 +82,8 @@ def start(cfg, params: dict) -> dict:
         args.append("--no-llm")
     if params.get("file"):
         args += ["--file", str(params["file"]), "--speed", str(params.get("speed", 1.0))]
-    paths.SYSTEM_DIR.mkdir(parents=True, exist_ok=True)
-    log = open(paths.SYSTEM_DIR / "live.log", "w", encoding="utf-8")
+    paths.LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    log = open(paths.LOGS_DIR / "live.log", "w", encoding="utf-8")
     # its warnings and notes show in the app's menu: in the app's language
     env = {**os.environ, "STENNY_LANGUAGE": i18n.language()}
     proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True, env=env)
@@ -121,7 +121,7 @@ def devices(cfg, params: dict) -> dict:
 
 def settings(cfg, params: dict) -> dict:
     """What the app reads at launch: the pause shortcut (as text, like "cmd+shift+ü") and the courses to start."""
-    return {"pause_shortcut": cfg.pause_shortcut, "data_dir": str(paths.SYSTEM_DIR),
+    return {"pause_shortcut": cfg.pause_shortcut, "data_dir": str(paths.DATA_DIR), "logs_dir": str(paths.LOGS_DIR),
             "language": i18n.resolve(cfg.app_language),  # the app's own language: "en" or "de"
             "courses": [c.name for c in cfg.courses.values() if not c.hidden]}
 
@@ -158,7 +158,7 @@ def send_feedback(cfg, params: dict) -> dict:
         model = subprocess.run(["sysctl", "-n", "hw.model"], capture_output=True, text=True).stdout.strip()
         memory = int(subprocess.run(["sysctl", "-n", "hw.memsize"], capture_output=True, text=True).stdout or 0) >> 30
         try:
-            log = (paths.SYSTEM_DIR / "stenny.log").read_text(encoding="utf-8").splitlines()[-40:]
+            log = (paths.LOGS_DIR / "stenny.log").read_text(encoding="utf-8").splitlines()[-40:]
         except OSError:
             log = []
         body.update(version=version("stenny"), system=f"{model}, {memory} GB, macOS {platform.mac_ver()[0]}",
@@ -196,7 +196,7 @@ CONSENT = "consent.json"
 
 
 def _consent_path() -> Path:
-    return paths.SYSTEM_DIR / CONSENT
+    return paths.CONFIG_DIR / CONSENT
 
 
 def _consent() -> set[str]:
@@ -216,7 +216,7 @@ def _consent() -> set[str]:
 
 
 def _save_consent(given: set[str]) -> None:
-    paths.SYSTEM_DIR.mkdir(parents=True, exist_ok=True)
+    paths.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     tmp = _consent_path().with_suffix(".tmp")
     tmp.write_text(json.dumps(sorted(given), ensure_ascii=False, indent=1), encoding="utf-8")
     tmp.replace(_consent_path())

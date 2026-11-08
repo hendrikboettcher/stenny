@@ -18,7 +18,7 @@ How to work:
 - **Every question has a recommended answer.** Ask one thing at a time. If you have a tool for questions with clickable options (such as AskUserQuestion), use it for every choice: at most four options, your recommendation first and marked "(Recommended)", with a short reason; the user can always type something else. Ask for free text only where nothing can be suggested. Never make the user write long answers.
 - **Always name the app when you open something.** A plain `open <link or file>` lets macOS choose, and on a fresh account that can be any installed app that claims the type. Use `open -a Obsidian …`, `open -a TextEdit …` and so on. Web pages (`open https://…`) may go to the default browser.
 - **Keep the user out of the Terminal.** Run every command yourself. The user only clicks: macOS dialogs, System Settings, the browser, the Claude app. Nothing in this setup needs their Mac password.
-- **Don't change anything** outside this folder, the user's chosen transcripts folder, `~/Lectures Data` and what the steps below install. The only background job is the one in step 12.
+- **Don't change anything** outside this folder, the user's Stenny folder, Stenny's own folders (`stenny where` lists them) and what the steps below install. The only background job is the one in step 12.
 - Long commands (downloads) take minutes: run them in the background, say roughly how long they take, and report when they finish.
 
 The setup has three phases. **A** is everything Stenny needs to work. **B** connects the calendar. **C** is recommended, never required: Stenny works without it.
@@ -119,19 +119,14 @@ Whisper is the speech recognition; it runs entirely on this Mac. Start it in the
 
 ## 5. Where the transcripts go
 
-Stenny writes plain text files (Markdown) into one folder, which Claude reads.
-
-Check which Obsidian vaults exist: `cat ~/Library/Application\ Support/obsidian/obsidian.json 2>/dev/null` (the `"path"` entries). A vault is just a folder.
-- **They have vaults:** offer each one (recommended: the one that looks like their study vault) and "A new folder".
-- **Otherwise:** suggest `~/Documents/Study Vault` (Recommended) and create it.
-
-Lectures go into a `Lectures` folder inside it; don't ask about this.
+Stenny writes plain text files (Markdown) into one folder, the Stenny folder, which Claude reads: one folder per course, talks in `Talks`, glossaries and course files next to them. Ask "`~/Documents/Stenny` (Recommended)" / "Another folder". Another folder can be anywhere, also inside an Obsidian vault they already use (then e.g. `<vault>/Lectures`).
 
 ```bash
-stenny init --vault "<the folder>" --lectures-dir "Lectures"
+stenny init                              # ~/Documents/Stenny
+stenny init --folder "<the folder>"      # only if they chose another one
 ```
 
-**Check:** `stenny courses` prints `Lectures: <the folder>/Lectures` and the two example courses. (If a config already exists, `stenny init` refuses: tell the user what's in it, and ask whether to keep it (Recommended, if it has their courses) or start fresh.)
+**Check:** `stenny where` prints `folder: <the folder>`, and `stenny courses` the two example courses. (If a config already exists, `stenny init` refuses: tell the user what's in it, and ask whether to keep it (Recommended, if it has their courses) or start fresh.)
 
 ## 6. The pause shortcut
 
@@ -172,13 +167,13 @@ Stenny speaks English or German, following the system's language. If the user pr
 
 Stenny opens at login by itself; macOS may show a short notice about it. They can turn it off in **System Settings ▸ General ▸ Login Items**.
 
-**Check:** the icon is there. `tail -20 ~/Lectures\ Data/_System/stenny.log` shows `pause shortcut: …` with their shortcut and `hotkey registered`.
+**Check:** the icon is there. `tail -20 ~/Library/Logs/Stenny/stenny.log` shows `pause shortcut: …` with their shortcut and `hotkey registered`.
 
 *If it fails:* no icon → the menu bar may be full (on a MacBook with a notch, icons hide behind it; quit some menu bar apps). Permissions denied by accident → System Settings ▸ Privacy & Security ▸ Microphone / Calendars ▸ turn Stenny on. macOS refuses to open the app → step 0, the part about browsers.
 
 ## 8. Courses
 
-Read the titles from the Mac's calendar: `cat ~/Lectures\ Data/_System/calendar-titles.json`. Stenny wrote this file when it opened in the step before (if it isn't there yet, wait a few seconds, and check that they clicked Allow for Calendar). Titles often contain extras such as "VL", "Lecture", "Übung", a room or lecturer names.
+Read the titles from the Mac's calendar: `cat ~/Library/Application\ Support/Stenny/calendar-titles.json`. Stenny wrote this file when it opened in the step before (if it isn't there yet, wait a few seconds, and check that they clicked Allow for Calendar). Titles often contain extras such as "VL", "Lecture", "Übung", a room or lecturer names.
 
 - **Titles found:** turn them into clean course names, leave out what clearly isn't a course (meetings, birthdays), and ask which ones they're taking, several selected at once. If there are more than four, ask in groups.
 - **No titles:** just ask them to type their course names. Don't offer anything else, such as screenshots.
@@ -187,7 +182,7 @@ Then, **one course at a time**, ask with options:
 - **Language** of the lecture. Guess from the course name and offer, for example: "English (Recommended)", "German", "Mixed: German and English", "Other". Explain *mixed* once: for lecturers who switch languages within a lecture.
 - **Short name** for matching calendar events: suggest the abbreviation students actually use (e.g. `micro` for Microeconomics) and "No short name".
 
-Show the final list and ask "Looks right (Recommended)" / "Change something". Then edit `~/Lectures Data/_System/config.toml` to **delete the two example courses** (`Calculus`, `International Economics`) at the end, and add each course:
+Show the final list and ask "Looks right (Recommended)" / "Change something". Then edit `~/Library/Application Support/Stenny/config.toml` to **delete the two example courses** (`Calculus`, `International Economics`) at the end, and add each course:
 
 ```bash
 stenny course add "Microeconomics" --language en --alias micro
@@ -234,7 +229,7 @@ say -o /tmp/stenny-test.aiff "This is a short test of Stenny. The lecture today 
 stenny add /tmp/stenny-test.aiff --event "Stenny test" --now
 ```
 
-**Check:** it ends without errors, and a transcript exists: `ls "<vault>/Recordings/Stenny test/"*/`. Show the user the text here in the chat. If the log says the AI step was skipped, go back to step 9.
+**Check:** it ends without errors, and a transcript exists: `ls "<Stenny folder>/Talks/Stenny test/"*/`. Show the user the text here in the chat. If the log says the AI step was skipped, go back to step 9.
 
 **b) Microphone, through the app** (about 30 seconds):
 1. Stenny's icon ▸ *Microphone*: check the right microphone is ticked (recommended: the Mac's own).
@@ -242,9 +237,9 @@ stenny add /tmp/stenny-test.aiff --event "Stenny test" --now
 3. Talk for about 10 seconds. Press the pause shortcut, wait a few seconds, press it again, talk for another 10 seconds.
 4. Click the dot ▸ *Stop & Make Final Transcript*. Wait about a minute.
 
-**Check:** `stenny check` shows no missing audio, and the transcript in `<vault>/Recordings/Mic test/<date>/` contains what they said, with a `*[Recording paused …]*` line. If the text is empty: check the selected microphone and the level meter in the open menu while recording.
+**Check:** `stenny check` shows no missing audio, and the transcript in `<Stenny folder>/Talks/Mic test/<date>/` contains what they said, with a `*[Recording paused …]*` line. If the text is empty: check the selected microphone and the level meter in the open menu while recording.
 
-Afterwards, ask "Delete the test recordings (Recommended)" / "Keep them". If delete: move only these to the Trash: `<vault>/Recordings/Stenny test`, `<vault>/Recordings/Mic test`, `~/Lectures Data/_Recordings/Stenny test`, `~/Lectures Data/_Recordings/Mic test`, `/tmp/stenny-test.aiff`.
+Afterwards, ask "Delete the test recordings (Recommended)" / "Keep them". If delete: move only these to the Trash: `<Stenny folder>/Talks/Stenny test`, `<Stenny folder>/Talks/Mic test`, `~/Library/Application Support/Stenny/Recordings/Talks/Stenny test`, `~/Library/Application Support/Stenny/Recordings/Talks/Mic test`, `/tmp/stenny-test.aiff`.
 
 ## 12. Finish waiting transcripts automatically
 
@@ -337,4 +332,4 @@ If it prints `{"ok":true}`, say it was sent; otherwise say it didn't go through 
 | The calendar lecture isn't offered | `stenny match-course "<event title>"` (step 14); events shorter than 20 minutes are ignored. |
 | Transcript is empty or wrong language | Check the course's `language`; for lectures that switch languages use `"mixed"`. Check the microphone level meter. |
 | The AI step fails ("claude CLI not found") | Step 9. Or set `[llm] backend = "none"`. The transcript is always written anyway. |
-| Anything else | Logs are in `~/Lectures Data/_System/`: `stenny.log` (the menu bar app), `live.log` (the running recording). Read the end of the newest one. |
+| Anything else | Logs are in `~/Library/Logs/Stenny/`: `stenny.log` (the menu bar app), `live.log` (the running recording), `queue.log` (waiting transcripts). Read the end of the newest one. |

@@ -1,8 +1,8 @@
-"""The library (every lecture and talk in the vault, for Stenny's window) and clean copies to share.
+"""The library (every lecture and talk in the Stenny folder, for Stenny's window) and clean copies to share.
 
 A shared copy is the transcript as a classmate should get it: no frontmatter (audio path, model, microphone,
 source …), no pointer to the raw output on this Mac, Obsidian links turned into plain text. The disclaimer, the
-"audio only" note, headings and timestamps stay. Copies go to `~/Lectures Data/_Shared/`, outside the vault.
+"audio only" note, headings and timestamps stay. Copies go to Stenny's cache folder (paths.SHARED_DIR), outside the Stenny folder.
 
 Formats: Markdown as it is, Word (.docx, through macOS's textutil) and HTML. Word and HTML (so the PDF too) end
 with a small "Transcribed with Stenny · stenny.eu" line; Markdown doesn't, as it gets pasted into chats. Stenny's window turns the HTML
@@ -21,7 +21,7 @@ from .i18n import tr
 from .render import DRAFT_STATES, draft_status, parse_frontmatter
 from .vault import LectureFiles, Vault, folder_key, safe_name
 
-SHARED_DIR = paths.HOME / "_Shared"
+SHARED_DIR = paths.SHARED_DIR
 HEAD_BYTES = 16384  # the frontmatter is at the top; transcripts themselves run to 100 KB and more
 
 
@@ -34,11 +34,12 @@ def _head(path: Path) -> dict:
         return parse_frontmatter(f.read(HEAD_BYTES))
 
 
-def _entries(root: Path, kind: str) -> list[dict]:
+def _entries(cfg, kind: str) -> list[dict]:
     out = []
+    root = cfg.events_root if kind == "event" else cfg.folder
     if not root.is_dir():
         return out
-    for course_dir in Vault(root).course_dirs():
+    for course_dir in Vault(root, top=cfg.folder).course_dirs():
         for folder in sorted((d for d in course_dir.iterdir() if d.is_dir() and not d.name.startswith(".")),
                              key=lambda d: folder_key(d.name)):
             files = LectureFiles(folder, course_dir.name)
@@ -76,8 +77,7 @@ def own_title(fm: dict) -> str | None:
 
 def library(cfg) -> list[dict]:
     """Every lecture and talk with a transcript, oldest first within each course."""
-    events = _entries(cfg.events_root, "event") if cfg.events_root != cfg.lectures_root else []
-    return _entries(cfg.lectures_root, "lecture") + events
+    return _entries(cfg, "lecture") + _entries(cfg, "event")
 
 
 def find(cfg, course: str, folder: str, event: bool = False) -> dict:

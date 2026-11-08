@@ -217,7 +217,7 @@ def test_lang_auto_or_mixed_switches_the_mode_instead_of_forcing_a_language():
     from stenny import language
     from stenny.cli import recording_target
     from stenny.config import Config, Course
-    cfg = Config(vault=Path("/v"), lectures_dir="L", data_dir=Path("/d"),
+    cfg = Config(folder=Path("/v/L"), data_dir=Path("/d"),
                  courses={"Calculus": Course("Calculus", language="fr", languages=["fr"])})
     def target(**kw):
         return recording_target(cfg, Namespace(**{"course": None, "event": None, "lang": None, **kw}))
@@ -305,19 +305,16 @@ def test_guard_topics_and_terms_need_evidence():
     assert guard.validate_topics(["Théorème de Rolle"], text, Slides()) == ["Théorème de Rolle"]
 
 
-def test_migrate_moves_everything_outside_the_vault_into_one_folder(tmp_path, monkeypatch):
+def test_migrate_carries_the_oldest_layout_all_the_way_to_todays_places(places):
+    """~/.config/lecture, ~/Lectures Audio, ~/.local/share/lecture and raw outputs in the vault: first into
+    ~/Lectures Data as it was, then on into the app-data places (test_folders.py has that step in detail)."""
     import json
     from stenny import migrate as mig
-    from stenny import paths
     from stenny.vault import Vault
-    home = tmp_path / "Lectures Data"
-    old_cfg, old_state, old_audio = tmp_path / ".config/lecture", tmp_path / ".local/share/lecture", tmp_path / "Lectures Audio"
-    for name, value in {"HOME": home, "SYSTEM_DIR": home / "_System", "QUEUE_DIR": home / "_Queue",
-                        "CONFIG_PATH": home / "_System/config.toml", "LEGACY_CONFIG_DIR": old_cfg,
-                        "LEGACY_STATE_DIR": old_state, "LEGACY_AUDIO_DIR": old_audio}.items():
-        monkeypatch.setattr(paths, name, value)
-    vault = tmp_path / "vault"
-    (old_cfg).mkdir(parents=True)
+    old_cfg, old_state, old_audio = places.legacy_config_dir, places.legacy_state_dir, places.legacy_audio_dir
+    rec = places.data_dir / "Recordings"
+    vault = places.home / "vault"
+    old_cfg.mkdir(parents=True)
     (old_cfg / "config.toml").write_text(f'vault = "{vault}"\nlectures_dir = "L"\naudio_dir = "{old_audio}"\n'
                                          '[courses."Calculus"]\nlanguage = "fr"\n')
     (old_audio / "Calculus").mkdir(parents=True)
@@ -338,23 +335,27 @@ def test_migrate_moves_everything_outside_the_vault_into_one_folder(tmp_path, mo
     (vault / "L" / "_Glossaries" / "Calculus.md").write_text("## Terms\n- Riemann\n")
 
     assert mig.migrate(dry_run=True, log=lambda m: None) > 0
-    assert (old_audio / "Calculus" / "2026-10-15.opus").exists() and not home.exists()  # a dry run changes nothing
+    assert (old_audio / "Calculus" / "2026-10-15.opus").exists() and not places.legacy_home.exists()  # dry run
 
     mig.migrate(log=lambda m: None)
     assert not old_cfg.exists() and not old_state.exists() and not old_audio.exists()
-    assert "audio_dir" not in (home / "_System/config.toml").read_text().split("#")[0]
-    assert (home / "Calculus" / "2026-10-15.opus").read_bytes() == b"ogg"
-    raw = home / "Calculus" / "Calculus 2026-10-15 (raw).md"
+    assert not places.legacy_home.exists()                         # passed through, and gone once empty
+    config = places.config_path.read_text()
+    import re
+    assert not re.search(r"(?m)^(audio_dir|vault|lectures_dir) *=", config)
+    assert config.startswith('folder = "~/vault/L"')
+    assert (rec / "Calculus" / "2026-10-15.opus").read_bytes() == b"ogg"
+    raw = rec / "Calculus" / "Calculus 2026-10-15 (raw).md"
     assert raw.read_text() == "raw" and not (lecture / "Calculus 2026-10-15 (raw).md").exists()
     t = (lecture / "Calculus 2026-10-15.md").read_text()
     assert "(outside the vault)" in t and "[[Calculus 2026-10-15 (raw)]]" not in t and str(old_audio) not in t
-    meta = json.loads((home / "Calculus" / "2026-10-15.segments.json").read_text())["meta"]["lecture"]
-    assert meta["audio"].startswith(str(home)) and meta["raw_file"].endswith("(raw).md")
-    assert json.loads((home / "_Queue" / "job.json").read_text())["file"].startswith(str(home))
-    assert (home / "_System" / "live.log").exists() and not (home / "_System" / "queue.lock").exists()
+    assert f"{rec}/Calculus/2026-10-15.opus" in t and "~/Library" not in t
+    meta = json.loads((rec / "Calculus" / "2026-10-15.segments.json").read_text())["meta"]["lecture"]
+    assert meta["audio"] == f"{rec}/Calculus/2026-10-15.opus" and meta["raw_file"].endswith("(raw).md")
+    assert json.loads((places.queue_dir / "job.json").read_text())["file"] == f"{rec}/Calculus/x.pcm"
+    assert (places.logs_dir / "live.log").exists()
     assert (vault / "L" / "_Glossaries" / "Calculus (glossary).md").exists()
     assert Vault(vault / "L").violations() == []
-    assert all(not (p.is_file() and any(q.is_dir() for q in p.parent.iterdir())) for p in home.rglob("*"))  # folder rule
     assert mig.migrate(log=lambda m: None) == 0  # done once, nothing left to do
 
 

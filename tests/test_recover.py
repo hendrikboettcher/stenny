@@ -13,11 +13,11 @@ from stenny.config import Config, Course
 def cfg(tmp_path, monkeypatch):
     monkeypatch.setattr(jobs, "QUEUE_DIR", tmp_path / "data/_Queue")
     monkeypatch.setattr("stenny.live.control.is_running", lambda: False)
-    return Config(vault=tmp_path / "vault", lectures_dir="Lectures", data_dir=tmp_path / "data")
+    return Config(folder=tmp_path / "vault" / "Lectures", data_dir=tmp_path / "data")
 
 
 def crashed_session(cfg, samples=16000, name="Calculus", folder=None):
-    base = (folder or cfg.data_dir / name) / "2026-10-31"
+    base = (folder or cfg.recordings_dir / name) / "2026-10-31"
     base.parent.mkdir(parents=True, exist_ok=True)
     pcm = base.with_name("2026-10-31.live.pcm")
     pcm.write_bytes(b"\0" * samples * 2)
@@ -65,7 +65,7 @@ def test_nothing_happens_while_a_session_runs(cfg, monkeypatch):
 
 
 def test_a_talk_stays_a_talk(cfg):
-    crashed_session(cfg, name="Guest talk", folder=cfg.data_dir / "_Recordings/Guest talk")
+    crashed_session(cfg, name="Guest talk", folder=cfg.recordings_dir / "Talks/Guest talk")
     assert cli.recover_sessions(cfg) == [{"course": "Guest talk", "kind": "event"}]
 
 
@@ -109,12 +109,12 @@ class FinishedSession:
         self.pcm_path, self.session_path = crashed_session(cfg)
         self.course, self.lang_override, self.backup = Course(name="Calculus"), None, None
         self.recorded, self.final_note, self.state = 16000, "", "stopped"
-        self.transcript_path = cfg.vault / "Lectures/Calculus/2026-10-31/Calculus 2026-10-31.md"
+        self.transcript_path = cfg.folder / "Calculus/2026-10-31/Calculus 2026-10-31.md"
 
 
 @pytest.fixture
 def plugged_in(cfg, monkeypatch):
-    monkeypatch.setattr(jobs, "DATA_DIR", cfg.data_dir / "_System")
+    monkeypatch.setattr(jobs, "LOGS_DIR", cfg.data_dir / "logs")
     monkeypatch.setattr(jobs, "on_ac_power", lambda: True)
     monkeypatch.setattr(jobs, "lower_own_priority", lambda mode: None)
     monkeypatch.setattr(resources, "enough_memory_for_final_pass", lambda: True)

@@ -30,12 +30,12 @@ def cfg(tmp_path):
     (folder / "Calculus 2026-10-20 (summary).md").write_text(
         summary_md(lec, "## Overview\nAbout [[_Topics/Limits|limits]]. [0:00:04]", "Claude Code (haiku)"),
         encoding="utf-8")
-    talk = tmp_path / "Recordings" / "Some Talk" / "2026-10-22"
+    talk = tmp_path / "Lectures" / "Talks" / "Some Talk" / "2026-10-22"
     talk.mkdir(parents=True)
     (talk / "Some Talk 2026-10-22.md").write_text(
         transcript_md(lecture(course="Some Talk", kind="event", number=0, date="2026-10-22", status="live"),
                       PARAGRAPHS, SECTIONS), encoding="utf-8")
-    return SimpleNamespace(lectures_root=tmp_path / "Lectures", events_root=tmp_path / "Recordings")
+    return SimpleNamespace(folder=tmp_path / "Lectures", events_root=tmp_path / "Lectures" / "Talks")
 
 
 def test_library_lists_lectures_and_talks(cfg):

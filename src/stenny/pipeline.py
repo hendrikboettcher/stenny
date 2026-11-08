@@ -359,7 +359,7 @@ def find_slides(vault: Vault, folder: Path, slides_src: Path | None, course: str
 def raw_path(cfg: Config, course: "Course | str", folder: Path) -> Path:
     """The raw Whisper output lives next to the audio, outside the vault: it's for checking, not reading."""
     name = course.name if isinstance(course, Course) else course
-    base = cfg.data_for(course) if isinstance(course, Course) else cfg.data_dir / course
+    base = cfg.data_for(course) if isinstance(course, Course) else cfg.recordings_dir / course
     return base / f"{safe_name(name)} {folder.name} (raw).md"
 
 
@@ -492,7 +492,7 @@ def process(path: Path, cfg: Config, course: Course, engine, *, lang: str | None
     already in the folder (e.g. dropped there during a live lecture) is used.
     `stop`: see transcribe(); nothing is written before Whisper is done, so an interrupted job leaves no trace."""
     t0 = time.time()
-    vault = Vault(cfg.root_for(course))
+    vault = cfg.vault_for(course)
     glossary = ensure_glossary(vault, course)
 
     log(f"Loading {path.name}")
@@ -611,7 +611,7 @@ def refresh(cfg: Config, course: Course, folder_name: str, *, use_llm: bool = Tr
             slides_src: Path | None = None) -> dict:
     """Redo only the text steps of a lecture (paragraphs, glossary corrections, AI structure, summary) from its
     segments.json, without re-transcribing. Picks up glossary edits and slides added to the folder later."""
-    vault = Vault(cfg.root_for(course))
+    vault = cfg.vault_for(course)
     folder = vault.course_dir(course.name) / folder_name
     if not folder.is_dir():
         others = sorted(p.name for p in vault.course_dir(course.name).glob(f"{folder_name[:10]}*") if p.is_dir())
