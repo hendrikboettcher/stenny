@@ -682,8 +682,10 @@
     fill: none; stroke: var(--muted); stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; transition: opacity 0.15s;
   }
   .title-button:hover .pen, .title-button:focus-visible .pen { opacity: 1; }
+  /* exactly where the heading is: a block like the h1 (so its margin meets the kicker's the same way), and 1px less
+     margin on each side to make up for the field's border, so neither the title nor the line below moves */
   .title-wrap {
-    display: inline-grid; max-width: calc(100% + 16px); margin: 6px -8px 6px;
+    display: grid; width: fit-content; max-width: calc(100% + 16px); margin: 5px -8px 5px;
     font-size: 34px; line-height: 1.1; font-weight: 440; letter-spacing: -0.02em;
   }
   .title-wrap::after, .title-input {
