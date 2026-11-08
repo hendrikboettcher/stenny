@@ -128,6 +128,12 @@
     menu = { x: Math.min(x, window.innerWidth - 230), y: Math.min(y, window.innerHeight - 120), ...target };
   }
 
+  // the heading's pencil: a talk's heading is the talk's name, a lecture's is its title
+  function renameSelected(e: Entry) {
+    if (e.kind === "event") open({ kind: "rename-group", group: { course: e.course, event: true } });
+    else open({ kind: "rename-lecture", entry: e });
+  }
+
   function open(a: Ask) {
     menu = null;
     askError = null;
@@ -351,10 +357,22 @@
 
   <main class="detail">
     <div class="titlebar" data-tauri-drag-region></div>
+    <!-- deleting: an icon at the end of the actions, apart from the others; it asks first, and it's the Trash -->
+    {#snippet trashButton(e: Entry)}
+      <button class="icon-button trash" aria-label="Move to the {trashName}…" title="Move to the {trashName}…"
+              onclick={() => open({ kind: "delete-lecture", entry: e })}>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.8 4.3h10.4 M6.3 4.3V2.8h3.4v1.5 M4.3 4.3l.6 8.6a1 1 0 0 0 1 .9h4.2a1 1 0 0 0 1-.9l.6-8.6 M6.7 6.8v4.6 M9.3 6.8v4.6" /></svg>
+      </button>
+    {/snippet}
     {#if selected}
       <article>
         <div class="kicker">{selected.kind === "event" ? "Talk" : selected.course}</div>
-        <h1 class="serif selectable">{selected.kind === "event" ? selected.course : rowTitle(selected)}</h1>
+        <!-- the pencil renames what the heading shows: a lecture's title, or a talk's name -->
+        <h1 class="serif"><span class="selectable">{selected.kind === "event" ? selected.course : rowTitle(selected)}</span>{#if !isBusy(selected)}<button
+            class="icon-button edit" aria-label={selected.kind === "event" ? "Rename this talk" : "Rename this lecture"}
+            title="Rename" onclick={() => renameSelected(selected!)}>
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.6 2.6a1.4 1.4 0 0 1 2 0l.8.8a1.4 1.4 0 0 1 0 2L6 12.8 2.8 13.2l.4-3.2z M9.4 3.8l2.8 2.8" /></svg>
+          </button>{/if}</h1>
         <p class="meta">{details(selected)}</p>
 
         {#if isDraft(selected)}
@@ -368,10 +386,7 @@
                 {busy === "finish" ? "Starting…" : "Make final transcript now"}
               </button>
             {/if}
-            {#if !isBusy(selected)}
-              <button class="pill small" aria-label="More" title="Rename or move to the {trashName}"
-                      onclick={(ev) => showMenu(ev, { entry: selected! })}>⋯</button>
-            {/if}
+            {#if !isBusy(selected)}{@render trashButton(selected)}{/if}
           </div>
         {/if}
 
@@ -394,8 +409,7 @@
           </div>
           <button class="pill" onclick={() => openTranscript(selected!.transcript)}>Open transcript</button>
           <button class="pill" onclick={() => reveal(selected!.transcript)}>{revealLabel}</button>
-          <button class="pill" aria-label="More" title="Rename or move to the {trashName}"
-                  onclick={(ev) => showMenu(ev, { entry: selected! })}>⋯</button>
+          {@render trashButton(selected)}
         </div>
         {/if}
         {#if selected.summary && !isDraft(selected)}
@@ -623,7 +637,23 @@
   .draft { margin-top: 22px; padding: 2px 0 2px 14px; border-left: 2px solid var(--warn); }
   .draft p { margin: 0; font-size: 15px; line-height: 1.5; }
   .draft .status { margin-right: 6px; }
-  .draft .pill { margin-top: 10px; }
+  .draft .pill, .draft .trash { margin-top: 10px; }
+  .draft .trash { margin-left: 4px; vertical-align: top; }
+
+  /* round icon buttons: the heading's pencil (quiet until pointed at) and the actions' trash */
+  .icon-button {
+    border: 1px solid transparent; background: none; color: var(--muted); padding: 0; border-radius: 999px;
+    display: inline-grid; place-items: center; flex: none;
+  }
+  .icon-button svg { display: block; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
+  .icon-button:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 7%, transparent); }
+  .edit { width: 30px; height: 30px; margin-left: 6px; vertical-align: 3px; opacity: 0.7; }
+  .edit svg { width: 17px; height: 17px; }
+  .edit:hover, .edit:focus-visible { opacity: 1; }
+  .trash { width: 33px; height: 33px;  /* as tall as the pills beside it */ border-color: var(--line); background: var(--card); }
+  .trash svg { width: 16px; height: 16px; }
+  .trash:hover { color: var(--rec); border-color: color-mix(in srgb, var(--rec) 40%, var(--line)); background: var(--card); }
+  .actions .trash { margin-left: auto; }
 
   .actions { display: flex; gap: 8px; margin-top: 24px; flex-wrap: wrap; }
   .pill {

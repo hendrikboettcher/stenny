@@ -81,7 +81,7 @@ See `config.example.toml` for every setting. The AI step uses the `claude` comma
 
 **Keep the lid open while recording.** A closed MacBook on battery sleeps and records nothing.
 
-**Your lectures:** Stenny's menu ▸ *Open Stenny…* opens a window with your courses, each course's lectures (newest first) and the selected lecture's summary, with *Open Transcript* and *Show in Finder*. Add a course with the **+** next to *Courses*; right-click a course to remove it. Removing deletes nothing: the course moves to *Past courses* in *Settings… ▸ Courses*, where *Bring Back* restores it and *Delete…* moves it and all its lectures to the Trash (the Recycle Bin on Windows).
+**Your lectures:** Stenny's menu ▸ *Open Stenny…* opens a window with your courses, each course's lectures (newest first) and the selected lecture's summary, with *Open Transcript* and *Show in Finder*. The pencil next to a lecture's title renames it (a talk's renames the talk); the trash icon at the end of its buttons moves it to the Trash (the Recycle Bin on Windows), after asking. Add a course with the **+** next to *Courses*; right-click a course to remove it. Removing deletes nothing: the course moves to *Past courses* in *Settings… ▸ Courses*, where *Bring Back* restores it and *Delete…* moves it and all its lectures to the Trash (the Recycle Bin on Windows).
 
 **Share with classmates:** *Share…* in the window makes a clean copy as PDF, Word or Markdown (summary on top, if you like): no file paths, microphone names or Obsidian links. PDF and Word end with a small "Transcribed with Stenny · stenny.eu" line; Markdown doesn't. The copies are saved in `~/Lectures Data/_Shared/`. Stenny asks once per course whether the lecturer is fine with it.
 
