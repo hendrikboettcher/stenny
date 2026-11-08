@@ -403,11 +403,14 @@
         <!-- click the heading to rename (see startRename); the pencil only shows while pointing at it -->
         {#if editing === id(selected)}
           {@const e = selected}
-          <input class="serif title-input" bind:value={titleField} use:focusAll
+          <!-- the field is as wide as its text: a hidden copy of the text (::after) sizes the grid it shares -->
+          <div class="title-wrap serif" data-value={titleField || (e.kind === "event" ? "" : e.number > 0 ? `Lecture ${e.number}` : prettyDate(e))}>
+          <input class="title-input" size="1" bind:value={titleField} use:focusAll
                  aria-label={e.kind === "event" ? "Name of this talk" : "Title of this lecture"}
                  placeholder={e.kind === "event" ? "" : e.number > 0 ? `Lecture ${e.number}` : prettyDate(e)}
                  onkeydown={(ev) => { if (ev.key === "Enter") finishRename(e, true); if (ev.key === "Escape") { ev.stopPropagation(); finishRename(e, false); } }}
                  onblur={() => finishRename(e, true)} />
+          </div>
         {:else if isBusy(selected)}
           <h1 class="serif selectable">{headingOf(selected)}</h1>
         {:else}
@@ -694,10 +697,16 @@
     fill: none; stroke: var(--muted); stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; transition: opacity 0.15s;
   }
   .title-button:hover .pen, .title-button:focus-visible .pen { opacity: 1; }
+  .title-wrap {
+    display: inline-grid; max-width: calc(100% + 16px); margin: 6px -8px 6px;
+    font-size: 34px; line-height: 1.1; font-weight: 440; letter-spacing: -0.02em;
+  }
+  .title-wrap::after, .title-input {
+    grid-area: 1 / 1; font: inherit; letter-spacing: inherit; padding: 0 7px; border: 1px solid transparent; min-width: 0;
+  }
+  .title-wrap::after { content: attr(data-value) "\00a0"; visibility: hidden; white-space: pre; overflow: hidden; }
   .title-input {
-    display: block; width: calc(100% + 16px); font-size: 34px; line-height: 1.1; font-weight: 440; letter-spacing: -0.02em;
-    margin: 6px -8px 6px; padding: 0 7px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink);
-    outline: none;
+    width: 100%; border-color: var(--line); border-radius: 8px; background: var(--card); color: var(--ink); outline: none;
   }
   .title-input:focus { border-color: color-mix(in srgb, var(--ink) 35%, var(--line)); }
 
