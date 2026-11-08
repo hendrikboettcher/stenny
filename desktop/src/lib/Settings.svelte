@@ -329,7 +329,7 @@
                 <div class="hint">{t("settings.uiLanguage.hint")}</div>
               </div>
               <select value={s.app.language} onchange={(e) => setUiLanguage(e.currentTarget.value)}>
-                <option value="system">{t("settings.uiLanguage.system", { language: s.system_language === "de" ? "Deutsch" : "English" })}</option>
+                <option value="system">{t("settings.uiLanguage.system", { language: languageName(s.system_language) ?? s.system_language })}</option>
                 <option value="en">English</option>
                 <option value="de">Deutsch</option>
               </select>

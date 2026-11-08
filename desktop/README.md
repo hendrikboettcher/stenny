@@ -45,8 +45,15 @@ window, the menu bar's menu, the app menu and stenny-agent follow at once (`set_
   only what they show themselves. `tests/test_i18n.py` checks both files have the same keys and placeholders, that
   every key used exists, and that the engine's German is complete.
 - **Not translated:** transcripts, summaries and file names in the vault (each course keeps its own language).
-- **German:** natural UI German written for German speakers, never a word-for-word translation; the user is "du"
-  everywhere; Apple's style for menus ("Einstellungen …", with a space before the ellipsis).
+- **German:** natural UI German written for German speakers, never a word-for-word translation of the English.
+  Write each text as a German app would say it, then check it against the English for meaning, not for shape:
+  - the words macOS and Windows use for the same thing (*Im Finder anzeigen*, *Kurzbefehl*, *Anmeldeobjekte*,
+    *Mitteilungen*, *am Netzteil*, *Wiederherstellen*; Voice Memos' *Pausieren / Fortsetzen*);
+  - buttons and menu items as infinitive or noun (*Kurs hinzufügen*, not *Leg einen Kurs an*);
+  - say what happens to what (*Der Kurs wird gelöscht*), not *Damit löschst du …* or a sentence starting with *Er …*;
+  - short sentences; a dash for an aside (*– dort kannst du sie wiederherstellen*), not a semicolon chain;
+  - the user is "du" everywhere; Apple's style for menus ("Einstellungen …", a space before the ellipsis).
+  `tests/test_i18n.py` (`NOT_GERMAN`) catches the word-for-word phrasings the German once had.
 
 One word for each thing, everywhere:
 
@@ -61,11 +68,12 @@ One word for each thing, everywhere:
 | slides | Folien |
 | glossary | Glossar |
 | draft (live draft) | Entwurf (Live-Entwurf) |
-| microphone / backup microphone | Mikrofon / Ersatzmikrofon |
-| pause shortcut | Tastenkürzel für Pause |
+| pause shortcut | Kurzbefehl zum Pausieren |
 | Settings | Einstellungen |
 | Trash / Recycle Bin | Papierkorb (both) |
-| Show in Finder / Explorer | Im Finder / Explorer zeigen |
-| stop (a recording) / cancel (a recording) / quit (Stenny) | stoppen / abbrechen / beenden |
+| Show in Finder / Explorer | Im Finder / Explorer anzeigen |
+| stop (a recording) / cancel (a recording) / quit (Stenny) | beenden / abbrechen / beenden |
+| bring back (a course) | wiederherstellen |
+| microphone / backup microphone / this Mac's microphone | Mikrofon / Ersatzmikrofon / Integriertes Mikrofon |
 | lecturer / speaker | Lehrperson / vortragende Person |
-| the Mac is plugged in | der Mac hängt am Strom |
+| the Mac is plugged in | der Mac ist am Netzteil |
