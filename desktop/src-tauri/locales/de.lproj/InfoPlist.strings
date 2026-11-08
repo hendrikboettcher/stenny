@@ -1,3 +1,3 @@
 /* Stennys Berechtigungsabfragen, auf Deutsch (Englisch: Info.plist) */
-"NSMicrophoneUsageDescription" = "Stenny nimmt Vorlesungen auf, die du über das Menü startest. Das Audio bleibt auf diesem Mac; beim Pausieren ist das Mikrofon aus.";
-"NSCalendarsFullAccessUsageDescription" = "Stenny sucht in deinem Kalender die Vorlesung, die gerade läuft, damit du sie mit einem Klick aufnehmen kannst. Nichts wird geändert oder irgendwohin gesendet.";
+"NSMicrophoneUsageDescription" = "Stenny nimmt die Vorlesungen auf, die du über das Menü startest. Das Audio bleibt auf diesem Mac, und beim Pausieren ist das Mikrofon aus.";
+"NSCalendarsFullAccessUsageDescription" = "Stenny sieht in deinem Kalender nach, welche Vorlesung gerade läuft, damit du sie mit einem Klick aufnehmen kannst. Dabei wird nichts geändert oder gesendet.";
