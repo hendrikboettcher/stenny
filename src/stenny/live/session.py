@@ -161,7 +161,7 @@ class LiveSession:
         self.written = 0                  # samples ffmpeg has written to the recording file
         self.read_pos = 0                 # samples looked at for digital silence and the level
         self.partial = np.zeros(0, np.float32)
-        self.last_growth = time.monotonic()
+        self.last_growth = self.wall()
         self.retry_at = 0.0
         self.spans: list[tuple[int, float]] = [(0, 0.0)]
         self.pauses: list[list] = []      # [start, end, reason] in lecture time; end None while ongoing;
@@ -196,6 +196,11 @@ class LiveSession:
         """Lecture time in seconds (sped up when a test file is played faster than real time)."""
         return (time.monotonic() - self.t0) * self.source.clock_rate
 
+    def wall(self) -> float:
+        """Seconds for the microphone's stall and retry timers: real time (the tests put their simulated clock here,
+        so a slow machine running them doesn't look like a lost microphone)."""
+        return time.monotonic()
+
     def lecture_time(self, sample: int) -> float:
         for start, t in reversed(self.spans):
             if sample >= start:
@@ -214,6 +219,7 @@ class LiveSession:
         self.reader = open(self.pcm_path, "rb")
         worker = threading.Thread(target=self._transcribe_loop, daemon=True)
         with self.lock:
+            self.last_growth = self.wall()  # the microphone's stall timer starts with the recording
             self.source.start(self.pcm_path)
             if self.backup:
                 self.backup.start()
@@ -270,7 +276,7 @@ class LiveSession:
         data = np.frombuffer(self.reader.read(new * 2), np.int16).astype(np.float32) / 32768.0
         first = self.written
         self.written = size
-        self.last_growth = time.monotonic()
+        self.last_growth = self.wall()
         arrived_at = self.now() - new / SAMPLE_RATE  # lecture time at which this audio started
         if self.span_waiting:
             # a span's time comes from its first audio, not from the button press: the device needs
@@ -330,7 +336,7 @@ class LiveSession:
 
     def _watch_input(self) -> None:
         """A microphone that stops delivering (iPhone out of range) is reconnected; the session goes on."""
-        idle = time.monotonic() - self.last_growth
+        idle = self.wall() - self.last_growth
         # also catch a recorder that exited or never delivered anything since it was started
         limit = STARTUP_STALL if self.span_waiting else STALL
         if not self.stalled and (self.source.finished or idle > limit):
@@ -348,7 +354,7 @@ class LiveSession:
             self.retry_at = 0.0
             self.save()
             self.render()
-        if self.stalled and time.monotonic() >= self.retry_at:  # (re)try; success is noticed in _poll
+        if self.stalled and self.wall() >= self.retry_at:  # (re)try; success is noticed in _poll
             self.source.stop()
             if self.span_waiting and self.spans[-1][0] == self.written:
                 self.spans[-1] = (self.written, self.now())   # replace the last failed attempt
@@ -356,8 +362,8 @@ class LiveSession:
                 self.spans.append((self.written, self.now()))
             self.span_waiting = True
             self.source.start(self.pcm_path)
-            self.retry_at = time.monotonic() + RETRY
-            self.last_growth = time.monotonic()
+            self.retry_at = self.wall() + RETRY
+            self.last_growth = self.wall()
 
     def _watch_resources(self) -> None:
         """Whatever runs out, the recording comes first: memory costs the transcription, disk costs the backup
@@ -596,7 +602,7 @@ class LiveSession:
             self.pauses[-1][1] = t
             self.spans.append((self.written, t))
             self.span_waiting = True
-            self.last_growth = time.monotonic()
+            self.last_growth = self.wall()
             self.source.start(self.pcm_path)
             if self.backup and not self.disk_low:
                 self.backup.start()
@@ -634,7 +640,7 @@ class LiveSession:
                 else:
                     self.spans.append((self.written, self.now()))
                 self.span_waiting = True
-                self.last_growth = time.monotonic()
+                self.last_growth = self.wall()
                 src.start(self.pcm_path)
         log(f"Microphone switched: {old} → {device}")
         self.save()

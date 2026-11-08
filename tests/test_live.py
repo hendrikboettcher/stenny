@@ -193,6 +193,7 @@ def test_pause_resume_timeline(tmp_path, monkeypatch):
     s = LiveSession(cfg, Course("Calculus", language="fr"), mic, FakeEngine())
     short_chunks(s, monkeypatch)
     monkeypatch.setattr(s, "now", lambda: mic.t)  # lecture clock = simulated time
+    monkeypatch.setattr(s, "wall", lambda: mic.ticks * TICK_S)  # stall timers on the same clock
     monkeypatch.setattr(live_session, "POLL", 0.002)
 
     def script():
@@ -243,6 +244,7 @@ def test_microphone_dropout_keeps_session_and_marks_gap(tmp_path, monkeypatch):
     s = LiveSession(cfg, Course("Calculus", language="fr"), mic, FakeEngine())
     short_chunks(s, monkeypatch)
     monkeypatch.setattr(s, "now", lambda: mic.t)
+    monkeypatch.setattr(s, "wall", lambda: mic.ticks * TICK_S)  # stall timers on the same clock
     # real seconds: one simulated 0.1 s block takes ~1 ms here
     monkeypatch.setattr(live_session, "STALL", 0.05)
     monkeypatch.setattr(live_session, "RETRY", 0.01)
@@ -273,6 +275,7 @@ def run_session(tmp_path, monkeypatch, mic, until=30.0, stall=0.05, backup=None,
     s = LiveSession(cfg, Course("Calculus", language="fr"), mic, engine or FakeEngine(), backup=backup)
     short_chunks(s, monkeypatch, on_power, lengths)
     monkeypatch.setattr(s, "now", lambda: mic.t)
+    monkeypatch.setattr(s, "wall", lambda: mic.ticks * TICK_S)  # stall timers on the same clock
     monkeypatch.setattr(live_session, "STALL", stall)
     monkeypatch.setattr(live_session, "RETRY", 0.01)
     monkeypatch.setattr(live_session, "POLL", 0.002)
@@ -511,6 +514,7 @@ def test_cancel_ends_without_a_transcript_and_trashes_the_recording(tmp_path, mo
     s = LiveSession(cfg, Course("Calculus", language="fr"), mic, FakeEngine())
     short_chunks(s, monkeypatch)
     monkeypatch.setattr(s, "now", lambda: mic.t)
+    monkeypatch.setattr(s, "wall", lambda: mic.ticks * TICK_S)  # stall timers on the same clock
     monkeypatch.setattr(live_session, "POLL", 0.002)
     trashed = tmp_path / "Trash"
     trashed.mkdir()
