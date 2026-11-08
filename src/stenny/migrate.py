@@ -302,9 +302,15 @@ SYSTEM_FILES = {"consent.json": "config", "calendar-titles.json": "data", "watch
 STALE = {"live.sock", "queue.lock", "config.check.toml", "config.tmp"}
 
 
+# what the migrations before wrote in place of `audio_dir` ("# audio_dir: no longer needed, everything outside the
+# vault is in ~/Lectures Data (…)", later "# audio_dir: no longer needed (paths.py in the project)"): Stenny's own line
+AUDIO_DIR_NOTE = re.compile(r"(?m)^[ \t]*# audio_dir: no longer needed\b.*(?:\r?\n|\Z)")
+
+
 def convert_config(text: str, folder: Path, drop_data_dir: bool) -> str:
     """`vault` + `lectures_dir` → `folder` (where `vault` was), `[recordings] folder` out (talks are in the folder
-    now), and `data_dir` out if it only named ~/Lectures Data. Everything else, comments too, stays."""
+    now), and `data_dir` out if it only named ~/Lectures Data. Everything else, comments too, stays, except the
+    note an earlier migration left where `audio_dir` was: it named ~/Lectures Data, which is gone now."""
     value = json.dumps(paths.tilde(folder), ensure_ascii=False)
     line = f"folder = {value}  # everything you or Claude read: courses, Talks, glossaries; Stenny writes nowhere else"
     start, end = _table(text, None)
@@ -317,6 +323,7 @@ def convert_config(text: str, folder: Path, drop_data_dir: bool) -> str:
     text = text[:start] + top + text[end:]
     for key in ("lectures_dir", *(("data_dir", "audio_dir") if drop_data_dir else ())):
         text = set_line(text, _table(text, None), None, key, None)
+    text = AUDIO_DIR_NOTE.sub("", text)
     if _table(text, "recordings") is not None:
         text = set_line(text, _table(text, "recordings"), "recordings", "folder", None)
     return text

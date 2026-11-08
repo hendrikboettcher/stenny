@@ -326,6 +326,18 @@ def test_data_dir_set_to_lectures_data_itself_is_dropped(places):
 
 
 @mac_only
+def test_the_old_audio_dir_note_goes_and_ones_own_comments_stay(places):
+    write_config(places.legacy_system_dir / "config.toml",
+                 '# lecture configuration\n\nvault = "~/Vault"\nlectures_dir = "Lectures"\n'
+                 '# audio_dir: no longer needed, everything outside the vault is in ~/Lectures Data (see paths.py)\n'
+                 '# my own note about ~/Lectures Data\nkeep_audio = true\n')
+    mig.migrate(log=lambda m: None)
+    text = places.config_path.read_text(encoding="utf-8")
+    assert "audio_dir" not in text
+    assert "# my own note about ~/Lectures Data\nkeep_audio = true" in text
+    assert text.startswith("# lecture configuration\n\nfolder = ")
+
+
 def test_across_disks_it_copies_checks_and_then_deletes(old_install, monkeypatch):
     real = os.rename
 
