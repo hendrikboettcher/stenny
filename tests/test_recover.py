@@ -24,16 +24,16 @@ def crashed_session(cfg, samples=16000, name="Calculus", folder=None):
     session = base.with_name("2026-10-31.session.json")
     session.write_text(json.dumps({"course": name, "started_at": "2026-10-31T10:00:00", "folder": "2026-10-31",
                                    "recording": str(pcm), "state": "recording", "spans": [[0, 0.0]],
-                                   "pauses": [[1.0, 2.0, "paused"], [3.0, None, "no input"]], "recorded_samples": 5}))
+                                   "pauses": [[1.0, 2.0, "paused"], [3.0, None, "no input"]], "recorded_samples": 5}), encoding="utf-8")
     return pcm, session
 
 
 def test_a_died_session_gets_its_final_pass_with_all_its_audio(cfg):
     pcm, session = crashed_session(cfg)
     assert cli.recover_sessions(cfg) == [{"course": "Calculus", "kind": "lecture"}]
-    job = json.loads(jobs.pending()[0].read_text())
+    job = json.loads(jobs.pending()[0].read_text(encoding="utf-8"))
     assert job["file"] == str(pcm.resolve()) and job["live"] == str(session)
-    d = json.loads(session.read_text())
+    d = json.loads(session.read_text(encoding="utf-8"))
     assert d["recorded_samples"] == 16000 and d["pauses"] == [[1.0, 2.0, "paused"]]
 
 
@@ -69,9 +69,10 @@ def test_a_talk_stays_a_talk(cfg):
     assert cli.recover_sessions(cfg) == [{"course": "Guest talk", "kind": "event"}]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="uses ps, macOS only for now (#2)")
 def test_orphan_recorder_is_stopped(tmp_path):
     fake = tmp_path / "stenny-rec"
-    fake.write_text("#!/bin/sh\nexec sleep 60\n")
+    fake.write_text("#!/bin/sh\nexec sleep 60\n", encoding="utf-8")
     fake.chmod(0o755)
     # a process whose command line looks like the recorder's, as `ps` shows it
     out = tmp_path / "a recording.pcm"
@@ -99,6 +100,7 @@ def test_memory_check_needs_normal_pressure_and_room(monkeypatch):
     assert not resources.enough_memory_for_final_pass()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="reads vm_stat and sysctl, macOS only for now (#2)")
 def test_the_real_readings_make_sense():
     assert resources.memory_pressure() in (1, 2, 4)
     assert 0 < resources.available_memory() < 1024 * resources.GB

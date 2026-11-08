@@ -1,3 +1,4 @@
+import sys
 import subprocess
 from types import SimpleNamespace
 
@@ -82,6 +83,7 @@ def test_html_keeps_the_structure_and_greys_timestamps():
     assert "<hr>" in page
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Word copies come from textutil, macOS only for now (#2)")
 def test_share_writes_word_and_html(cfg, tmp_path):
     entry = share.find(cfg, "Calculus", "2026-10-20")
     docx = share.share(entry, with_summary=True, out_dir=tmp_path / "out", fmt="docx")
@@ -94,6 +96,7 @@ def test_share_writes_word_and_html(cfg, tmp_path):
         share.share(entry, fmt="pdf")
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Word copies come from textutil, macOS only for now (#2)")
 def test_word_and_pdf_end_with_the_credit_markdown_does_not(cfg, tmp_path):
     entry = share.find(cfg, "Calculus", "2026-10-20")
     page = share.share(entry, out_dir=tmp_path, fmt="html").read_text(encoding="utf-8")

@@ -83,7 +83,7 @@ def trash(items: list[Path]) -> None:
                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     else:
         out = subprocess.run(["osascript", "-l", "JavaScript", "-e", TRASH_JS, *map(str, items)],
-                             capture_output=True, text=True)
+                             capture_output=True, text=True, encoding="utf-8", errors="replace")
     if out.returncode or out.stdout.strip():
         raise ManageError(tr("Couldn't move to the {trash}: {error}", trash=trash_name(),
                               error=(out.stdout or out.stderr).strip()))
@@ -360,8 +360,9 @@ def _replace_json(text: str, old: str, new: str, moves: list[tuple[Path, Path]],
         if isinstance(v, str):
             if key in ("course", "event") and v == old:
                 return new
-            for a, b in moves:
-                v = v.replace(str(a) + "/", str(b) + "/")
+            for a, b in moves:  # a path as Path wrote it (backslashes on Windows) or with forward slashes
+                for old_dir, new_dir in {(str(a), str(b)), (Path(a).as_posix(), Path(b).as_posix())}:
+                    v = v.replace(old_dir + "/", new_dir + "/").replace(old_dir + "\\", new_dir + "\\")
             return swap(v)
         return v
 
@@ -378,8 +379,10 @@ def _replace_job(text: str, old: str, new: str, old_data: Path, new_data: Path) 
         return text
     job["course"] = new
     for k in ("file", "live"):
-        if job.get(k) and job[k].startswith(str(old_data) + "/"):
-            job[k] = str(new_data) + job[k][len(str(old_data)):]
+        try:  # as a Path, so "/" and Windows' "\" both count
+            job[k] = str(new_data / Path(job[k]).relative_to(old_data)) if job.get(k) else job.get(k)
+        except ValueError:
+            pass
     return json.dumps(job, indent=1)
 
 

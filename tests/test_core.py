@@ -1,3 +1,5 @@
+import sys
+
 import numpy as np
 import pytest
 
@@ -305,6 +307,7 @@ def test_guard_topics_and_terms_need_evidence():
     assert guard.validate_topics(["Théorème de Rolle"], text, Slides()) == ["Théorème de Rolle"]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="moves the old macOS folders (~/.config/lecture …), macOS only")
 def test_migrate_moves_everything_outside_the_vault_into_one_folder(tmp_path, monkeypatch):
     import json
     from stenny import migrate as mig
@@ -318,39 +321,39 @@ def test_migrate_moves_everything_outside_the_vault_into_one_folder(tmp_path, mo
         monkeypatch.setattr(paths, name, value)
     vault = tmp_path / "vault"
     (old_cfg).mkdir(parents=True)
-    (old_cfg / "config.toml").write_text(f'vault = "{vault}"\nlectures_dir = "L"\naudio_dir = "{old_audio}"\n'
-                                         '[courses."Calculus"]\nlanguage = "fr"\n')
+    (old_cfg / "config.toml").write_text(f'vault = "{vault.as_posix()}"\nlectures_dir = "L"\naudio_dir = "{old_audio.as_posix()}"\n'
+                                         '[courses."Calculus"]\nlanguage = "fr"\n', encoding="utf-8")
     (old_audio / "Calculus").mkdir(parents=True)
     (old_audio / "Calculus" / "2026-10-15.opus").write_bytes(b"ogg")
     (old_audio / "Calculus" / "2026-10-15.segments.json").write_text(
-        json.dumps({"meta": {"lecture": {"audio": f"{old_audio}/Calculus/2026-10-15.opus"}}, "segments": []}))
+        json.dumps({"meta": {"lecture": {"audio": f"{old_audio}/Calculus/2026-10-15.opus"}}, "segments": []}), encoding="utf-8")
     (old_state / "queue").mkdir(parents=True)
-    (old_state / "queue" / "job.json").write_text(json.dumps({"file": f"{old_audio}/Calculus/x.pcm"}))
-    (old_state / "live.log").write_text("log")
-    (old_state / "queue.lock").write_text("")
+    (old_state / "queue" / "job.json").write_text(json.dumps({"file": f"{old_audio}/Calculus/x.pcm"}), encoding="utf-8")
+    (old_state / "live.log").write_text("log", encoding="utf-8")
+    (old_state / "queue.lock").write_text("", encoding="utf-8")
     lecture = vault / "L" / "Calculus" / "2026-10-15"
     lecture.mkdir(parents=True)
     (lecture / "Calculus 2026-10-15.md").write_text(
         f'---\naudio: "{old_audio}/Calculus/2026-10-15.opus"\nstatus: "final"\n---\n# T\n\n> Every segment, unfiltered, '
-        "is in [[Calculus 2026-10-15 (raw)]].\n")
-    (lecture / "Calculus 2026-10-15 (raw).md").write_text("raw")
+        "is in [[Calculus 2026-10-15 (raw)]].\n", encoding="utf-8")
+    (lecture / "Calculus 2026-10-15 (raw).md").write_text("raw", encoding="utf-8")
     (vault / "L" / "_Glossaries").mkdir()
-    (vault / "L" / "_Glossaries" / "Calculus.md").write_text("## Terms\n- Riemann\n")
+    (vault / "L" / "_Glossaries" / "Calculus.md").write_text("## Terms\n- Riemann\n", encoding="utf-8")
 
     assert mig.migrate(dry_run=True, log=lambda m: None) > 0
     assert (old_audio / "Calculus" / "2026-10-15.opus").exists() and not home.exists()  # a dry run changes nothing
 
     mig.migrate(log=lambda m: None)
     assert not old_cfg.exists() and not old_state.exists() and not old_audio.exists()
-    assert "audio_dir" not in (home / "_System/config.toml").read_text().split("#")[0]
+    assert "audio_dir" not in (home / "_System/config.toml").read_text(encoding="utf-8").split("#")[0]
     assert (home / "Calculus" / "2026-10-15.opus").read_bytes() == b"ogg"
     raw = home / "Calculus" / "Calculus 2026-10-15 (raw).md"
-    assert raw.read_text() == "raw" and not (lecture / "Calculus 2026-10-15 (raw).md").exists()
-    t = (lecture / "Calculus 2026-10-15.md").read_text()
+    assert raw.read_text(encoding="utf-8") == "raw" and not (lecture / "Calculus 2026-10-15 (raw).md").exists()
+    t = (lecture / "Calculus 2026-10-15.md").read_text(encoding="utf-8")
     assert "(outside the vault)" in t and "[[Calculus 2026-10-15 (raw)]]" not in t and str(old_audio) not in t
-    meta = json.loads((home / "Calculus" / "2026-10-15.segments.json").read_text())["meta"]["lecture"]
+    meta = json.loads((home / "Calculus" / "2026-10-15.segments.json").read_text(encoding="utf-8"))["meta"]["lecture"]
     assert meta["audio"].startswith(str(home)) and meta["raw_file"].endswith("(raw).md")
-    assert json.loads((home / "_Queue" / "job.json").read_text())["file"].startswith(str(home))
+    assert json.loads((home / "_Queue" / "job.json").read_text(encoding="utf-8"))["file"].startswith(str(home))
     assert (home / "_System" / "live.log").exists() and not (home / "_System" / "queue.lock").exists()
     assert (vault / "L" / "_Glossaries" / "Calculus (glossary).md").exists()
     assert Vault(vault / "L").violations() == []

@@ -1,6 +1,7 @@
 """Live session logic with a fake microphone and a simulated clock (no audio hardware, no model)."""
 
 import json
+import re
 import threading
 import time
 from pathlib import Path
@@ -15,17 +16,23 @@ from stenny.pipeline import ChunkCache, LiveInfo
 from stenny.textproc import SAMPLE_RATE
 
 BLOCK = SAMPLE_RATE // 10
+EPS = 1e-6  # lecture times come from sample counts: 7.9 s may be 7.8999999999999995
+
+
+TICK_S = 0.002  # real seconds per simulated block (0.1 s): slow enough that a busy CI runner keeps up
 
 
 class FakeMic:
     """Writes speech-like noise to the recording file like ffmpeg does, with a 0.5 s pause every 4 s.
-    A background clock advances simulated time (0.1 s per ~1 ms) whether or not it is recording."""
+    A background clock advances simulated time (0.1 s per ~2 ms) whether or not it is recording. It counts whole
+    blocks, so 33 blocks are exactly 3.3 s (adding 0.1 up gives 3.3000000000000016)."""
 
     name, clock_rate, restartable = "fake mic", 1.0, True
     microphone = "Alex’s iPhone Microphone"
 
     def __init__(self, startup_blocks=0, dropout=None, zeros=None):
-        self.t, self.running, self.rng, self.out = 0.0, False, np.random.default_rng(0), None
+        self.ticks, self.running, self.rng, self.out = 0, False, np.random.default_rng(0), None
+        self.scheduled = []     # (tick, action, result box, done): run by the clock's thread (see at())
         self.startup_blocks, self.warming = startup_blocks, 0
         self.dropout = dropout  # (start, end): simulated time in which the device delivers nothing
         self.zeros = zeros      # (start, end): the device delivers exact digital silence (iPhone locked)
@@ -34,11 +41,41 @@ class FakeMic:
         self.lock = threading.Lock()
         threading.Thread(target=self._clock, daemon=True).start()
 
+    @property
+    def t(self) -> float:
+        return self.ticks / 10
+
+    def at(self, t, action):
+        """Runs `action` (a command to the session) when the simulated clock reaches t. The clock's own thread runs
+        it, between two ticks: it happens at t however late the test's thread would get to run (a busy CI runner,
+        Windows' scheduler), and the clock doesn't stand still waiting for it, which would look like a lost
+        microphone. Returns what the action returned."""
+        done, box = threading.Event(), {}
+        with self.lock:
+            self.scheduled.append((round(t * 10), action, box, done))
+        if not done.wait(30):
+            raise TimeoutError(f"the clock never reached {t} s")
+        if "error" in box:
+            raise box["error"]
+        return box.get("result")
+
+    def _run_due(self):
+        with self.lock:
+            due = [job for job in self.scheduled if job[0] <= self.ticks]
+            self.scheduled = [job for job in self.scheduled if job[0] > self.ticks]
+        for _, action, box, done in due:  # outside the lock: the session stops and starts the microphone
+            try:
+                box["result"] = action()
+            except Exception as e:  # noqa: BLE001 — raised again in the test's thread
+                box["error"] = e
+            done.set()
+
     def _clock(self):
         while True:
-            time.sleep(0.001)
+            time.sleep(TICK_S)
+            self._run_due()
             with self.lock:
-                self.t += 0.1
+                self.ticks += 1
                 for twin in self.twins:  # the backup keeps delivering through the main mic's gaps
                     if twin.out:
                         twin.out.write((self.rng.normal(0, 0.05, BLOCK) * 32767).astype(np.int16).tobytes())
@@ -159,12 +196,9 @@ def test_pause_resume_timeline(tmp_path, monkeypatch):
     monkeypatch.setattr(live_session, "POLL", 0.002)
 
     def script():
-        wait_until(lambda: mic.t >= 14)
-        s.command("toggle")            # pause at ~14 s
-        wait_until(lambda: mic.t >= 19)
-        s.command("toggle")            # resume at ~19 s
-        wait_until(lambda: mic.t >= 36)
-        s.command("stop")
+        mic.at(14, lambda: s.command("toggle"))            # pause at 14 s
+        mic.at(19, lambda: s.command("toggle"))            # resume at 19 s
+        mic.at(36, lambda: s.command("stop"))
 
     threading.Thread(target=script, daemon=True).start()
     s.run()
@@ -174,10 +208,10 @@ def test_pause_resume_timeline(tmp_path, monkeypatch):
     (p_start, p_end, reason), = s.pauses
     assert reason == "paused"
     # the test thread reacts a little after the simulated clock passes each mark
-    assert 13.9 <= p_start <= 15 and 18.9 <= p_end <= 20
+    assert 13.9 - EPS <= p_start <= 15 and 18.9 - EPS <= p_end <= 20
     # each span starts when audio actually arrived: 3 s after start / resume
-    assert s.spans[0][0] == 0 and 2.9 <= s.spans[0][1] <= 3.3
-    assert 2.9 <= s.spans[1][1] - p_end <= 3.3
+    assert s.spans[0][0] == 0 and 2.9 - EPS <= s.spans[0][1] <= 3.3 + EPS
+    assert 2.9 - EPS <= s.spans[1][1] - p_end <= 3.3 + EPS
     recorded = s.recorded / SAMPLE_RATE
     audible = (p_start - s.spans[0][1]) + (s.ended_at - s.spans[1][1])
     assert abs(recorded - audible) < 0.3                       # paused (and not yet started) audio is absent
@@ -191,7 +225,7 @@ def test_pause_resume_timeline(tmp_path, monkeypatch):
     assert_final_pass_reuses(s)
 
     # the vault only has a placeholder: details and status, no text (that's in Stenny's window)
-    draft = s.transcript_path.read_text()
+    draft = s.transcript_path.read_text(encoding="utf-8")
     marker = f"*[Recording paused 0:00:{int(p_start):02d}–0:00:{int(p_end):02d}]*"
     assert 'status: "live"' in draft and marker in draft and "No transcript yet" in draft
     assert 'microphone: "Alex’s iPhone Microphone"' in draft
@@ -215,8 +249,7 @@ def test_microphone_dropout_keeps_session_and_marks_gap(tmp_path, monkeypatch):
     monkeypatch.setattr(live_session, "POLL", 0.002)
 
     def script():
-        wait_until(lambda: mic.t >= 30)
-        s.command("stop")
+        mic.at(30, lambda: s.command("stop"))
 
     threading.Thread(target=script, daemon=True).start()
     s.run()
@@ -224,13 +257,13 @@ def test_microphone_dropout_keeps_session_and_marks_gap(tmp_path, monkeypatch):
     gaps = [p for p in s.pauses if p[2] == "no input"]
     assert len(gaps) == 1, s.pauses
     start, end, _ = gaps[0]
-    assert 7.9 <= start <= 8.2 and 13.9 <= end <= 14.6
+    assert 7.9 - EPS <= start <= 8.2 + EPS and 13.9 - EPS <= end <= 14.6 + EPS
     assert s.state == "stopping"                                    # the session did not end by itself
     assert any(seg["start"] >= 13.9 for seg in s.segments)          # transcription continued afterwards
     assert not any(start + 0.05 < seg["start"] < end - 0.05 for seg in s.segments)
     assert_final_pass_reuses(s)
-    draft = s.transcript_path.read_text()
-    assert "No audio from the microphone 0:00:08" in draft
+    draft = s.transcript_path.read_text(encoding="utf-8")
+    assert re.search(r"No audio from the microphone 0:00:0[78]–", draft)  # 7.9–8.2 s, printed whole
 
 
 def run_session(tmp_path, monkeypatch, mic, until=30.0, stall=0.05, backup=None, script=None, on_power=True,
@@ -243,7 +276,7 @@ def run_session(tmp_path, monkeypatch, mic, until=30.0, stall=0.05, backup=None,
     monkeypatch.setattr(live_session, "STALL", stall)
     monkeypatch.setattr(live_session, "RETRY", 0.01)
     monkeypatch.setattr(live_session, "POLL", 0.002)
-    script = script or (lambda s: (wait_until(lambda: mic.t >= until), s.command("stop")))
+    script = script or (lambda s: mic.at(until, lambda: s.command("stop")))
     threading.Thread(target=script, args=(s,), daemon=True).start()
     s.run()
     return s
@@ -253,13 +286,13 @@ def test_digital_silence_is_a_gap_not_recorded(tmp_path, monkeypatch):
     mic = FakeMic(zeros=(8.0, 13.0))
     s = run_session(tmp_path, monkeypatch, mic)
     gaps = [p for p in s.pauses if p[2] == "no input"]
-    assert len(gaps) == 1 and 7.9 <= gaps[0][0] <= 8.2 and 12.9 <= gaps[0][1] <= 13.3
+    assert len(gaps) == 1 and 7.9 - EPS <= gaps[0][0] <= 8.2 + EPS and 12.9 - EPS <= gaps[0][1] <= 13.3 + EPS
     recorded = s.recorded / SAMPLE_RATE
     assert abs(recorded - s.ended_at) < 0.5                                 # zeros stay in the file: timeline intact (± start-up time)
     later = [seg for seg in s.segments if seg["start"] > 10]
     assert later and min(seg["start"] for seg in later) >= 12.9            # text after the gap keeps clock time
     assert_final_pass_reuses(s)                                            # no chunk reached into the zeros
-    assert "No audio from the microphone 0:00:08" in s.transcript_path.read_text()
+    assert re.search(r"No audio from the microphone 0:00:0[78]–", s.transcript_path.read_text(encoding="utf-8"))
 
 
 def test_delivery_hiccup_keeps_timestamps_on_the_clock(tmp_path, monkeypatch):
@@ -293,12 +326,9 @@ def test_backup_microphone_records_through_main_gaps_but_not_pauses(tmp_path, mo
     backup = FakeBackup(mic)
 
     def script(s):
-        wait_until(lambda: mic.t >= 20)
-        s.command("pause")
-        wait_until(lambda: mic.t >= 25)
-        s.command("resume")
-        wait_until(lambda: mic.t >= 30)
-        s.command("stop")
+        mic.at(20, lambda: s.command("pause"))
+        mic.at(25, lambda: s.command("resume"))
+        mic.at(30, lambda: s.command("stop"))
 
     s = run_session(tmp_path, monkeypatch, mic, backup=backup, script=script)
     assert [p[2] for p in s.pauses] == ["no input", "paused"]
@@ -308,7 +338,7 @@ def test_backup_microphone_records_through_main_gaps_but_not_pauses(tmp_path, mo
     assert abs(b.spans[1][1] - p1) < 0.3                               # off while paused, back on resume
     recorded = b.written / SAMPLE_RATE
     assert abs(recorded - (s.ended_at - (p1 - p0))) < 0.5              # ran through the main mic's gap
-    info = json.loads(s.session_path.read_text())["backup"]
+    info = json.loads(s.session_path.read_text(encoding="utf-8"))["backup"]
     assert info["microphone"] == "MacBook Air Microphone" and info["recorded_samples"] == b.written
     assert Path(info["recording"]).stat().st_size == b.written * 2
 
@@ -317,7 +347,7 @@ def test_gap_at_the_end_is_kept_when_a_backup_heard_it(tmp_path, monkeypatch):
     mic = FakeMic(dropout=(12.0, 10**9))      # main microphone lost for the rest of the lecture
     s = run_session(tmp_path, monkeypatch, mic, backup=FakeBackup(mic))
     (start, end, reason), = s.pauses
-    assert reason == "no input" and 11.9 <= start <= 12.2 and end == s.ended_at and s.ended_at >= 19.9
+    assert reason == "no input" and 11.9 - EPS <= start <= 12.2 + EPS and end == s.ended_at and s.ended_at >= 19.9
     assert s.backup.written / SAMPLE_RATE >= 19.5
 
 
@@ -338,8 +368,7 @@ def test_on_battery_it_only_records_and_catches_up_when_plugged_in(tmp_path, mon
         s.seen = len(s.cache.chunks), s.status()["transcribing"]
         s.on_power_now = True                         # plugged in
         monkeypatch.setattr(live_session, "POWER_CHECK", 0.0)
-        wait_until(lambda: mic.t >= 40)
-        s.command("stop")
+        mic.at(40, lambda: s.command("stop"))
 
     s = run_session(tmp_path, monkeypatch, mic, script=script, on_power=False)
     assert s.seen == (0, False)                       # on battery: nothing transcribed, the recording goes on
@@ -370,17 +399,15 @@ def test_switching_the_microphone_ends_the_gap_and_keeps_recording(tmp_path, mon
     replies = []
 
     def script(s):
-        wait_until(lambda: mic.t >= 12)
-        replies.append(s.command("microphone", "MacBook Air Microphone"))
+        mic.at(12, lambda: replies.append(s.command("microphone", "MacBook Air Microphone")))
         replies.append(s.command("microphone", None))
-        wait_until(lambda: mic.t >= 30)
-        s.command("stop")
+        mic.at(30, lambda: s.command("stop"))
 
     s = run_session(tmp_path, monkeypatch, mic, script=script)
     assert replies[0]["ok"] and replies[0]["microphone"] == "MacBook Air Microphone"
     assert not replies[1]["ok"]                                     # a switch needs a name
     gaps = [p for p in s.pauses if p[2] == "no input"]
-    assert len(gaps) == 1 and 7.9 <= gaps[0][0] <= 8.2 and 11.9 <= gaps[0][1] <= 12.6
+    assert len(gaps) == 1 and 7.9 - EPS <= gaps[0][0] <= 8.2 + EPS and 11.9 - EPS <= gaps[0][1] <= 12.6 + EPS
     assert any(seg["start"] >= 12.5 for seg in s.segments)          # transcribed from the new microphone
     assert_final_pass_reuses(s)
     assert LiveInfo.load(s.session_path).microphone == "MacBook Air Microphone"
@@ -410,8 +437,7 @@ def test_low_memory_pauses_transcription_but_never_the_recording(tmp_path, monke
         s.seen = before, len(s.segments), s.recorded
         state["pressure"] = 1
         wait_until(lambda: not s.draft_paused)
-        wait_until(lambda: mic.t >= 45)
-        s.command("stop")
+        mic.at(45, lambda: s.command("stop"))
 
     s = run_session(tmp_path, monkeypatch, mic, script=script)
     before, during, recorded = s.seen
@@ -491,8 +517,7 @@ def test_cancel_ends_without_a_transcript_and_trashes_the_recording(tmp_path, mo
     monkeypatch.setattr(manage, "trash", lambda items: [shutil.move(p, trashed / p.name) for p in items if p.exists()])
 
     def script():
-        wait_until(lambda: mic.t >= 8)
-        s.command("cancel")
+        mic.at(8, lambda: s.command("cancel"))
 
     threading.Thread(target=script, daemon=True).start()
     s.run()

@@ -37,7 +37,7 @@ def claude_code_status() -> dict:
         return {"state": "missing"}
     try:
         with tempfile.TemporaryDirectory() as cwd:
-            p = subprocess.run([exe, "auth", "status"], capture_output=True, text=True, timeout=20, cwd=cwd,
+            p = subprocess.run([exe, "auth", "status"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20, cwd=cwd,
                                env=claude_env(exe), stdin=subprocess.DEVNULL)
         data = json.loads(p.stdout)
     except (OSError, subprocess.SubprocessError, ValueError) as e:
@@ -223,7 +223,7 @@ def install_connector(cfg) -> dict:
     if sys.platform == "win32":
         os.startfile(file)  # noqa: S606 — Claude Desktop registers .mcpb
     else:
-        p = subprocess.run(["open", "-a", "Claude", str(file)], capture_output=True, text=True, timeout=15)
+        p = subprocess.run(["open", "-a", "Claude", str(file)], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15)
         if p.returncode != 0:
             raise SetupError(tr("Claude couldn't open the connector: {error}", error=p.stderr.strip()))
     return {"opened": True}
@@ -238,7 +238,7 @@ def add_to_claude_code(cfg) -> dict:
         return connector_status(cfg)
     with tempfile.TemporaryDirectory() as cwd:
         p = subprocess.run([exe, "mcp", "add", "--scope", "user", "stenny", "--", *stenny_command(), "mcp"],
-                           capture_output=True, text=True, timeout=30, cwd=cwd, env=claude_env(exe),
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30, cwd=cwd, env=claude_env(exe),
                            stdin=subprocess.DEVNULL)
     if p.returncode != 0:
         raise SetupError(tr("Claude Code couldn't add the connector: {error}",
@@ -254,7 +254,7 @@ def open_claude(cfg) -> dict:
     if sys.platform == "win32":
         os.startfile("claude://")  # noqa: S606 — the Claude app registers claude://
         return {"opened": True}
-    p = subprocess.run(["open", "-a", "Claude"], capture_output=True, text=True, timeout=15)
+    p = subprocess.run(["open", "-a", "Claude"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15)
     if p.returncode != 0:
         raise SetupError(tr("Couldn't open Claude: {error}", error=p.stderr.strip()))
     return {"opened": True}
@@ -267,7 +267,7 @@ def remove_from_claude_code(cfg) -> dict:
     if not _claude_code_has_it():
         return connector_status(cfg)
     with tempfile.TemporaryDirectory() as cwd:
-        p = subprocess.run([exe, "mcp", "remove", "--scope", "user", "stenny"], capture_output=True, text=True,
+        p = subprocess.run([exe, "mcp", "remove", "--scope", "user", "stenny"], capture_output=True, text=True, encoding="utf-8", errors="replace",
                            timeout=30, cwd=cwd, env=claude_env(exe), stdin=subprocess.DEVNULL)
     if p.returncode != 0:
         raise SetupError(tr("Claude Code couldn't remove the connector: {error}",

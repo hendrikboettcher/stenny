@@ -488,7 +488,7 @@ def cmd_live(args) -> None:
 
 def stop_orphan_recorders(*recordings: Path) -> None:
     """Recorders still writing to these files although the session that started them is gone."""
-    out = subprocess.run(["ps", "-axo", "pid=,command="], capture_output=True, text=True).stdout
+    out = subprocess.run(["ps", "-axo", "pid=,command="], capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
     for line in out.splitlines():
         pid, _, command = line.strip().partition(" ")
         if "stenny-rec" in command and any(f"--out {r} " in f"{command} " for r in recordings):
@@ -620,7 +620,7 @@ def cmd_check(args) -> None:
     opus = pcm.with_name(pcm.name.replace(".live.pcm", ".opus"))
     if not samples and opus.exists():  # after the final pass only the archived .opus remains
         probe = subprocess.run([tool("ffprobe"), "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
-                                str(opus)], capture_output=True, text=True)
+                                str(opus)], capture_output=True, text=True, encoding="utf-8", errors="replace")
         samples = int(float(probe.stdout or 0) * SAMPLE_RATE)
     spans = [tuple(s) for s in d["spans"]]
     end = lecture_time(spans, samples)

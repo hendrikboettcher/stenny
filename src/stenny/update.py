@@ -31,7 +31,7 @@ def parse(version: str) -> tuple[int, ...]:
 
 def _curl(*args: str) -> subprocess.CompletedProcess:
     # curl, not urllib: uv's Python doesn't reliably find macOS's certificates
-    p = subprocess.run(["/usr/bin/curl", "-fsSL", "--max-time", "600", *args], capture_output=True, text=True)
+    p = subprocess.run(["/usr/bin/curl", "-fsSL", "--max-time", "600", *args], capture_output=True, text=True, encoding="utf-8", errors="replace")
     if p.returncode != 0:
         raise UpdateError(f"Couldn't reach GitHub: {p.stderr.strip()}")
     return p

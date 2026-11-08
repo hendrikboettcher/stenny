@@ -21,7 +21,7 @@ from ..textproc import SAMPLE_RATE
 
 def default_input_device() -> str | None:
     """Name of macOS's current default input device (System Settings → Sound → Input)."""
-    out = subprocess.run(["system_profiler", "SPAudioDataType"], capture_output=True, text=True).stdout
+    out = subprocess.run(["system_profiler", "SPAudioDataType"], capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
     current = None
     for line in out.splitlines():
         if m := re.match(r"^ {8}(\S.*):$", line):
@@ -33,7 +33,7 @@ def default_input_device() -> str | None:
 
 def builtin_input_device() -> str | None:
     """Name of the Mac's own microphone (Transport: Built-in), e.g. "MacBook Air Microphone"."""
-    out = subprocess.run(["system_profiler", "SPAudioDataType"], capture_output=True, text=True).stdout
+    out = subprocess.run(["system_profiler", "SPAudioDataType"], capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
     current, has_input = None, False
     for line in out.splitlines():
         if m := re.match(r"^ {8}(\S.*):$", line):
@@ -47,7 +47,7 @@ def builtin_input_device() -> str | None:
 
 def virtual_devices() -> set[str]:
     """Audio devices apps install for themselves (Microsoft Teams Audio): they hear no room."""
-    out = subprocess.run(["system_profiler", "SPAudioDataType"], capture_output=True, text=True).stdout
+    out = subprocess.run(["system_profiler", "SPAudioDataType"], capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
     current, virtual = None, set()
     for line in out.splitlines():
         if m := re.match(r"^ {8}(\S.*):$", line):
@@ -60,7 +60,7 @@ def virtual_devices() -> set[str]:
 def input_devices() -> list[str]:
     """Real microphones only. A virtual device can still be used by naming it: `[live] device` in the config."""
     p = subprocess.run([tool("ffmpeg"), "-hide_banner", "-f", "avfoundation", "-list_devices", "true", "-i", ""],
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
     text = p.stderr.split("audio devices:", 1)[-1]
     virtual = virtual_devices()
     return [d for d in re.findall(r"\[\d+\] (.+)", text) if d not in virtual]

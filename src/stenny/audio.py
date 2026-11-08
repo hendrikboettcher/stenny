@@ -34,7 +34,7 @@ def load(path: Path) -> np.ndarray:
 def recorded_at(path: Path) -> datetime:
     """Recording start: container creation_time (Voice Memos, most recorders), else file birth time."""
     p = subprocess.run([tool("ffprobe"), "-v", "error", "-show_entries", "format_tags=creation_time", "-of", "json",
-                        str(path)], capture_output=True, text=True)
+                        str(path)], capture_output=True, text=True, encoding="utf-8", errors="replace")
     try:
         stamp = json.loads(p.stdout)["format"]["tags"]["creation_time"]
         return datetime.fromisoformat(stamp.replace("Z", "+00:00")).astimezone().replace(tzinfo=None)
@@ -68,7 +68,7 @@ def device_from_tags(tags: dict) -> str | None:
 def recording_device(path: Path) -> str | None:
     """Device/app that recorded `path`, from its metadata (None when the file doesn't say)."""
     p = subprocess.run([tool("ffprobe"), "-v", "error", "-show_entries", "format_tags:stream_tags", "-of", "json",
-                        str(path)], capture_output=True, text=True)
+                        str(path)], capture_output=True, text=True, encoding="utf-8", errors="replace")
     try:
         data = json.loads(p.stdout)
     except json.JSONDecodeError:
