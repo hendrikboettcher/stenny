@@ -51,7 +51,7 @@ def _entries(root: Path, kind: str) -> list[dict]:
                 "course": fm.get("course") or fm.get("event") or course_dir.name,
                 "folder": folder.name,
                 "number": fm.get("lecture") or 0,
-                "title": fm.get("title") or None,  # its own title, given in Stenny's window
+                "title": own_title(fm),  # its own title, given in Stenny's window
                 "date": str(fm.get("date") or folder.name[:10]),
                 "start": fm.get("start"),
                 "duration": fm.get("duration"),
@@ -62,6 +62,14 @@ def _entries(root: Path, kind: str) -> list[dict]:
                 "summary": str(summary) if summary else None,
             })
     return out
+
+
+def own_title(fm: dict) -> str | None:
+    """A lecture's own title; "Lecture 3" for lecture 3 (a rename back to its number) is none."""
+    title = str(fm.get("title") or "").strip()
+    if not title or (fm.get("lecture") and title.casefold() == f"lecture {fm['lecture']}".casefold()):
+        return None
+    return title
 
 
 def library(cfg) -> list[dict]:

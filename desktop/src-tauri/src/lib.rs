@@ -9,6 +9,8 @@ mod engine;
 #[cfg(target_os = "macos")]
 mod macos;
 mod menubar;
+#[cfg(windows)]
+mod windows_share;
 
 use engine::Engine;
 use menubar::MenuBar;
@@ -40,6 +42,40 @@ fn open_transcript(path: String) -> Result<(), String> {
 #[tauri::command]
 fn reveal(path: String) -> Result<(), String> {
     tauri_plugin_opener::reveal_item_in_dir(path).map_err(|e| e.to_string())
+}
+
+/// Share…: the system's share menu for the copy just made: on macOS below the Share button (its rectangle in the
+/// page), on Windows the Share panel. Elsewhere: the copy shown in its folder.
+#[tauri::command]
+async fn share_files(window: tauri::WebviewWindow, paths: Vec<String>, x: f64, y: f64, width: f64, height: f64) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let view = window.ns_view().map_err(|e| e.to_string())? as usize;
+        let (tx, rx) = std::sync::mpsc::channel();
+        window
+            .run_on_main_thread(move || {
+                let _ = tx.send(crate::macos::share_files(view as *mut std::ffi::c_void, &paths, x, y, width, height));
+            })
+            .map_err(|e| e.to_string())?;
+        rx.recv().map_err(|e| e.to_string())?
+    }
+    #[cfg(windows)]
+    {
+        let _ = (x, y, width, height);
+        let hwnd = window.hwnd().map_err(|e| e.to_string())?.0 as isize;
+        let (tx, rx) = std::sync::mpsc::channel();
+        window
+            .run_on_main_thread(move || {
+                let _ = tx.send(windows_share::share(hwnd, paths));
+            })
+            .map_err(|e| e.to_string())?;
+        rx.recv().map_err(|e| e.to_string())?
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
+    {
+        let _ = (window, x, y, width, height);
+        paths.first().map_or(Ok(()), |p| reveal(p.clone()))
+    }
 }
 
 /// Share… as PDF: the engine's HTML copy (`make_copy` with format "html") turned into a PDF next to it by
@@ -91,13 +127,7 @@ fn copy_text(text: String) -> Result<(), String> {
     }
 }
 
-/// The library window's footer and the menu: Settings….
-#[tauri::command]
-fn show_settings(app: AppHandle) {
-    show_window(&app, "settings");
-}
-
-/// The Settings window's microphone: the one the next recording uses (null: the system's input device).
+/// Settings' microphone: the one the next recording uses (null: the system's input device).
 #[tauri::command]
 fn microphone_pref(app: AppHandle) -> Option<String> {
     menubar::microphone_pref(&app)
@@ -130,14 +160,14 @@ async fn check_updates(app: AppHandle) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || menubar::check_updates(&app)).await.map_err(|e| e.to_string())
 }
 
-/// From the "Record a talk" window: start recording a talk with this title.
+/// From the "Record a talk" window: start recording a talk with this title, in this language (None: mixed).
 #[tauri::command]
-async fn start_talk(app: AppHandle, title: String) -> Result<(), String> {
+async fn start_talk(app: AppHandle, title: String, language: Option<String>) -> Result<(), String> {
     let title = title.trim().to_string();
     if title.is_empty() {
         return Err("Give the talk a title.".into());
     }
-    tauri::async_runtime::spawn_blocking(move || menubar::start(&app, &title, true))
+    tauri::async_runtime::spawn_blocking(move || menubar::start_with(&app, &title, true, language.as_deref()))
         .await
         .map_err(|e| e.to_string())?
 }
@@ -170,18 +200,9 @@ pub fn show_window(app: &AppHandle, label: &str) {
                 .minimizable(false)
                 .center()
                 .build(),
-            "settings" => WebviewWindowBuilder::new(&app2, "settings", WebviewUrl::App("settings".into()))
-                .title("Settings")
-                .inner_size(760.0, 560.0)
-                .min_inner_size(640.0, 440.0)
-                .title_bar_style(tauri::TitleBarStyle::Overlay)
-                .hidden_title(true)
-                .minimizable(false)
-                .center()
-                .build(),
             "talk" => WebviewWindowBuilder::new(&app2, "talk", WebviewUrl::App("talk".into()))
                 .title("Record a Talk or Event")
-                .inner_size(440.0, 262.0)
+                .inner_size(460.0, 330.0)
                 .resizable(false)
                 .minimizable(false)
                 .center()
@@ -214,7 +235,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(Arc::new(Engine::default()))
         .manage(MenuBar::default())
-        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, show_settings, copy_text, check_updates, microphone_pref, set_microphone_pref, login_item, apply_shortcut])
+        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, share_files, copy_text, check_updates, microphone_pref, set_microphone_pref, login_item, apply_shortcut])
         .setup(move |app| {
             if !library_only {
                 // A Dock app with the menu bar icon next to it. Info.plist keeps LSUIElement for the helpers in the

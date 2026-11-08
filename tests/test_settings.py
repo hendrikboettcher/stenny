@@ -60,6 +60,7 @@ def test_adds_a_missing_key_and_a_missing_table(path):
 @pytest.mark.parametrize("key,value", [
     ("llm.backend", "gpt"), ("processing.night_start", "25:00"), ("app.pause_shortcut", "shift+p"),
     ("keep_audio", "yes"), ("vault", "/elsewhere"), ("recordings.languages", ["English"]),
+    ("recordings.languages", ["en", "es"]),
 ])
 def test_refuses_and_leaves_the_file_alone(path, key, value):
     with pytest.raises(ConfigError):
@@ -75,6 +76,14 @@ def test_course_language(path):
     c = config_mod.load(path).course("Calculus")
     assert c.language == "mixed" and c.languages == ["en", "de"]
     assert "# keep me" in path.read_text(encoding="utf-8")
+
+
+def test_course_language_only_supported(path):
+    with pytest.raises(ConfigError):
+        settings.course_language(config_mod.load(path), "Calculus", "es", None)
+    with pytest.raises(ConfigError):
+        settings.course_language(config_mod.load(path), "Calculus", "mixed", ["en", "ja"])
+    assert path.read_text(encoding="utf-8") == CONFIG
 
 
 def test_get_lists_visible_courses_and_paths(path):

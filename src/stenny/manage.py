@@ -133,6 +133,9 @@ def rename_lecture(cfg: Config, course: str, folder: str, title: str, event: boo
     fm = parse_frontmatter(transcript.read_text(encoding="utf-8"))
     _busy_lecture(fm.get("status"), "rename")
     title = " ".join(unicodedata.normalize("NFC", title).split())
+    number = fm.get("lecture")
+    if not event and number and title.casefold() == f"lecture {number}".casefold():
+        title = ""  # renamed back to what it was called anyway: no title of its own
     if len(title) > 120:
         raise ManageError("That title is too long (120 characters at most).")
     course_files.set_properties(vault, transcript, {"title": title or None})

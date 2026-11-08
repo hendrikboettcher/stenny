@@ -456,11 +456,19 @@ pub fn lecturer_agreed(app: &AppHandle, use_: &str, course: &str, event: bool) -
 
 /// Starts a recording of a course, or of a talk (`event`: its title). Runs off the main thread (dialogs).
 pub fn start(app: &AppHandle, course: &str, event: bool) -> Result<(), String> {
+    start_with(app, course, event, None)
+}
+
+/// `lang`: the language for this recording ("en", "de", "fr" or "mixed"), instead of the course's or talks' setting.
+pub fn start_with(app: &AppHandle, course: &str, event: bool, lang: Option<&str>) -> Result<(), String> {
     if !lecturer_agreed(app, "record", course, event) {
         return Ok(());
     }
     let prefs = app.state::<MenuBar>().0.lock().unwrap().prefs.clone();
     let mut params = if event { json!({"event": course}) } else { json!({"course": course}) };
+    if let Some(l) = lang {
+        params["lang"] = json!(l);
+    }
     if let Some(m) = prefs.microphone {
         params["device"] = json!(m);
     }
@@ -786,7 +794,7 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-// The Settings window (src/routes/settings): the microphone for the next recording (the same choice as the menu's),
+// Settings (desktop/src/lib/Settings.svelte, inside the library window): the microphone for the next recording (the same choice as the menu's),
 // opening at login and a new pause shortcut, which the agent registers when it starts.
 
 /// The microphone the next recording uses (None: the system's input device).

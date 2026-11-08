@@ -47,6 +47,14 @@ export const makePdf = (html: string) => (inApp ? invoke<string>("make_pdf", { h
 export const finishNow = (e: Entry) => engine<{ started: boolean }>("finish_now", where(e));
 export const openTranscript = (path: string) => (inApp ? invoke("open_transcript", { path }) : console.log("open", path));
 export const reveal = (path: string) => (inApp ? invoke("reveal", { path }) : console.log("reveal", path));
+// Stenny runs on macOS and Windows: what the file manager is called there
+export const onWindows = typeof navigator !== "undefined" && /Windows/.test(navigator.userAgent);
+export const revealLabel = onWindows ? "Show in Explorer" : "Show in Finder";
+// the system's share menu for these files: on macOS below `anchor` (the Share button), on Windows the Share panel
+export const shareFiles = (paths: string[], anchor: DOMRect) =>
+  inApp
+    ? invoke<void>("share_files", { paths, x: anchor.left, y: anchor.top, width: anchor.width, height: anchor.height })
+    : Promise.resolve(console.log("share", paths));
 // "Did the lecturer agree?", asked once per course before sharing (in a browser during development: yes)
 export const lecturerAgreed = (e: Entry, use: "share" | "record") =>
   inApp ? invoke<boolean>("lecturer_agreed", { purpose: use, course: e.course, event: e.kind === "event" }) : Promise.resolve(true);

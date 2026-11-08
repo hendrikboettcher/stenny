@@ -50,6 +50,11 @@ def test_a_talk_starts_with_its_title_and_one_target_is_required(home, monkeypat
     app_live.start(None, {"event": "Guest talk"})
     assert FakeProcess.last.args[2:] == ["stenny", "live", "--event", "Guest talk"]
     app_live._started.clear()
+    app_live.start(None, {"event": "Gastvortrag", "lang": "de"})
+    assert FakeProcess.last.args[2:] == ["stenny", "live", "--event", "Gastvortrag", "--lang", "de"]
+    app_live._started.clear()
+    with pytest.raises(app_live.LiveError, match="English, German and French"):
+        app_live.start(None, {"event": "Charla", "lang": "es"})
     with pytest.raises(app_live.LiveError, match="either a course or a talk"):
         app_live.start(None, {"course": "A", "event": "B"})
 

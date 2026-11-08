@@ -59,7 +59,8 @@ def last_log_line() -> str | None:
 
 def start(cfg, params: dict) -> dict:
     """Starts `stenny live` for a course (`course`) or a talk (`event`: its title). `device`: the microphone
-    (default: the system's); `draft`: live text while recording (default on); `file`/`speed`: play an audio file
+    (default: the system's); `lang`: this recording's language (en, de, fr or mixed; default: the course's, and
+    mixed for a talk); `draft`: live text while recording (default on); `file`/`speed`: play an audio file
     instead of the microphone (for testing). Its output goes to live.log, like the Swift app's."""
     if status(cfg, {})["state"] not in ("idle",):
         raise LiveError("A recording is already running.")
@@ -69,6 +70,10 @@ def start(cfg, params: dict) -> dict:
     args = [sys.executable, "-m", "stenny", "live"] + (["--event", event] if event else ["--course", course])
     if params.get("device"):
         args += ["--device", params["device"]]
+    if params.get("lang"):
+        if params["lang"] not in ("en", "de", "fr", "mixed"):
+            raise LiveError("Stenny is made for English, German and French so far.")
+        args += ["--lang", params["lang"]]
     if params.get("draft") is False:
         args.append("--no-draft")
     if params.get("llm") is False:

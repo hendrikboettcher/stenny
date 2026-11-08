@@ -1,14 +1,22 @@
 # CLAUDE.md
 
-Developer notes for Stenny, a lecture transcription tool for Apple Silicon Macs: university lectures (2–4 h, any language, sometimes mixed) → clean, lossless Markdown in a folder such as an Obsidian vault, to be used later as AI study context.
+Developer notes for Stenny, a lecture transcription tool for **macOS and Windows**: university lectures (2–4 h, any language, sometimes mixed) → clean, lossless Markdown in a folder such as an Obsidian vault, to be used later as AI study context.
 
 **Setting Stenny up for a user?** Follow [SETUP.md](SETUP.md) step by step instead of these notes.
 
+**Platforms:** Stenny was first built for Apple Silicon Macs only and is now being made available for Windows too.
+The new app (`desktop/`, Tauri) is the way there: **everything new must work on both macOS and Windows.** A native
+feature gets its Windows counterpart in the same change (e.g. Share…: macOS's share menu in `macos.rs`, Windows'
+Share panel in `windows_share.rs`), file paths and labels handle both ("Show in Finder" / "Show in Explorer"), and
+whatever couldn't be tested on Windows is said so. Still Mac-only, each needing a Windows version: transcription
+(mlx-whisper, Metal), the Swift helpers `stenny-rec` (microphone) and `stenny-agent` (pause shortcut, calendar,
+lecture notifications, open at login, PDF for Share…), and the old Swift app in `app/`.
+
 ## Goals (in priority order)
 1. **Nothing from the lecture is lost.** The raw Whisper output is always kept as its own file. Post-processing may structure the text but must never invent, drop or paraphrase content.
-2. **High transcript quality** with a local Whisper model (default: large-v3-turbo through mlx-whisper on Apple Silicon).
+2. **High transcript quality** with a local Whisper model (default: large-v3-turbo through mlx-whisper on Apple Silicon; Windows needs its own engine behind the same interface).
 3. **Nearly free.** Transcription is local. Optional LLM post-processing is cheap: Claude Code `claude -p` (subscription) or the Anthropic API with Claude Haiku. Target is under $5 for 100+ lectures.
-4. **The Mac stays usable.** Heavy work runs at low priority and can wait until the Mac is on AC power or until night.
+4. **The computer stays usable.** Heavy work runs at low priority and can wait until it is on AC power or until night.
 5. **Private.** Audio never leaves the machine. Only transcript text goes to the optional LLM step.
 
 ## Stack
@@ -40,7 +48,7 @@ src/stenny/
   mcp_server.py   `stenny mcp`: connector.py as a local MCP server (stdio, official `mcp` SDK) + study instructions
   app_server.py   `stenny app-server`: the engine behind the new app (desktop/), JSON lines over stdio (library,
                   lecture, make_copy, finish_now); plain functions of (cfg, params), so a phone page can serve them too
-  settings.py     the app's Settings window: what it shows (`preferences`) and one change at a time
+  settings.py     the app's Settings: what it shows (`preferences`) and one change at a time
                   (`set_preference`, `set_course_language`); config.toml edited as text, never written if it won't load
   app_live.py     the app's recording methods (status, start → `stenny live` in its own process, pause/resume/stop,
                   microphone, devices, match_courses, recover) and the consent answers (_System/consent.json)

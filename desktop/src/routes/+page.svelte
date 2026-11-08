@@ -4,9 +4,10 @@
   import { invoke } from "@tauri-apps/api/core";
   import Figure from "$lib/Figure.svelte";
   import Dialog from "$lib/Dialog.svelte";
+  import Settings from "$lib/Settings.svelte";
   import { renderMarkdown } from "$lib/markdown";
   import {
-    library, lecture, makeCopy, makePdf, finishNow, openTranscript, reveal, lecturerAgreed,
+    library, lecture, makeCopy, makePdf, finishNow, openTranscript, reveal, revealLabel, shareFiles, lecturerAgreed,
     renameLecture, deleteLecture, renameCourse, addCourse, removeCourse, deleteCourse, bringBack, copyText,
     type Entry, type Library,
   } from "$lib/engine";
@@ -21,6 +22,8 @@
   let progress = $state<string | null>(null); // the text so far, while there is no transcript yet
   let withSummary = $state(localStorage.getItem("withSummary") !== "false");
   let shareOpen = $state(false);
+  let shareButton = $state<HTMLButtonElement | null>(null); // the share menu opens below it
+  let settingsOpen = $state(false); // the footer's Settings…: the window shows Settings instead (lib/Settings.svelte)
   let linkCopied = $state(false); // the footer's Share Stenny: "Link copied" for a moment
   let copiedTimer: ReturnType<typeof setTimeout> | undefined;
   let busy = $state<string | null>(null);   // "share" | "finish"
@@ -219,11 +222,20 @@
     return text + second;
   };
   const rowTitle = (e: Entry) => e.title ?? (e.number > 0 ? `Lecture ${e.number}` : prettyDate(e));
-  const number = (e: Entry) => (e.title && e.number > 0 ? `Lecture ${e.number}` : null); // its title took the number's place
+  // always there, renamed or not, so a lecture keeps the same line whatever its title
+  const number = (e: Entry) => (e.number > 0 ? `Lecture ${e.number}` : null);
+  // "1:42:17" → "1 h 42 min": next to a clock time ("16:09") the two mustn't look alike
+  const length = (duration: string | null) => {
+    const parts = duration?.split(":").map(Number);
+    if (!parts || parts.some(isNaN)) return duration;
+    const [h, m, sec] = parts.length === 3 ? parts : [0, ...parts];
+    if (!h && !m) return `${sec} s`;
+    return h ? `${h} h${m ? ` ${m} min` : ""}` : `${m} min`;
+  };
   const rowDetail = (e: Entry) =>
-    [number(e), e.number > 0 || e.title ? prettyDate(e) : e.start, e.duration].filter(Boolean).join(" · ");
+    [number(e), e.number > 0 || e.title ? prettyDate(e) : e.start, length(e.duration)].filter(Boolean).join(" · ");
   const details = (e: Entry) =>
-    [number(e), prettyDate(e) + (e.start ? `, ${e.start}` : ""), e.duration, languageName(e.language)].filter(Boolean).join(" · ");
+    [number(e), prettyDate(e) + (e.start ? `, ${e.start}` : ""), length(e.duration), languageName(e.language)].filter(Boolean).join(" · ");
   const statusLabel: Record<string, string> = {
     live: "Recording", queued: "Waiting", finalizing: "Finishing", draft: "Draft",
   };
@@ -244,8 +256,9 @@
       // a PDF is made from the HTML copy (the engine can't paginate)
       const copy = await makeCopy(selected, format === "pdf" ? "html" : format, withSummary && !!selected.summary);
       const path = format === "pdf" ? await makePdf(copy.path) : copy.path;
-      notice = { text: `Saved ${path.split("/").pop()}`, path };
-      await reveal(path);
+      notice = { text: `Made ${path.split(/[\\/]/).pop()}`, path };
+      // the system's share menu (AirDrop, Messages, Mail … / Windows' Share panel), at the Share button
+      await shareFiles([path], shareButton!.getBoundingClientRect());
     } catch (e) {
       notice = { text: String(e), error: true };
     } finally {
@@ -272,6 +285,9 @@
                onkeydown={(e) => { if (e.key === "Escape") { shareOpen = false; menu = null; } }}
                onblur={() => (menu = null)} />
 
+{#if settingsOpen}
+  <Settings onclose={() => { settingsOpen = false; reload(); }} />
+{:else}
 <div class="window">
   <aside class="sidebar">
     <div class="titlebar" data-tauri-drag-region></div>
@@ -310,7 +326,7 @@
       {@render section("Talks & events", groups.talks)}
     </nav>
     <footer>
-      <button onclick={() => invoke("show_settings")}>Settings…</button>
+      <button onclick={() => (settingsOpen = true)}>Settings…</button>
       <button onclick={() => invoke("show_feedback")}>Send Feedback…</button>
       <button onclick={() => invoke("check_updates")}>Check for Updates…</button>
       <!-- copies stenny.eu, where friends get it; says so for a moment -->
@@ -377,7 +393,7 @@
         {#if !isDraft(selected)}
         <div class="actions">
           <div class="share-wrap">
-            <button class="pill primary" disabled={busy === "share"}
+            <button class="pill primary" disabled={busy === "share"} bind:this={shareButton}
                     onclick={(ev) => { ev.stopPropagation(); shareOpen = !shareOpen; }}>
               {busy === "share" ? "Preparing…" : "Share…"}
             </button>
@@ -392,7 +408,7 @@
             {/if}
           </div>
           <button class="pill" onclick={() => openTranscript(selected!.transcript)}>Open transcript</button>
-          <button class="pill" onclick={() => reveal(selected!.transcript)}>Show in Finder</button>
+          <button class="pill" onclick={() => reveal(selected!.transcript)}>{revealLabel}</button>
           <button class="pill" aria-label="More" title="Rename or move to the Trash"
                   onclick={(ev) => showMenu(ev, { entry: selected! })}>⋯</button>
         </div>
@@ -404,7 +420,7 @@
         {/if}
         {#if notice}
           <p class="notice" class:error={notice.error}>
-            {notice.text}{#if notice.path}. <button class="link" onclick={() => reveal(notice!.path!)}>Show in Finder</button>{/if}
+            {notice.text}{#if notice.path}. <button class="link" onclick={() => reveal(notice!.path!)}>{revealLabel}</button>{/if}
           </p>
         {/if}
 
@@ -445,6 +461,7 @@
     <div class="bottombar" aria-hidden="true"></div>
   </main>
 </div>
+{/if}
 
 {#if menu}
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
@@ -527,7 +544,7 @@
     <Dialog title="Rename {ask.entry.number > 0 ? `Lecture ${ask.entry.number}` : 'this recording'}" confirm="Rename"
             busy={askBusy} error={askError}
             text={ask.entry.number > 0
-              ? `The title shows instead of “Lecture ${ask.entry.number}”. Leave it empty to show the number again.`
+              ? `The title shows instead of “Lecture ${ask.entry.number}”. Leave it empty to go back to the number.`
               : "The title shows instead of the date. Leave it empty to show the date again."}
             oncancel={() => (ask = null)} onconfirm={answer}>
       <input bind:value={field} aria-label="Title" placeholder="e.g. Decision trees" autocomplete="off" />

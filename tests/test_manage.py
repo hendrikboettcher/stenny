@@ -75,6 +75,13 @@ def test_rename_lecture_sets_a_title_the_library_and_shared_copies_show(env):
     assert share.find(cfg, NAME, "2026-10-29")["title"] is None
 
 
+def test_renaming_back_to_the_number_is_no_title(env):
+    cfg, _ = env
+    manage.rename_lecture(cfg, NAME, "2026-10-29", "Decision trees")
+    assert manage.rename_lecture(cfg, NAME, "2026-10-29", "lecture 3") == ""
+    assert share.find(cfg, NAME, "2026-10-29")["title"] is None
+
+
 def test_the_final_pass_keeps_the_title(env):
     from stenny.pipeline import own_title
     from stenny.vault import LectureFiles

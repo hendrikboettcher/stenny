@@ -139,3 +139,34 @@ pub fn launched_at_login() -> bool {
         code == u32::from_be_bytes(*b"lgit")
     }
 }
+
+// ---------------------------------------------------------------- Share…
+
+thread_local! {
+    /// The share menu on screen: kept until the next one, since AppKit doesn't hold on to it while it's open.
+    static PICKER: std::cell::RefCell<Option<Retained<AnyObject>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// The standard macOS share menu (AirDrop, Messages, Mail, Notes …) for these files, opening below the rectangle
+/// (`x`, `y`, `width`, `height` in the page's CSS pixels, from its top left) of the window's page. Main thread only.
+pub fn share_files(view: *mut std::ffi::c_void, paths: &[String], x: f64, y: f64, width: f64, height: f64) -> Result<(), String> {
+    use objc2_foundation::{NSArray, NSPoint, NSRect, NSSize, NSURL};
+    let view = unsafe { (view as *mut AnyObject).as_ref() }.ok_or("No window to share from.")?;
+    let urls: Vec<Retained<NSURL>> = paths.iter().map(|p| NSURL::fileURLWithPath(&NSString::from_str(p))).collect();
+    let items = NSArray::from_retained_slice(&urls);
+    let class = AnyClass::get(c"NSSharingServicePicker").ok_or("The share menu isn't available.")?;
+    unsafe {
+        let picker: *mut AnyObject = msg_send![class, alloc];
+        let picker: *mut AnyObject = msg_send![picker, initWithItems: &*items];
+        let picker = Retained::from_raw(picker).ok_or("The share menu couldn't be opened.")?;
+        // the page's coordinates start at the top; the view's may start at the bottom
+        let flipped: bool = msg_send![view, isFlipped];
+        let bounds: NSRect = msg_send![view, bounds];
+        let top = if flipped { y } else { bounds.size.height - y - height };
+        let rect = NSRect::new(NSPoint::new(x, top), NSSize::new(width, height));
+        let below: usize = if flipped { 3 } else { 1 }; // NSRectEdge: MaxY / MinY, whichever is the bottom here
+        let _: () = msg_send![&*picker, showRelativeToRect: rect, ofView: view, preferredEdge: below];
+        PICKER.with(|p| *p.borrow_mut() = Some(picker));
+    }
+    Ok(())
+}

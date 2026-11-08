@@ -1,11 +1,12 @@
 <script lang="ts">
-  // "Settings…" in the library window's footer: a window of its own with a section list on the left. Every change is
+  // "Settings…" in the library window's footer: the window turns into Settings, sections on the left, until
+  // "Back to your lectures" (or Escape). Every change is
   // saved at once: config.toml through the engine (src/stenny/settings.py), the microphone and opening at login
   // through the app (src-tauri/src/menubar.rs), like the menu bar's choices.
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
   import Figure from "$lib/Figure.svelte";
-  import { engine, reveal } from "$lib/engine";
+  import { engine, reveal, revealLabel } from "$lib/engine";
 
   interface Settings {
     keep_audio: boolean;
@@ -25,11 +26,11 @@
     ["background", "Background work"], ["courses", "Courses"],
   ] as const;
   type Section = (typeof SECTIONS)[number][0];
-  const LANGS: [string, string][] = [
-    ["en", "English"], ["de", "German"], ["fr", "French"], ["es", "Spanish"], ["it", "Italian"], ["nl", "Dutch"],
-    ["pt", "Portuguese"], ["pl", "Polish"], ["sv", "Swedish"], ["tr", "Turkish"], ["zh", "Chinese"], ["ja", "Japanese"],
-  ];
+  // only the languages Stenny is built and tested for (settings.py checks the same)
+  const LANGS: [string, string][] = [["en", "English"], ["de", "German"], ["fr", "French"]];
   const langName = (code: string) => LANGS.find(([c]) => c === code)?.[1] ?? code.toUpperCase();
+
+  let { onclose }: { onclose: () => void } = $props();
 
   let section = $state<Section>("general");
   let s = $state<Settings | null>(null);
@@ -108,6 +109,32 @@
     }
   }
 
+  // A folder as the file manager's path bar shows it: "iCloud › Obsidian › My Vault › Lectures" instead of
+  // "/Users/…/Library/Mobile Documents/iCloud~md~obsidian/Documents/My Vault/Lectures", and on Windows
+  // "Home › OneDrive › Vault › Lectures" instead of "C:\Users\…\OneDrive\Vault\Lectures" (the full path on hover).
+  function friendly(path: string) {
+    const windows = /^[A-Za-z]:[\\/]|^\\\\/.test(path);
+    const parts = path.split(/[\\/]/).filter(Boolean);
+    let start: string[] = [];
+    let rest = parts;
+    const home = windows ? (parts[1]?.toLowerCase() === "users" ? 3 : 0) : parts[0] === "Users" ? 2 : 0;
+    if (home) {
+      start = ["Home"];
+      rest = parts.slice(home);
+      // iCloud on a Mac: ~/Library/Mobile Documents/<app container>/Documents/…
+      if (!windows && rest[0] === "Library" && rest[1] === "Mobile Documents" && rest[2]) {
+        const container = rest[2];
+        start = container === "com~apple~CloudDocs" ? ["iCloud Drive"]
+          : ["iCloud", container.split("~").pop()!.replace(/^./, (c) => c.toUpperCase())];
+        rest = rest.slice(rest[3] === "Documents" ? 4 : 3);
+      }
+    } else if (windows) {
+      start = [parts[0]]; // "D:"
+      rest = parts.slice(1);
+    }
+    return [...start, ...rest].join(" › ");
+  }
+
   function toggleIn(list: string[], code: string) {
     return list.includes(code) ? list.filter((c) => c !== code) : [...list, code];
   }
@@ -125,7 +152,10 @@
   }
 
   async function capture(e: KeyboardEvent) {
-    if (!recording) return;
+    if (!recording) {
+      if (e.key === "Escape" && !e.defaultPrevented) onclose();
+      return;
+    }
     e.preventDefault();
     if (e.key === "Escape") { recording = false; return; }
     if (["Meta", "Control", "Alt", "Shift", "CapsLock", "Fn"].includes(e.key)) return;
@@ -159,10 +189,15 @@
   <aside class="sidebar">
     <div class="titlebar" data-tauri-drag-region></div>
     <div class="brand" data-tauri-drag-region>
-      <Figure height={22} />
-      <span class="serif">Settings</span>
+      <Figure height={24} />
+      <span class="serif">Stenny</span>
     </div>
     <nav>
+      <button class="back" onclick={onclose}>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5" /></svg>
+        Back to your lectures
+      </button>
+      <div class="kicker">Settings</div>
       {#each SECTIONS as [id, name]}
         <button class="item" class:active={section === id} onclick={() => { section = id; error = null; }}>{name}</button>
       {/each}
@@ -214,11 +249,10 @@
               <div class="row">
                 <div class="what">
                   <div class="name">{name}</div>
-                  <!-- the end of the path is what tells folders apart: cut at the start instead -->
-                  <div class="hint path" title={path}><bdi>{path.replace(/^\/Users\/[^/]+/, "~")}</bdi></div>
+                  <div class="hint path" title={path}>{friendly(path)}</div>
                   <div class="hint">{hint}</div>
                 </div>
-                <button class="pill" onclick={() => reveal(path)}>Show in Finder</button>
+                <button class="pill" onclick={() => reveal(path)}>{revealLabel}</button>
               </div>
             {/snippet}
             {@render place("Transcripts", "Lectures, summaries and glossaries, one folder per course.", s.paths.lectures)}
@@ -397,12 +431,19 @@
 </div>
 
 <style>
-  .window { display: grid; grid-template-columns: 200px minmax(0, 1fr); height: 100vh; }
+  .window { display: grid; grid-template-columns: 220px minmax(0, 1fr); height: 100vh; }
   .titlebar { height: var(--titlebar); flex: none; }
 
   .sidebar { background: var(--bar); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
-  .brand { display: flex; align-items: center; gap: 9px; padding: 4px 20px 20px; }
-  .brand span { font-size: 20px; font-weight: 460; letter-spacing: -0.01em; }
+  .brand { display: flex; align-items: center; gap: 9px; padding: 6px 20px 22px; }
+  .brand span { font-size: 22px; font-weight: 460; letter-spacing: -0.01em; }
+  .back {
+    display: flex; align-items: center; gap: 4px; border: 0; background: none; text-align: left; padding: 4px 10px 4px 6px;
+    color: var(--muted); border-radius: 6px; margin-bottom: 14px;
+  }
+  .back:hover { color: var(--ink); }
+  .back svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  .kicker { font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; padding: 0 10px 6px; }
   nav { padding: 0 10px; display: flex; flex-direction: column; gap: 1px; }
   .item {
     border: 0; background: none; text-align: left; padding: 6px 10px; border-radius: 7px;
@@ -412,10 +453,11 @@
   .item.active { background: var(--mark); color: var(--ink); }
 
   main { overflow-y: auto; min-width: 0; display: flex; flex-direction: column; }
+  .content { margin: 0 auto; width: 100%; }
   main > .titlebar { position: sticky; top: 0; z-index: 5; background: var(--bg); display: flex; justify-content: flex-end; align-items: center; padding: 0 18px; }
   .saved { color: var(--good); font-size: 12px; opacity: 0; transition: opacity 0.25s ease; }
   .saved.show { opacity: 1; }
-  .content { padding: 0 36px 32px; max-width: 640px; }
+  .content { padding: 8px 48px 40px; max-width: 720px; }
   h1 { font-size: 28px; line-height: 1.1; font-weight: 440; letter-spacing: -0.02em; margin: 4px 0 18px; }
   h2 { font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin: 26px 0 8px; }
   .lead { color: var(--ink-2); margin: -6px 0 16px; line-height: 1.5; }
@@ -433,7 +475,7 @@
   .name { font-weight: 500; color: var(--ink); }
   .name.course { font-weight: 440; font-size: 15.5px; }
   .hint { color: var(--muted); font-size: 12px; line-height: 1.4; margin-top: 2px; }
-  .hint.path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); direction: rtl; text-align: left; }
+  .hint.path { color: var(--ink-2); overflow-wrap: anywhere; }
   .note { color: var(--warn); font-size: 12px; margin: 0; padding: 0 16px 12px; }
 
   select, input[type="time"] {

@@ -11,7 +11,7 @@ from .config import LANGUAGE_MODES, Config, ConfigError, parse_shortcut
 from .courses import _section, _write
 
 TIME = re.compile(r"([01]\d|2[0-3]):[0-5]\d")
-LANG = re.compile(r"[a-z]{2,3}")
+SUPPORTED = ("en", "de", "fr")  # the languages Stenny is built and tested for; the window offers only these
 
 
 def _bool(v) -> bool:
@@ -40,8 +40,8 @@ def _shortcut(v) -> str:
 
 
 def _languages(v) -> list[str]:
-    if not isinstance(v, list) or not v or not all(isinstance(x, str) and LANG.fullmatch(x) for x in v):
-        raise ConfigError("Use language codes such as en, de or fr.")
+    if not isinstance(v, list) or not v or not all(x in SUPPORTED for x in v):
+        raise ConfigError("Stenny is made for English, German and French so far.")
     return list(dict.fromkeys(v))
 
 
@@ -142,8 +142,8 @@ def change(cfg: Config, key: str, value) -> dict:
 def course_language(cfg: Config, course: str, language: str, languages: list[str] | None) -> dict:
     """A course's language: a fixed code, or "auto"/"mixed" among `languages`."""
     c = cfg.course(course)
-    if language not in LANGUAGE_MODES and not LANG.fullmatch(language or ""):
-        raise ConfigError(f"Unknown language '{language}': use a code such as en, de or fr, or mixed or auto.")
+    if language not in LANGUAGE_MODES and language not in SUPPORTED:
+        raise ConfigError("Stenny is made for English, German and French so far (or mixed, or one per lecture).")
     text = cfg.path.read_text(encoding="utf-8")
     text = set_line(text, _section(text, c.name), None, "language", language)
     keep = _languages(languages) if language in LANGUAGE_MODES and languages else None
