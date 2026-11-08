@@ -1,3 +1,5 @@
+import sys
+
 import numpy as np
 import pytest
 
@@ -305,6 +307,7 @@ def test_guard_topics_and_terms_need_evidence():
     assert guard.validate_topics(["Théorème de Rolle"], text, Slides()) == ["Théorème de Rolle"]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="moves the old macOS folders (~/.config/lecture …), macOS only")
 def test_migrate_moves_everything_outside_the_vault_into_one_folder(tmp_path, monkeypatch):
     import json
     from stenny import migrate as mig
@@ -318,7 +321,7 @@ def test_migrate_moves_everything_outside_the_vault_into_one_folder(tmp_path, mo
         monkeypatch.setattr(paths, name, value)
     vault = tmp_path / "vault"
     (old_cfg).mkdir(parents=True)
-    (old_cfg / "config.toml").write_text(f'vault = "{vault}"\nlectures_dir = "L"\naudio_dir = "{old_audio}"\n'
+    (old_cfg / "config.toml").write_text(f'vault = "{vault.as_posix()}"\nlectures_dir = "L"\naudio_dir = "{old_audio.as_posix()}"\n'
                                          '[courses."Calculus"]\nlanguage = "fr"\n')
     (old_audio / "Calculus").mkdir(parents=True)
     (old_audio / "Calculus" / "2026-10-15.opus").write_bytes(b"ogg")

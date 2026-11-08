@@ -69,6 +69,7 @@ def test_a_talk_stays_a_talk(cfg):
     assert cli.recover_sessions(cfg) == [{"course": "Guest talk", "kind": "event"}]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="uses ps, macOS only for now (#2)")
 def test_orphan_recorder_is_stopped(tmp_path):
     fake = tmp_path / "stenny-rec"
     fake.write_text("#!/bin/sh\nexec sleep 60\n")
@@ -99,6 +100,7 @@ def test_memory_check_needs_normal_pressure_and_room(monkeypatch):
     assert not resources.enough_memory_for_final_pass()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="reads vm_stat and sysctl, macOS only for now (#2)")
 def test_the_real_readings_make_sense():
     assert resources.memory_pressure() in (1, 2, 4)
     assert 0 < resources.available_memory() < 1024 * resources.GB

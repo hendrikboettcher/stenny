@@ -20,7 +20,7 @@ def env(tmp_path, monkeypatch):
     lecturer's OK; the Trash is a folder."""
     vault, data, system = tmp_path / "vault", tmp_path / "data", tmp_path / "data" / "_System"
     system.mkdir(parents=True)
-    (system / "config.toml").write_text(f'vault = "{vault}"\nlectures_dir = "Lectures"\ndata_dir = "{data}"\n\n'
+    (system / "config.toml").write_text(f'vault = "{vault.as_posix()}"\nlectures_dir = "Lectures"\ndata_dir = "{data.as_posix()}"\n\n'
                                         f'[courses."{NAME}"]  # mine\nlanguage = "en"\naliases = ["da"]\n\n'
                                         '[courses.Other]\nlanguage = "fr"\n', encoding="utf-8")
     monkeypatch.setattr(paths, "SYSTEM_DIR", system)

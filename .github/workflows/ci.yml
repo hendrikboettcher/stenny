@@ -28,7 +28,12 @@ jobs:
         with:
           python-version: "3.12"
       # the app bundles its own ffmpeg (app/build-ffmpeg.sh); the tests use whatever is on the PATH
-      - uses: FedericoCarboni/setup-ffmpeg@v3
+      - name: ffmpeg (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg
+      - name: ffmpeg (Windows)
+        if: runner.os == 'Windows'
+        uses: FedericoCarboni/setup-ffmpeg@v3
       - name: Install
         run: uv sync --locked --group dev
       - name: Tests

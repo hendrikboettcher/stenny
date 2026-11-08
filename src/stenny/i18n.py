@@ -36,7 +36,7 @@ def _preferred() -> tuple[str, ...]:
     """The user's preferred languages, most preferred first ("de-AT", "en-US" …)."""
     try:
         if sys.platform == "darwin":
-            out = subprocess.run(["defaults", "read", "-g", "AppleLanguages"], capture_output=True, text=True,
+            out = subprocess.run(["defaults", "read", "-g", "AppleLanguages"], capture_output=True, text=True, encoding="utf-8", errors="replace",
                                  timeout=3).stdout
             return tuple(part.strip().strip('"') for part in out.strip("()\n ").split(",") if part.strip())
         if sys.platform == "win32":

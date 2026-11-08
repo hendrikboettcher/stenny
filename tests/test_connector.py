@@ -68,7 +68,7 @@ def cfg(tmp_path, monkeypatch):
                   lecture(course="Some Talk", kind="event", number=0, date="2026-10-22", topics=[]),
                   [{"start": 3.0, "text": "A talk about limits of AI."}], [])
     toml = tmp_path / "config.toml"
-    toml.write_text(f'vault = "{tmp_path / "Vault"}"\nlectures_dir = "Lectures"\n\n[courses.Calculus]\n'
+    toml.write_text(f'vault = "{(tmp_path / "Vault").as_posix()}"\nlectures_dir = "Lectures"\n\n[courses.Calculus]\n'
                     'language = "en"\naliases = ["Calc"]\n\n[courses."Linear Algebra"]\nlanguage = "en"\n'
                     '\n[recordings]\nfolder = "Recordings"\n', encoding="utf-8")
     monkeypatch.setenv("STENNY_CONFIG", str(toml))

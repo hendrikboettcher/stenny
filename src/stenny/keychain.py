@@ -34,7 +34,7 @@ def saved_key() -> str | None:
     try:
         if sys.platform == "darwin":
             p = subprocess.run([SECURITY, "find-generic-password", "-s", SERVICE, "-a", ACCOUNT, "-w"],
-                               capture_output=True, text=True, timeout=10)
+                               capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10)
             return (p.stdout.strip() or None) if p.returncode == 0 else None
         import keyring
         return keyring.get_password(SERVICE, ACCOUNT) or None
@@ -48,7 +48,7 @@ def save_key(key: str) -> None:
             # -w as the last option reads the password from stdin, asked twice; -U replaces an existing one
             p = subprocess.run([SECURITY, "add-generic-password", "-U", "-s", SERVICE, "-a", ACCOUNT,
                                 "-l", "Stenny: Anthropic API key", "-w"],
-                               input=f"{key}\n{key}\n", capture_output=True, text=True, timeout=10)
+                               input=f"{key}\n{key}\n", capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10)
             if p.returncode != 0:
                 raise KeychainError(p.stderr.strip() or f"security exited with {p.returncode}")
             return

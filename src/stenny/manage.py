@@ -83,7 +83,7 @@ def trash(items: list[Path]) -> None:
                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     else:
         out = subprocess.run(["osascript", "-l", "JavaScript", "-e", TRASH_JS, *map(str, items)],
-                             capture_output=True, text=True)
+                             capture_output=True, text=True, encoding="utf-8", errors="replace")
     if out.returncode or out.stdout.strip():
         raise ManageError(tr("Couldn't move to the {trash}: {error}", trash=trash_name(),
                               error=(out.stdout or out.stderr).strip()))

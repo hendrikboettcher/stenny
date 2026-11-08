@@ -70,7 +70,8 @@ def test_prompt_puts_glossary_first_and_respects_whisper_token_limit():
     prompt = g.prompt(many)
     assert prompt.startswith("Bolzano-Weierstrass, Riemann, Mathématicien0-Lebesgue")
     assert glossary_mod.prompt_fits(prompt) and not glossary_mod.prompt_fits(prompt + " " + many[-1] * 5)
-    assert len(glossary_mod._tokenizer().encode(" " + prompt)) <= glossary_mod.PROMPT_MAX_TOKENS < 223
+    if tok := glossary_mod._tokenizer():  # mlx-whisper's; without it (Windows) the limit is in characters
+        assert len(tok.encode(" " + prompt)) <= glossary_mod.PROMPT_MAX_TOKENS < 223
 
 
 # --- guard ---------------------------------------------------------------------

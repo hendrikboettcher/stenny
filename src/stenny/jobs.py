@@ -42,7 +42,7 @@ def lower_own_priority(mode: str) -> None:
 
 
 def on_ac_power() -> bool:
-    out = subprocess.run(["pmset", "-g", "ps"], capture_output=True, text=True).stdout
+    out = subprocess.run(["pmset", "-g", "ps"], capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
     return "AC Power" in out.splitlines()[0] if out else True
 
 

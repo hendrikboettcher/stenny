@@ -37,7 +37,7 @@ def clean(text: str) -> str:
 def extract_pages(path: Path) -> list[str]:
     """Text of each page, in order."""
     if exe := shutil.which("pdftotext"):
-        p = subprocess.run([exe, "-enc", "UTF-8", str(path), "-"], capture_output=True, text=True)
+        p = subprocess.run([exe, "-enc", "UTF-8", str(path), "-"], capture_output=True, text=True, encoding="utf-8", errors="replace")
         if p.returncode == 0:
             pages = p.stdout.split("\f")
             return [clean(t) for t in (pages[:-1] if pages and not pages[-1].strip() else pages)]

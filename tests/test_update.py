@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 import pytest
@@ -24,6 +25,7 @@ def test_a_git_checkout_is_left_alone(tmp_path):
         update.update(tmp_path)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="updates unpack with ditto, macOS only for now (#2)")
 def test_failed_install_brings_the_old_folder_back(tmp_path, monkeypatch):
     folder = tmp_path / "stenny"
     folder.mkdir()
