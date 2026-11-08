@@ -20,8 +20,6 @@ use objc2::{define_class, msg_send, sel, AnyThread};
 use std::ptr::NonNull;
 use std::sync::{Mutex, OnceLock};
 
-/// The menu items that show the pause shortcut, by title.
-const PAUSE_TITLES: [&str; 2] = ["Pause", "Resume"];
 
 /// The pause shortcut's key as typed (lowercase, "ü") and its modifiers; None: no shortcut to show.
 static PAUSE_KEY: Mutex<Option<(String, NSEventModifierFlags)>> = Mutex::new(None);
@@ -67,8 +65,10 @@ pub fn watch_menus() {
 fn show_pause_shortcut(menu: &Retained<NSMenu>) {
     let key = PAUSE_KEY.lock().unwrap().clone();
     let Some((key, mask)) = key else { return };
+    // the menu items that show the pause shortcut, by title (in Stenny's language)
+    let titles = [crate::i18n::tr!("menu.pause"), crate::i18n::tr!("menu.resume")];
     for item in menu.itemArray().iter() {
-        if PAUSE_TITLES.contains(&item.title().to_string().as_str()) {
+        if titles.contains(&item.title().to_string()) {
             item.setAllowsAutomaticKeyEquivalentLocalization(false);
             item.setKeyEquivalent(&NSString::from_str(&key));
             item.setKeyEquivalentModifierMask(mask);

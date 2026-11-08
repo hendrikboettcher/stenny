@@ -14,9 +14,10 @@ import threading
 from importlib.metadata import version as package_version
 from pathlib import Path
 
-from . import app_live, settings, share
+from . import app_live, i18n, settings, share
 from . import config as config_mod
 from .config import ConfigError
+from .i18n import tr
 
 
 class AppError(Exception):
@@ -27,7 +28,7 @@ def _entry(cfg, params: dict) -> dict:
     try:
         return share.find(cfg, params["course"], params["folder"], event=bool(params.get("event")))
     except KeyError as e:
-        raise AppError(f"Missing '{e.args[0]}'.") from None
+        raise AppError(tr("Missing '{name}'.", name=e.args[0])) from None
     except share.ShareError as e:
         raise AppError(str(e)) from None
 
@@ -47,8 +48,8 @@ def summary_markdown(text: str) -> str:
     lines = share._body(text).splitlines()
     if lines and lines[0].startswith("# "):
         lines = lines[1:]
-    body = SUMMARY_NOTE.sub("> Written by AI from the transcript. It can leave things out or get them wrong; "
-                            "the transcript is the source.", "\n".join(lines).strip(), count=1)
+    note = tr("Written by AI from the transcript. It can leave things out or get them wrong; the transcript is the source.")
+    body = SUMMARY_NOTE.sub(lambda _: "> " + note, "\n".join(lines).strip(), count=1)
     return share._unlink(body) + "\n"
 
 
@@ -99,7 +100,7 @@ def finish_now(cfg, params: dict) -> dict:
     entry = _entry(cfg, params)
     event = entry["kind"] == "event"
     if not lecture_job(cfg, entry["course"], entry["folder"], event=event):
-        raise AppError("This lecture has no final transcript waiting.")
+        raise AppError(tr("This lecture has no final transcript waiting."))
     args = [sys.executable, "-m", "stenny", "queue", "run", "--lecture", entry["course"], entry["folder"]]
     subprocess.Popen(args + (["--event"] if event else []), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                      stderr=subprocess.DEVNULL, start_new_session=True)
@@ -113,7 +114,7 @@ def _managed(fn, *args, **kw):
     except (ManageError, ConfigError) as e:
         raise AppError(str(e)) from None
     except KeyError as e:
-        raise AppError(f"Missing '{e.args[0]}'.") from None
+        raise AppError(tr("Missing '{name}'.", name=e.args[0])) from None
 
 
 def rename_lecture(cfg, params: dict) -> dict:
@@ -187,25 +188,28 @@ def handle(cfg, request: dict) -> dict:
     rid = request.get("id")
     method = METHODS.get(request.get("method"))
     if not method:
-        return {"id": rid, "error": f"Unknown method '{request.get('method')}'."}
+        return {"id": rid, "error": tr("Unknown method '{name}'.", name=request.get("method"))}
     try:
         return {"id": rid, "result": method(cfg, request.get("params") or {})}
     except (AppError, app_live.LiveError) as e:
         return {"id": rid, "error": str(e)}
     except Exception as e:  # noqa: BLE001 — reported to the app, logged to stderr
         print(f"app-server: {request.get('method')} failed: {e!r}", file=sys.stderr)
-        return {"id": rid, "error": f"Something went wrong ({type(e).__name__}: {e})."}
+        return {"id": rid, "error": tr("Something went wrong ({error}).", error=f"{type(e).__name__}: {e}")}
 
 
 def _answer(line: str) -> dict:
     try:
         request = json.loads(line)
     except ValueError:
-        return {"id": None, "error": "Not JSON."}
+        return {"id": None, "error": tr("Not JSON.")}
+    i18n.set_language(i18n.system_language())  # until the config says otherwise
     try:
         cfg = config_mod.load()
     except ConfigError as e:
-        return {"id": request.get("id"), "error": f"Stenny's settings couldn't be read: {e}"}
+        return {"id": request.get("id"), "error": tr("Stenny's settings couldn't be read: {error}", error=e)}
+    # every reply in the app's language (Settings ▸ General); the config is read again for each request
+    i18n.set_language(i18n.resolve(getattr(cfg, "app_language", None)))
     return handle(cfg, request)
 
 

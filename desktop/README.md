@@ -22,7 +22,7 @@ Without `--library` it is the menu bar app (src-tauri/src/menubar.rs): the class
 the calendar's lecture with its "Record this lecture?" notification, and the pause shortcut, the last two through
 `stenny-agent` (app/Sources/stenny-agent), which runs inside the bundle so the permissions are Stenny's.
 `STENNY_TEST_FILE=<audio>` records that file instead of the microphone (with `STENNY_HOME` on a test copy).
-The library window's footer opens Settings… in the same window (src/lib/Settings.svelte, Escape goes back): general (open at login, the pause shortcut,
+The library window's footer opens Settings… in the same window (src/lib/Settings.svelte, Escape goes back): general (language, open at login, the pause shortcut,
 where the files are), recording (microphone, backup microphone, live draft, keeping audio), the AI step and talk
 languages, background work (priority, power, night hours) and each course's language. Changes are saved at once:
 config.toml through the engine (src/stenny/settings.py), the microphone and login item through the app (menubar.rs,
@@ -30,3 +30,42 @@ the same choices as the menu bar's; a new pause shortcut restarts stenny-agent).
 window's footer: Send Feedback… (to stenny.eu, like the website's form) and
 Check for Updates… (installing comes with the app's own updater). An installed copy (in an Applications folder)
 adds itself to the login items once, through stenny-agent; after that it's the user's choice.
+
+## Language
+
+The app is in English and German: every window, menu, dialog and notification, and the engine's messages. By
+default it follows the system (the first of the user's preferred languages Stenny has, else English); Settings ▸
+General ▸ Language picks *System default*, *English* or *Deutsch* (`[app] language` in config.toml) and every
+window, the menu bar's menu, the app menu and stenny-agent follow at once (`set_ui_language` → the "language" event).
+
+- **Texts:** `src/lib/locales/en.json` and `de.json`, one key per text, `{name}` placeholders; plurals as `….one` /
+  `….other`; a `….windows` twin where Windows says it differently (Show in Explorer). Svelte: `t()` / `tn()` from
+  `src/lib/i18n.svelte.ts`; Rust: `tr!` from `src-tauri/src/i18n.rs` (the same files, compiled in). The engine
+  (`src/stenny/i18n.py`, `tr()` keyed by the English text) and stenny-agent (`--lang de`, a handful of texts) mirror
+  only what they show themselves. `tests/test_i18n.py` checks both files have the same keys and placeholders, that
+  every key used exists, and that the engine's German is complete.
+- **Not translated:** transcripts, summaries and file names in the vault (each course keeps its own language).
+- **German:** natural UI German written for German speakers, never a word-for-word translation; the user is "du"
+  everywhere; Apple's style for menus ("Einstellungen …", with a space before the ellipsis).
+
+One word for each thing, everywhere:
+
+| English | Deutsch |
+|---|---|
+| lecture | Vorlesung |
+| course | Kurs |
+| talk / talks & events | Vortrag / Vorträge & Veranstaltungen |
+| recording | Aufnahme |
+| transcript | Transkript |
+| summary | Zusammenfassung |
+| slides | Folien |
+| glossary | Glossar |
+| draft (live draft) | Entwurf (Live-Entwurf) |
+| microphone / backup microphone | Mikrofon / Ersatzmikrofon |
+| pause shortcut | Tastenkürzel für Pause |
+| Settings | Einstellungen |
+| Trash / Recycle Bin | Papierkorb (both) |
+| Show in Finder / Explorer | Im Finder / Explorer zeigen |
+| stop (a recording) / cancel (a recording) / quit (Stenny) | stoppen / abbrechen / beenden |
+| lecturer / speaker | Lehrperson / vortragende Person |
+| the Mac is plugged in | der Mac hängt am Strom |

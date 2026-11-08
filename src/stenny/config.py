@@ -8,6 +8,8 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from . import paths
+from . import i18n as _i18n
+from .i18n import tr as _tr  # `tr` is the transcription table in load()
 
 DEFAULT_PATH = paths.CONFIG_PATH
 LANGUAGE_MODES = ("auto", "mixed")  # anything else is a fixed Whisper language code
@@ -74,6 +76,7 @@ class Config:
     events_dir: str | None = None             # vault folder for talks and events; None = "Recordings" next to lectures_dir
     event_languages: list[str] = field(default_factory=lambda: ["en", "de", "fr"])
     pause_shortcut: str = DEFAULT_PAUSE_SHORTCUT  # Stenny's global pause/resume shortcut, see parse_shortcut
+    app_language: str = "system"              # the app's own language: system | en | de (i18n.py)
     path: Path | None = None
 
     @property
@@ -112,9 +115,9 @@ class Config:
         for course in self.courses.values():
             if key == fold(course.name) or key in (fold(a) for a in course.aliases):
                 return course
-        known = ", ".join(self.courses) or "none"
-        raise ConfigError(f"Unknown course '{name}'. Configured courses: {known}. "
-                          f"Add it to {self.path} or pass --lang to use it ad hoc.")
+        known = ", ".join(self.courses) or _tr("none")
+        raise ConfigError(_tr("Unknown course '{name}'. Configured courses: {known}. "
+                              "Add it to {path} or pass --lang to use it ad hoc.", name=name, known=known, path=self.path))
 
 
 ROMAN = {"i": "1", "ii": "2", "iii": "3", "iv": "4", "v": "5", "vi": "6", "vii": "7", "viii": "8", "ix": "9", "x": "10"}
@@ -173,12 +176,12 @@ def parse_shortcut(value: str) -> dict:
         parts = [p for p in parts if p] + ["+"]
     *mods, key = parts or [""]
     if any(m not in MODIFIERS for m in mods):
-        raise ConfigError(f"Unknown modifier in pause_shortcut '{value}': use cmd, shift, ctrl, opt.")
+        raise ConfigError(_tr("Unknown modifier in pause_shortcut '{value}': use cmd, shift, ctrl, opt.", value=value))
     mods = sorted({MODIFIERS[m] for m in mods}, key=["cmd", "ctrl", "opt", "shift"].index)
     if not set(mods) & {"cmd", "ctrl", "opt"}:
-        raise ConfigError(f"pause_shortcut '{value}' needs cmd, ctrl or opt, e.g. \"cmd+shift+p\".")
+        raise ConfigError(_tr("pause_shortcut '{value}' needs cmd, ctrl or opt, e.g. \"cmd+shift+p\".", value=value))
     if len(key) != 1 and key not in NAMED_KEYS:
-        raise ConfigError(f"pause_shortcut '{value}': the key must be one character, space or f1–f20.")
+        raise ConfigError(_tr("pause_shortcut '{value}': the key must be one character, space or f1–f20.", value=value))
     return {"modifiers": mods, "key": key}
 
 
@@ -197,12 +200,16 @@ def config_path() -> Path:
 def load(path: Path | None = None) -> Config:
     path = path or config_path()
     if not path.exists():
-        raise ConfigError(f"No config at {path}. Run `stenny init` to create one.")
+        raise ConfigError(_tr("No config at {path}. Run `stenny init` to create one.", path=path))
     data = tomllib.loads(path.read_text(encoding="utf-8"))
     if not data.get("vault") or "CHANGE-ME" in str(data.get("vault")):
-        raise ConfigError(f"Set `vault` in {path} to the folder your transcripts go to (e.g. your Obsidian vault).")
+        raise ConfigError(_tr("Set `vault` in {path} to the folder your transcripts go to (e.g. your Obsidian vault).",
+                               path=path))
     pause_shortcut = data.get("app", {}).get("pause_shortcut", DEFAULT_PAUSE_SHORTCUT)
     parse_shortcut(pause_shortcut)
+    app_language = data.get("app", {}).get("language", "system")
+    if app_language not in _i18n.SETTINGS:
+        raise ConfigError(_tr("[app] language '{value}': use system, en or de.", value=app_language))
     try:
         tr, llm, proc = data.get("transcription", {}), data.get("llm", {}), data.get("processing", {})
         courses = {}
@@ -236,7 +243,8 @@ def load(path: Path | None = None) -> Config:
             events_dir=data.get("recordings", {}).get("folder"),
             event_languages=data.get("recordings", {}).get("languages", ["en", "de", "fr"]),
             pause_shortcut=pause_shortcut,
+            app_language=app_language,
             path=path,
         )
     except KeyError as e:
-        raise ConfigError(f"Missing required key {e} in {path}") from None
+        raise ConfigError(_tr("Missing required key {key} in {path}", key=e, path=path)) from None

@@ -22,6 +22,7 @@ from pathlib import Path
 
 from . import course_files, courses, jobs, paths
 from .config import Config, ConfigError
+from .i18n import tr, trash_name
 from .live import control
 from .pipeline import home_relative
 from .render import parse_frontmatter
@@ -84,7 +85,8 @@ def trash(items: list[Path]) -> None:
         out = subprocess.run(["osascript", "-l", "JavaScript", "-e", TRASH_JS, *map(str, items)],
                              capture_output=True, text=True)
     if out.returncode or out.stdout.strip():
-        raise ManageError(f"Couldn't move to the {TRASH_NAME}: {(out.stdout or out.stderr).strip()}")
+        raise ManageError(tr("Couldn't move to the {trash}: {error}", trash=trash_name(),
+                              error=(out.stdout or out.stderr).strip()))
 
 
 # --------------------------------------------------------------------------- shared checks
@@ -96,7 +98,7 @@ class _Quiet:
         self.lock = jobs.QueueLock()
         if self.lock.__enter__() is None:
             self.lock.__exit__(None, None, None)
-            raise ManageError("A transcript is being made right now. Try again when it's done.")
+            raise ManageError(tr("A transcript is being made right now. Try again when it's done."))
         return self
 
     def __exit__(self, *exc):
@@ -129,10 +131,10 @@ def _queue_jobs() -> list[Path]:
 def _clean_name(name: str) -> str:
     name = unicodedata.normalize("NFC", name).strip()
     if not name:
-        raise ManageError("A name can't be empty.")
+        raise ManageError(tr("A name can't be empty."))
     if safe_name(name) != name:
-        raise ManageError(f"A name can't contain these characters: / \\ : # ^ [ ] | * ? \" < >. "
-                          f"Try '{safe_name(name)}'.")
+        raise ManageError(tr("A name can't contain these characters: / \\ : # ^ [ ] | * ? \" < >. Try '{name}'.",
+                             name=safe_name(name)))
     return name
 
 
@@ -145,16 +147,16 @@ def _lecture(cfg: Config, course: str, folder: str, event: bool):
     files = LectureFiles(lecture_dir, target.name)
     transcript = files.existing("transcript")
     if not transcript:
-        raise ManageError(f"No recording of {course} on {folder}.")
+        raise ManageError(tr("No recording of {course} on {folder}.", course=course, folder=folder))
     return target, vault, lecture_dir, files, transcript
 
 
 def _busy_lecture(status: str | None, what: str) -> None:
     if status == "live":
-        raise ManageError(f"This recording is still running. To {what} it, stop it first, "
-                          "or use Cancel Recording… in Stenny's menu.")
+        raise ManageError(tr(f"This recording is still running. To {what} it, stop it first, "
+                             "or use Cancel Recording… in Stenny's menu."))
     if status == "finalizing":
-        raise ManageError(f"Its transcript is being made right now. Try again when it's done.")
+        raise ManageError(tr("Its transcript is being made right now. Try again when it's done."))
 
 
 def rename_lecture(cfg: Config, course: str, folder: str, title: str, event: bool = False) -> str:
@@ -168,7 +170,7 @@ def rename_lecture(cfg: Config, course: str, folder: str, title: str, event: boo
     if not event and number and title.casefold() == f"lecture {number}".casefold():
         title = ""  # renamed back to what it was called anyway: no title of its own
     if len(title) > 120:
-        raise ManageError("That title is too long (120 characters at most).")
+        raise ManageError(tr("That title is too long (120 characters at most)."))
     course_files.set_properties(vault, transcript, {"title": title or None})
     return title
 
@@ -208,7 +210,7 @@ def delete_lecture(cfg: Config, course: str, folder: str, event: bool = False) -
         if not target.is_event:
             course_files.rebuild(vault, target.name, log=lambda *_: None)
             course_files.rebuild_topics(vault, log=lambda *_: None)
-    return f"Moved to the {TRASH_NAME}: {target.name}, {folder}."
+    return tr("Moved to the {trash}: {name}, {folder}.", trash=trash_name(), name=target.name, folder=folder)
 
 
 def discard_recording(cfg: Config, course, folder: str) -> None:
@@ -260,7 +262,7 @@ def _rename_in_config(cfg: Config, old: str, new: str) -> None:
         if old in tomllib.loads(f"{m.group(1)} = 1"):
             break
     else:
-        raise ManageError(f"'{old}' isn't written as its own table in the config.")
+        raise ManageError(tr("'{name}' isn't written as its own table in the config.", name=old))
     start, end = courses._section(text, old)
     section = text[start:end]
     calendar = tomllib.loads(section).get("calendar", [])
@@ -288,9 +290,9 @@ def rename_course(cfg: Config, old: str, new: str, event: bool = False) -> str:
                  or (not event and any(new.casefold() == c.casefold() for c in cfg.courses))
                  or (not event and any(new.casefold() in map(str.casefold, c.aliases) for c in cfg.courses.values())))
         if taken:
-            raise ManageError(f"There's already {'a talk' if event else 'a course'} called '{new}'.")
+            raise ManageError(tr(f"There's already {'a talk' if event else 'a course'} called '{{name}}'.", name=new))
     if (rec := _recording()) and rec.get("course") == old:
-        raise ManageError(f"{old} is recording right now. Rename it when the recording is done.")
+        raise ManageError(tr("{name} is recording right now. Rename it when the recording is done.", name=old))
 
     vault = Vault(cfg.root_for(target))
     renamed = _target(cfg, new, event) if event else type(target)(**{**target.__dict__, "name": new})
@@ -397,11 +399,11 @@ def delete_course(cfg: Config, name: str, event: bool = False) -> str:
     target = _target(cfg, name, event)
     name = target.name
     if (rec := _recording()) and rec.get("course") == name:
-        raise ManageError(f"{name} is recording right now. Delete it when the recording is done.")
+        raise ManageError(tr("{name} is recording right now. Delete it when the recording is done.", name=name))
     vault = Vault(cfg.root_for(target))
     data = cfg.data_for(target)
     if not (vault.course_dir(name).exists() or data.exists() or (not event and name in cfg.courses)):
-        raise ManageError(f"There's no {'talk' if event else 'course'} called '{name}'.")
+        raise ManageError(tr(f"There's no {'talk' if event else 'course'} called '{{name}}'.", name=name))
     with _Quiet():
         items = [vault.course_dir(name), data]
         if not event:
@@ -425,7 +427,7 @@ def delete_course(cfg: Config, name: str, event: bool = False) -> str:
             app_live._save_consent(kept)
         if not event:
             course_files.rebuild_topics(vault, log=lambda *_: None)
-    return f"Moved {name} to the {TRASH_NAME}."
+    return tr("Moved {name} to the {trash}.", name=name, trash=trash_name())
 
 
 def _remove_from_config(cfg: Config, name: str) -> None:
@@ -435,7 +437,7 @@ def _remove_from_config(cfg: Config, name: str) -> None:
         if name in tomllib.loads(f"{m.group(1)} = 1"):
             break
     else:
-        raise ManageError(f"'{name}' isn't written as its own table in the config.")
+        raise ManageError(tr("'{name}' isn't written as its own table in the config.", name=name))
     _, end = courses._section(text, name)
     rest = text[end:]
     new = text[:m.start()].rstrip("\n") + ("\n\n" + rest.lstrip("\n") if rest.strip() else "\n")

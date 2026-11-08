@@ -2,6 +2,7 @@
   // "Send Feedback…" from the menu bar or the library window: goes to stenny.eu, like the website's form.
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { engine } from "$lib/engine";
+  import { t } from "$lib/i18n.svelte";
 
   let message = $state("");
   let contact = $state("");
@@ -13,7 +14,7 @@
   async function send(e: SubmitEvent) {
     e.preventDefault();
     if (!message.trim()) {
-      error = "Write a few words first.";
+      error = t("feedback.empty");
       return;
     }
     busy = true;
@@ -24,7 +25,7 @@
     } catch (err) {
       // the message mustn't be lost: it goes to the clipboard
       await navigator.clipboard.writeText(message).catch(() => {});
-      error = `${err} Your message is on the clipboard, so it isn't lost.`;
+      error = t("feedback.onClipboard", { error: String(err) });
     } finally {
       busy = false;
     }
@@ -33,22 +34,22 @@
 
 {#if sent}
   <div class="done">
-    <h1 class="serif">Thank you!</h1>
-    <p>Your feedback was sent.</p>
-    <button class="pill primary" onclick={() => getCurrentWindow().close()}>Close</button>
+    <h1 class="serif">{t("feedback.thanks")}</h1>
+    <p>{t("feedback.sent")}</p>
+    <button class="pill primary" onclick={() => getCurrentWindow().close()}>{t("common.close")}</button>
   </div>
 {:else}
   <form onsubmit={send}>
-    <h1 class="serif">Send feedback</h1>
-    <p>What works, what doesn't, what you'd want. It goes straight to the person who makes Stenny.</p>
+    <h1 class="serif">{t("feedback.title")}</h1>
+    <p>{t("feedback.lead")}</p>
     <!-- svelte-ignore a11y_autofocus -->
     <textarea bind:value={message} oninput={() => (error = null)} rows="7" autofocus></textarea>
-    <input bind:value={contact} placeholder="Your email, if you'd like a reply (optional)" />
-    <label><input type="checkbox" bind:checked={details} /> Include Stenny's version, this Mac's model and the last lines of Stenny's log</label>
+    <input bind:value={contact} placeholder={t("feedback.contact")} />
+    <label><input type="checkbox" bind:checked={details} /> {t("feedback.details")}</label>
     {#if error}<p class="error">{error}</p>{/if}
     <div class="buttons">
-      <button type="button" class="pill" onclick={() => getCurrentWindow().close()}>Cancel</button>
-      <button type="submit" class="pill primary" disabled={busy}>{busy ? "Sending…" : "Send"}</button>
+      <button type="button" class="pill" onclick={() => getCurrentWindow().close()}>{t("common.cancel")}</button>
+      <button type="submit" class="pill primary" disabled={busy}>{busy ? t("feedback.sending") : t("feedback.send")}</button>
     </div>
   </form>
 {/if}

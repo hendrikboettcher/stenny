@@ -27,6 +27,7 @@ import numpy as np
 
 from .. import jobs, language, resources
 from ..config import Config, Course
+from ..i18n import tr
 from ..pipeline import (ChunkCache, chunk_bounds, chunk_lengths, chunks_path, ensure_glossary, lecture_time, log,
                         second_look, whisper_prompt, whisper_with)
 from ..render import Lecture, transcript_md
@@ -368,7 +369,7 @@ class LiveSession:
         if free < resources.DISK_FULL:
             log(f"Only {free // resources.MB} MB free: stopping, so what was recorded can be saved")
             self.warning = ""
-            self.final_note = "stopped early: the disk is full"
+            self.final_note = tr("stopped early: the disk is full")
             self._stop_locked()
             return
         if free < resources.DISK_LOW and not self.disk_low:
@@ -387,8 +388,9 @@ class LiveSession:
             if time.monotonic() - self.memory_normal_since >= DRAFT_RESUME:
                 log("Memory is back: transcription goes on")
                 self.draft_paused = False
-        self.warning = "Disk almost full" if self.disk_low else \
-            "Memory is low: recording goes on, transcription paused" if self.draft_paused else ""
+        # shown in the app's menu, in its language ($STENNY_LANGUAGE)
+        self.warning = tr("Disk almost full") if self.disk_low else \
+            tr("Memory is low: recording goes on, transcription paused") if self.draft_paused else ""
 
     # --- transcription (worker thread) ----------------------------------------
     # The final pass's chunks (pipeline.transcribe), cut as the recording grows (textproc.chunk_end), in order.

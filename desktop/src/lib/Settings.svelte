@@ -7,14 +7,17 @@
   import { onMount } from "svelte";
   import Figure from "$lib/Figure.svelte";
   import Dialog from "$lib/Dialog.svelte";
-  import { bringBack, deleteCourse, engine, library, reveal, revealLabel, trashName } from "$lib/engine";
+  import { bringBack, deleteCourse, engine, library, reveal } from "$lib/engine";
+  import { t, tn, setLanguage, languageName, trashName, revealLabel } from "$lib/i18n.svelte";
 
   interface Settings {
     keep_audio: boolean;
     live: { draft: boolean; backup: string };
     llm: { backend: "claude-code" | "api" | "none"; summary: boolean };
     processing: { priority: "normal" | "low" | "background"; require_ac_for_queue: boolean; night_only: boolean; night_start: string; night_end: string };
-    app: { pause_shortcut: string };
+    app: { pause_shortcut: string; language: "system" | "en" | "de" };
+    ui_language: "en" | "de";        // what "system" comes to, or the language picked
+    system_language: "en" | "de";
     recordings: { languages: string[]; folder: string };
     paths: { vault: string; lectures: string; data: string; config: string };
     model: string;
@@ -22,14 +25,12 @@
   }
 
   const inApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-  const SECTIONS = [
-    ["general", "General"], ["recording", "Recording"], ["transcripts", "Transcripts & AI"],
-    ["background", "Background work"], ["courses", "Courses"],
-  ] as const;
-  type Section = (typeof SECTIONS)[number][0];
+  const SECTIONS = ["general", "recording", "transcripts", "background", "courses"] as const;
+  type Section = (typeof SECTIONS)[number];
+  const sectionName = (id: Section) => t(`settings.section.${id}`);
   // only the languages Stenny is built and tested for (settings.py checks the same)
-  const LANGS: [string, string][] = [["en", "English"], ["de", "German"], ["fr", "French"]];
-  const langName = (code: string) => LANGS.find(([c]) => c === code)?.[1] ?? code.toUpperCase();
+  const LANGS = ["en", "de", "fr"];
+  const langName = (code: string) => (LANGS.includes(code) ? languageName(code)! : code.toUpperCase());
 
   let { onclose }: { onclose: () => void } = $props();
 
@@ -130,6 +131,13 @@
     }
   }
 
+  // Stenny's own language (not the lectures'): saved like any setting, then every window and the menu bar follow
+  async function setUiLanguage(value: string) {
+    if (!(await set("app.language", value)) || !s) return;
+    setLanguage(s.ui_language);
+    if (inApp) invoke("set_ui_language", { language: s.ui_language }).catch(() => {});
+  }
+
   async function setMicrophone(device: string) {
     microphone = device;
     if (!inApp) return done();
@@ -169,7 +177,7 @@
     let rest = parts;
     const home = windows ? (parts[1]?.toLowerCase() === "users" ? 3 : 0) : parts[0] === "Users" ? 2 : 0;
     if (home) {
-      start = ["Home"];
+      start = [t("common.home")];
       rest = parts.slice(home);
       // iCloud on a Mac: ~/Library/Mobile Documents/<app container>/Documents/…
       if (!windows && rest[0] === "Library" && rest[1] === "Mobile Documents" && rest[2]) {
@@ -197,7 +205,7 @@
     const mods = parts.filter(Boolean).map((m) => ({ command: "cmd", control: "ctrl", option: "opt", alt: "opt" })[m] ?? m);
     const order = ["ctrl", "opt", "shift", "cmd"]; // the order macOS shows them in
     mods.sort((a, b) => order.indexOf(a) - order.indexOf(b));
-    const k = key === "space" ? "Space" : /^f\d+$/.test(key) ? key.toUpperCase() : key.toUpperCase();
+    const k = key === "space" ? t("settings.shortcut.space") : /^f\d+$/.test(key) ? key.toUpperCase() : key.toUpperCase();
     return mods.map((m) => SYMBOLS[m] ?? m).join("") + k;
   }
 
@@ -211,7 +219,7 @@
     if (["Meta", "Control", "Alt", "Shift", "CapsLock", "Fn"].includes(e.key)) return;
     const mods = [e.metaKey && "cmd", e.ctrlKey && "ctrl", e.altKey && "opt", e.shiftKey && "shift"].filter(Boolean);
     if (!mods.some((m) => m !== "shift")) {
-      shortcutNote = "Hold ⌘, ⌃ or ⌥ too, so the shortcut doesn't get in the way of typing.";
+      shortcutNote = t("settings.shortcut.needsModifier");
       return;
     }
     let key: string;
@@ -227,7 +235,7 @@
       shortcutNote = null;
       if (inApp) {
         const problem = await invoke<string | null>("apply_shortcut").catch((err) => String(err));
-        if (problem) shortcutNote = `Saved, but it doesn't work yet: ${problem}`;
+        if (problem) shortcutNote = t("settings.shortcut.notYet", { problem });
       }
     }
   }
@@ -245,55 +253,64 @@
     <nav>
       <button class="back" onclick={onclose}>
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5" /></svg>
-        Back to your lectures
+        {t("settings.back")}
       </button>
-      <div class="kicker">Settings</div>
-      {#each SECTIONS as [id, name]}
-        <button class="item" class:active={section === id} onclick={() => { section = id; error = null; }}>{name}</button>
+      <div class="kicker">{t("settings.title")}</div>
+      {#each SECTIONS as id}
+        <button class="item" class:active={section === id} onclick={() => { section = id; error = null; }}>{sectionName(id)}</button>
       {/each}
     </nav>
   </aside>
 
   <main>
     <div class="titlebar" data-tauri-drag-region>
-      <span class="saved" class:show={saved} aria-live="polite">Saved</span>
+      <span class="saved" class:show={saved} aria-live="polite">{t("settings.saved")}</span>
     </div>
     <div class="content">
       {#if loadError}
         <p class="error selectable">{loadError}</p>
       {:else if !s}
-        <p class="muted">Loading…</p>
+        <p class="muted">{t("common.loading")}</p>
       {:else}
-        <h1 class="serif">{SECTIONS.find(([id]) => id === section)?.[1]}</h1>
+        <h1 class="serif">{sectionName(section)}</h1>
         {#if error}<p class="error selectable">{error}</p>{/if}
 
         {#if section === "general"}
           <div class="group">
+            <div class="row">
+              <div class="what">
+                <div class="name">{t("settings.uiLanguage")}</div>
+                <div class="hint">{t("settings.uiLanguage.hint")}</div>
+              </div>
+              <select value={s.app.language} onchange={(e) => setUiLanguage(e.currentTarget.value)}>
+                <option value="system">{t("settings.uiLanguage.system", { language: s.system_language === "de" ? "Deutsch" : "English" })}</option>
+                <option value="en">English</option>
+                <option value="de">Deutsch</option>
+              </select>
+            </div>
             {#if login !== null}
               <div class="row">
                 <div class="what">
-                  <div class="name">Open Stenny at login</div>
-                  <div class="hint">
-                    {login === "approval" ? "Allow it in System Settings ▸ General ▸ Login Items." : "So the calendar's lecture reminders work without thinking of it."}
-                  </div>
+                  <div class="name">{t("settings.login")}</div>
+                  <div class="hint">{login === "approval" ? t("settings.login.approval") : t("settings.login.hint")}</div>
                 </div>
                 <input type="checkbox" class="switch" checked={login !== "off"} onchange={(e) => setLogin(e.currentTarget.checked)} />
               </div>
             {/if}
             <div class="row">
               <div class="what">
-                <div class="name">Pause shortcut</div>
-                <div class="hint">Pauses and resumes the recording from any app.</div>
+                <div class="name">{t("settings.shortcut")}</div>
+                <div class="hint">{t("settings.shortcut.hint")}</div>
               </div>
               <button class="shortcut" class:listening={recording}
                       onclick={() => { recording = !recording; shortcutNote = null; }}>
-                {recording ? "Press the new shortcut…" : pretty(s.app.pause_shortcut)}
+                {recording ? t("settings.shortcut.press") : pretty(s.app.pause_shortcut)}
               </button>
             </div>
             {#if shortcutNote}<p class="note">{shortcutNote}</p>{/if}
           </div>
 
-          <h2>Where things are</h2>
+          <h2>{t("settings.places")}</h2>
           <div class="group">
             {#snippet place(name: string, hint: string, path: string)}
               <div class="row">
@@ -302,34 +319,34 @@
                   <div class="hint path" title={path}>{friendly(path)}</div>
                   <div class="hint">{hint}</div>
                 </div>
-                <button class="pill" onclick={() => reveal(path)}>{revealLabel}</button>
+                <button class="pill" onclick={() => reveal(path)}>{revealLabel()}</button>
               </div>
             {/snippet}
-            {@render place("Transcripts", "Lectures, summaries and glossaries, one folder per course.", s.paths.lectures)}
-            {@render place("Talks & events", "Recordings that aren't part of a course.", s.recordings.folder)}
-            {@render place("Stenny's own files", "Audio, the raw transcripts and logs. They never leave this Mac.", s.paths.data)}
+            {@render place(t("settings.places.transcripts"), t("settings.places.transcripts.hint"), s.paths.lectures)}
+            {@render place(t("common.talksEvents"), t("settings.places.talks.hint"), s.recordings.folder)}
+            {@render place(t("settings.places.data"), t("settings.places.data.hint"), s.paths.data)}
           </div>
         {:else if section === "recording"}
           <div class="group">
             <div class="row">
               <div class="what">
-                <div class="name">Microphone</div>
-                <div class="hint">The one the next recording uses; the menu bar can switch it during a lecture.</div>
+                <div class="name">{t("settings.mic")}</div>
+                <div class="hint">{t("settings.mic.hint")}</div>
               </div>
               <select value={microphone} onchange={(e) => setMicrophone(e.currentTarget.value)}>
-                <option value="">System default{defaultDevice ? ` (${defaultDevice})` : ""}</option>
+                <option value="">{defaultDevice ? t("settings.mic.defaultNamed", { device: defaultDevice }) : t("settings.mic.default")}</option>
                 {#each devices as d}<option value={d}>{d}</option>{/each}
-                {#if microphone && !devices.includes(microphone)}<option value={microphone}>{microphone} (not connected)</option>{/if}
+                {#if microphone && !devices.includes(microphone)}<option value={microphone}>{t("settings.mic.notConnected", { device: microphone })}</option>{/if}
               </select>
             </div>
             <div class="row">
               <div class="what">
-                <div class="name">Backup microphone</div>
-                <div class="hint">Recorded alongside, and used only where the main one sent nothing.</div>
+                <div class="name">{t("settings.backup")}</div>
+                <div class="hint">{t("settings.backup.hint")}</div>
               </div>
               <select value={s.live.backup} onchange={(e) => set("live.backup", e.currentTarget.value)}>
-                <option value="auto">This Mac's microphone</option>
-                <option value="off">Off</option>
+                <option value="auto">{t("settings.backup.mac")}</option>
+                <option value="off">{t("common.off")}</option>
                 {#each devices as d}<option value={d}>{d}</option>{/each}
                 {#if !["auto", "off", ...devices].includes(s.live.backup)}<option value={s.live.backup}>{s.live.backup}</option>{/if}
               </select>
@@ -338,15 +355,15 @@
           <div class="group">
             <div class="row">
               <div class="what">
-                <div class="name">Transcribe while recording</div>
-                <div class="hint">A live draft to read along when the Mac is plugged in. Off: record only, transcribe afterwards.</div>
+                <div class="name">{t("settings.draft")}</div>
+                <div class="hint">{t("settings.draft.hint")}</div>
               </div>
               <input type="checkbox" class="switch" checked={s.live.draft} onchange={(e) => set("live.draft", e.currentTarget.checked)} />
             </div>
             <div class="row">
               <div class="what">
-                <div class="name">Keep the audio</div>
-                <div class="hint">Archived in Stenny's own files, to listen again or transcribe anew.</div>
+                <div class="name">{t("settings.keepAudio")}</div>
+                <div class="hint">{t("settings.keepAudio.hint")}</div>
               </div>
               <input type="checkbox" class="switch" checked={s.keep_audio} onchange={(e) => set("keep_audio", e.currentTarget.checked)} />
             </div>
@@ -355,19 +372,19 @@
           <div class="group">
             <div class="row stack">
               <div class="what">
-                <div class="name">Structuring and summaries</div>
-                <div class="hint">Only the text goes out, never the audio. The transcript itself is never rewritten.</div>
+                <div class="name">{t("settings.llm")}</div>
+                <div class="hint">{t("settings.llm.hint")}</div>
               </div>
               <div class="segmented">
-                {#each [["claude-code", "Claude Code"], ["api", "Anthropic API"], ["none", "Off"]] as [v, label]}
+                {#each [["claude-code", "Claude Code"], ["api", "Anthropic API"], ["none", t("common.off")]] as [v, label]}
                   <button class:on={s.llm.backend === v} onclick={() => set("llm.backend", v)}>{label}</button>
                 {/each}
               </div>
             </div>
             <div class="row" class:disabled={s.llm.backend === "none"}>
               <div class="what">
-                <div class="name">Write a summary</div>
-                <div class="hint">An AI summary next to each transcript, clearly labelled as one.</div>
+                <div class="name">{t("settings.summary")}</div>
+                <div class="hint">{t("settings.summary.hint")}</div>
               </div>
               <input type="checkbox" class="switch" checked={s.llm.summary} disabled={s.llm.backend === "none"}
                      onchange={(e) => set("llm.summary", e.currentTarget.checked)} />
@@ -376,33 +393,29 @@
           <div class="group">
             <div class="row stack">
               <div class="what">
-                <div class="name">Languages in talks</div>
-                <div class="hint">A talk's language is recognised among these, every half minute or so.</div>
+                <div class="name">{t("settings.talkLanguages")}</div>
+                <div class="hint">{t("settings.talkLanguages.hint")}</div>
               </div>
               <div class="chips">
-                {#each LANGS as [code, name]}
+                {#each LANGS as code}
                   <button class="chip" class:on={s.recordings.languages.includes(code)}
-                          onclick={() => { const next = toggleIn(s!.recordings.languages, code); if (next.length) set("recordings.languages", next); }}>{name}</button>
+                          onclick={() => { const next = toggleIn(s!.recordings.languages, code); if (next.length) set("recordings.languages", next); }}>{langName(code)}</button>
                 {/each}
               </div>
             </div>
           </div>
-          <p class="foot">Transcription runs on this Mac with {s.model.split("/").pop()}.</p>
+          <p class="foot">{t("settings.model", { model: s.model.split("/").pop() ?? s.model })}</p>
         {:else if section === "background"}
-          <p class="lead">Transcribing a lecture takes a while. These keep the Mac usable meanwhile.</p>
+          <p class="lead">{t("settings.background.lead")}</p>
           <div class="group">
             <div class="row stack">
               <div class="what">
-                <div class="name">Priority</div>
-                <div class="hint">
-                  {s.processing.priority === "normal" ? "As fast as possible; the Mac may feel busy."
-                    : s.processing.priority === "low" ? "Gives way to whatever you're doing."
-                    : "Heavily throttled: slow, but you won't notice it."}
-                </div>
+                <div class="name">{t("settings.priority")}</div>
+                <div class="hint">{t(`settings.priority.${s.processing.priority}.hint`)}</div>
               </div>
               <div class="segmented">
-                {#each [["normal", "Normal"], ["low", "Low"], ["background", "Background"]] as [v, label]}
-                  <button class:on={s.processing.priority === v} onclick={() => set("processing.priority", v)}>{label}</button>
+                {#each ["normal", "low", "background"] as const as v}
+                  <button class:on={s.processing.priority === v} onclick={() => set("processing.priority", v)}>{t(`settings.priority.${v}`)}</button>
                 {/each}
               </div>
             </div>
@@ -410,35 +423,35 @@
           <div class="group">
             <div class="row">
               <div class="what">
-                <div class="name">Wait for power</div>
-                <div class="hint">Queued transcripts wait until the Mac is plugged in.</div>
+                <div class="name">{t("settings.power")}</div>
+                <div class="hint">{t("settings.power.hint")}</div>
               </div>
               <input type="checkbox" class="switch" checked={s.processing.require_ac_for_queue}
                      onchange={(e) => set("processing.require_ac_for_queue", e.currentTarget.checked)} />
             </div>
             <div class="row">
               <div class="what">
-                <div class="name">Only at night</div>
-                <div class="hint">Queued transcripts run only in these hours.</div>
+                <div class="name">{t("settings.night")}</div>
+                <div class="hint">{t("settings.night.hint")}</div>
               </div>
               <input type="checkbox" class="switch" checked={s.processing.night_only}
                      onchange={(e) => set("processing.night_only", e.currentTarget.checked)} />
             </div>
             {#if s.processing.night_only}
               <div class="row">
-                <div class="what"><div class="name">Hours</div></div>
+                <div class="what"><div class="name">{t("settings.hours")}</div></div>
                 <div class="times">
                   <input type="time" value={s.processing.night_start} onchange={(e) => set("processing.night_start", e.currentTarget.value)} />
-                  <span>to</span>
+                  <span>{t("settings.hoursTo")}</span>
                   <input type="time" value={s.processing.night_end} onchange={(e) => set("processing.night_end", e.currentTarget.value)} />
                 </div>
               </div>
             {/if}
           </div>
         {:else if section === "courses"}
-          <p class="lead">The language each course is taught in. Add, rename and remove courses in Stenny's window.</p>
+          <p class="lead">{t("settings.courses.lead")}</p>
           {#if !s.courses.length}
-            <p class="muted">No courses at the moment.</p>
+            <p class="muted">{t("settings.courses.none")}</p>
           {:else}
             <div class="group">
               {#each s.courses as c (c.name)}
@@ -447,9 +460,8 @@
                   <div class="what">
                     <div class="name serif course">{c.name}</div>
                     <div class="hint">
-                      {c.language === "mixed" ? "Can switch language mid-sentence; checked every few seconds among:"
-                        : c.language === "auto" ? "One language per lecture, recognised among:"
-                        : `Always in ${langName(c.language)}.`}
+                      {c.language === "mixed" ? t("settings.courses.mixed") : c.language === "auto" ? t("settings.courses.auto")
+                        : t("settings.courses.always", { language: langName(c.language) })}
                     </div>
                   </div>
                   <select value={c.language} onchange={(e) => {
@@ -457,16 +469,16 @@
                     const m = v === "mixed" || v === "auto";
                     setCourseLanguage(c.name, v, m ? (c.languages.length > 1 ? c.languages : ["en", "de", "fr"]) : null);
                   }}>
-                    {#each LANGS as [code, name]}<option value={code}>{name}</option>{/each}
-                    {#if !LANGS.some(([code]) => code === c.language) && !multi}<option value={c.language}>{c.language}</option>{/if}
-                    <option value="auto">One per lecture</option>
-                    <option value="mixed">Mixed</option>
+                    {#each LANGS as code}<option value={code}>{langName(code)}</option>{/each}
+                    {#if !LANGS.includes(c.language) && !multi}<option value={c.language}>{c.language}</option>{/if}
+                    <option value="auto">{t("settings.courses.onePerLecture")}</option>
+                    <option value="mixed">{t("lang.mixed")}</option>
                   </select>
                   {#if multi}
                     <div class="chips">
-                      {#each LANGS as [code, name]}
+                      {#each LANGS as code}
                         <button class="chip" class:on={c.languages.includes(code)}
-                                onclick={() => { const next = toggleIn(c.languages, code); if (next.length) setCourseLanguage(c.name, c.language, next); }}>{name}</button>
+                                onclick={() => { const next = toggleIn(c.languages, code); if (next.length) setCourseLanguage(c.name, c.language, next); }}>{langName(code)}</button>
                       {/each}
                     </div>
                   {/if}
@@ -475,21 +487,21 @@
             </div>
           {/if}
           {#if past.length}
-            <h2>Past courses</h2>
-            <p class="lead small">Courses you removed from the list. Their transcripts and glossaries are kept until you delete them.</p>
+            <h2>{t("settings.past")}</h2>
+            <p class="lead small">{t("settings.past.lead")}</p>
             <div class="group">
               {#each past as c (c.name)}
                 <div class="row">
                   <div class="what">
                     <div class="name serif course">{c.name}</div>
-                    <div class="hint">{c.lectures === 0 ? "Nothing recorded" : c.lectures === 1 ? "1 lecture" : `${c.lectures} lectures`}</div>
+                    <div class="hint">{c.lectures === 0 ? t("settings.past.nothing") : tn("settings.past.lectures", c.lectures)}</div>
                   </div>
                   <div class="actions">
                     <button class="pill" disabled={pastBusy !== null} onclick={() => restore(c.name)}>
-                      {pastBusy === c.name ? "One moment…" : "Bring Back"}
+                      {pastBusy === c.name ? t("common.oneMoment") : t("settings.past.bringBack")}
                     </button>
                     <button class="pill danger" disabled={pastBusy !== null}
-                            onclick={() => { deleting = c; deleteError = null; }}>Delete…</button>
+                            onclick={() => { deleting = c; deleteError = null; }}>{t("settings.past.delete")}</button>
                   </div>
                 </div>
               {/each}
@@ -503,10 +515,10 @@
 
 {#if deleting}
   {@const n = deleting.lectures}
-  <Dialog title="Delete {deleting.name}?" confirm="Delete Course" danger busy={deleteBusy} error={deleteError}
-          text={n === 0
-            ? `Nothing was recorded for it. Its settings are removed, and its glossary, if it has one, goes to the ${trashName}.`
-            : `This deletes the course and ${n === 1 ? "its lecture" : `all ${n} of its lectures`}: transcripts, summaries, audio and its glossary. Everything goes to the ${trashName}; once it's emptied, it's gone for good.`}
+  <Dialog title={t("deleteGroup.title", { name: deleting.name })} confirm={t("deleteGroup.confirm.course")} danger
+          busy={deleteBusy} error={deleteError}
+          text={t(n === 0 ? "settings.deleteCourse.text.none" : n === 1 ? "settings.deleteCourse.text.one" : "settings.deleteCourse.text.other",
+                  { n, trash: trashName() })}
           oncancel={() => (deleting = null)} onconfirm={confirmDelete} />
 {/if}
 

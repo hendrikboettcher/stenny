@@ -17,6 +17,7 @@ import tempfile
 from pathlib import Path
 
 from . import paths
+from .i18n import tr
 from .render import DRAFT_STATES, draft_status, parse_frontmatter
 from .vault import LectureFiles, Vault, folder_key, safe_name
 
@@ -57,7 +58,8 @@ def _entries(root: Path, kind: str) -> list[dict]:
                 "duration": fm.get("duration"),
                 "language": fm.get("language"),
                 "status": fm.get("status") or "final",  # live | queued | finalizing: still the live draft
-                "draft_note": draft_status(fm["status"], fm.get("waiting")) if fm.get("status") in DRAFT_STATES else None,
+                # in the app's language; the note in the placeholder file itself stays English (render.draft_note)
+                "draft_note": tr(draft_status(fm["status"], fm.get("waiting"))) if fm.get("status") in DRAFT_STATES else None,
                 "transcript": str(transcript),
                 "summary": str(summary) if summary else None,
             })
@@ -84,7 +86,7 @@ def find(cfg, course: str, folder: str, event: bool = False) -> dict:
         if (entry["kind"] == "event") == event and entry["folder"] == folder and \
                 safe_name(entry["course"]).casefold() == safe_name(course).casefold():
             return entry
-    raise ShareError(f"No transcript for {course} on {folder}.")
+    raise ShareError(tr("No transcript for {course} on {folder}.", course=course, folder=folder))
 
 
 def _body(text: str) -> str:
@@ -251,14 +253,14 @@ def _docx(page: str, path: Path) -> None:
         done = subprocess.run(["textutil", "-convert", "docx", "-format", "html", "-inputencoding", "UTF-8",
                                "-output", str(path), str(source)], capture_output=True, text=True)
     if done.returncode or not path.exists():
-        raise ShareError(f"The Word file couldn't be made: {done.stderr.strip() or 'textutil failed'}")
+        raise ShareError(tr("The Word file couldn't be made: {error}", error=done.stderr.strip() or "textutil failed"))
 
 
 def share(entry: dict, with_summary: bool = False, out_dir: Path | None = None, fmt: str = "md") -> Path:
     """Writes the clean copy in `fmt` (md, docx or html), replacing an earlier one of the same lecture, and
     returns its path."""
     if fmt not in FORMATS:
-        raise ShareError(f"Unknown format '{fmt}': use {', '.join(FORMATS)}.")
+        raise ShareError(tr("Unknown format '{fmt}': use {formats}.", fmt=fmt, formats=", ".join(FORMATS)))
     out_dir = out_dir or SHARED_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / share_name(entry, fmt)

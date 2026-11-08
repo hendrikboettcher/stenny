@@ -1,0 +1,3 @@
+/* Stenny's permission prompts (also in Info.plist) */
+"NSMicrophoneUsageDescription" = "Stenny records lectures you start from its menu. Audio stays on this Mac; pausing turns the microphone off.";
+"NSCalendarsFullAccessUsageDescription" = "Stenny looks for the lecture that's on now in your calendar, so you can start recording it with one click. Nothing is changed or sent anywhere.";

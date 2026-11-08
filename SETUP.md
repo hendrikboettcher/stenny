@@ -168,6 +168,8 @@ Tell the user to look for **a small stick figure in the menu bar** (top right of
 
 Then one setting, so the *Start Recording* button stays on screen: **System Settings ▸ Notifications ▸ Stenny ▸ Alert Style ▸ Persistent** (on macOS 14 it's called *Alerts*). Recommended.
 
+Stenny speaks English or German, following the system's language. If the user prefers the other one, it's **Settings… ▸ General ▸ Language** in Stenny's window (System default / English / Deutsch); it changes at once. Talk to the user in their language either way.
+
 Stenny opens at login by itself; macOS may show a short notice about it. They can turn it off in **System Settings ▸ General ▸ Login Items**.
 
 **Check:** the icon is there. `tail -20 ~/Lectures\ Data/_System/stenny.log` shows `pause shortcut: …` with their shortcut and `hotkey registered`.

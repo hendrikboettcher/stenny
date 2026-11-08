@@ -7,6 +7,7 @@
 //! recovered (`recover`) and started again without the live draft; quitting during a recording asks first.
 
 use crate::engine::Engine;
+use crate::i18n::{self, tr};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
@@ -140,6 +141,16 @@ fn notify(app: &AppHandle, message: &str) {
     let _ = app.notification().builder().title("Stenny").body(message).show();
 }
 
+/// A menu item's text: "&" is the mnemonic marker in menus, "&&" shows one.
+fn label(text: String) -> String {
+    text.replace('&', "&&")
+}
+
+/// Where deleted things go, as the window calls it (Trash, Recycle Bin, Papierkorb).
+fn trash_name() -> String {
+    tr!("common.trash")
+}
+
 fn alert(app: &AppHandle, title: &str, message: &str) {
     app.dialog().message(message).title(title).kind(MessageDialogKind::Info).blocking_show();
 }
@@ -151,22 +162,20 @@ fn status_line(st: &State) -> String {
     let s = &st.status;
     let course = str_of(s, "course");
     match str_of(s, "state") {
-        "recording" if s.get("input_lost").and_then(Value::as_bool) == Some(true) => {
-            "No audio from the microphone · reconnecting …".to_string()
-        }
+        "recording" if s.get("input_lost").and_then(Value::as_bool) == Some(true) => tr!("menu.status.noAudio"),
         "recording" if !str_of(s, "warning").is_empty() => str_of(s, "warning").to_string(),
         // the words transcribed so far, while it transcribes (plugged in); on battery it only records
         "recording" if s.get("transcribing").and_then(Value::as_bool) == Some(true) => {
-            format!("Recording · {course} · {} words", s.get("words").and_then(Value::as_u64).unwrap_or(0))
+            tr!("menu.status.recordingWords", course = course, words = s.get("words").and_then(Value::as_u64).unwrap_or(0))
         }
-        "recording" => format!("Recording · {course}"),
-        "paused" => format!("Paused for {} · mic off · {course}", clock(num(s, "current_pause_s"))),
-        "stopping" => "Stopping …".into(),
-        "cancelling" => "Cancelling …".into(),
-        "finalizing" | "done" => "Making the transcript …".into(),
-        "starting" => "Starting …".into(),
-        _ if st.idle_message.is_empty() => "Ready".into(),
-        _ => st.idle_message.clone(),
+        "recording" => tr!("menu.status.recording", course = course),
+        "paused" => tr!("menu.status.paused", time = clock(num(s, "current_pause_s")), course = course),
+        "stopping" => tr!("menu.status.stopping"),
+        "cancelling" => tr!("menu.status.cancelling"),
+        "finalizing" | "done" => tr!("menu.status.finalizing"),
+        "starting" => tr!("menu.status.starting"),
+        _ if st.idle_message.is_empty() => tr!("menu.status.ready"),
+        _ => tr!("menu.status.readyNote", note = st.idle_message),
     }
 }
 
@@ -178,14 +187,14 @@ fn build_menu(app: &AppHandle, st: &State) -> tauri::Result<(Menu<Wry>, MenuItem
     let mut items: Vec<Box<dyn IsMenuItem<Wry>>> = vec![Box::new(status_item.clone()), Box::new(PredefinedMenuItem::separator(app)?)];
 
     if active {
-        let pause = if state == "paused" { "Resume" } else { "Pause" };
-        items.push(Box::new(MenuItem::with_id(app, "toggle", pause, true, st.pause_accel.as_deref())?));
-        items.push(Box::new(MenuItem::with_id(app, "stop", "Stop && Make Final Transcript", true, None::<&str>)?)); // && shows one &
+        let pause = if state == "paused" { tr!("menu.resume") } else { tr!("menu.pause") };
+        items.push(Box::new(MenuItem::with_id(app, "toggle", label(pause), true, st.pause_accel.as_deref())?));
+        items.push(Box::new(MenuItem::with_id(app, "stop", label(tr!("menu.stop")), true, None::<&str>)?));
         items.push(Box::new(PredefinedMenuItem::separator(app)?));
     } else if state == "idle" || state.is_empty() {
         if let Some(sg) = &st.suggestion {
             items.push(Box::new(MenuItem::with_id(app, format!("start:{}", sg.course),
-                format!("Start {} · {}", sg.course, sg.range), true, None::<&str>)?));
+                tr!("menu.startSuggested", course = sg.course, range = sg.range), true, None::<&str>)?));
         }
         let starts: Vec<MenuItem<Wry>> = st
             .courses
@@ -193,24 +202,26 @@ fn build_menu(app: &AppHandle, st: &State) -> tauri::Result<(Menu<Wry>, MenuItem
             .map(|c| MenuItem::with_id(app, format!("start:{c}"), c, true, None::<&str>))
             .collect::<tauri::Result<_>>()?;
         let refs: Vec<&dyn IsMenuItem<Wry>> = starts.iter().map(|m| m as &dyn IsMenuItem<Wry>).collect();
-        let empty = MenuItem::with_id(app, "nocourse", "No courses yet: add one in Stenny's window", false, None::<&str>)?;
+        let empty = MenuItem::with_id(app, "nocourse", label(tr!("menu.noCourses")), false, None::<&str>)?;
+        let title = label(tr!("menu.startLecture"));
         let start = if refs.is_empty() {
-            Submenu::with_id_and_items(app, "start", "Start Lecture", true, &[&empty])?
+            Submenu::with_id_and_items(app, "start", &title, true, &[&empty])?
         } else {
-            Submenu::with_id_and_items(app, "start", "Start Lecture", true, &refs)?
+            Submenu::with_id_and_items(app, "start", &title, true, &refs)?
         };
         items.push(Box::new(start));
-        items.push(Box::new(MenuItem::with_id(app, "talk", "Record a Talk or Event…", true, None::<&str>)?));
+        items.push(Box::new(MenuItem::with_id(app, "talk", label(tr!("menu.talk")), true, None::<&str>)?));
         items.push(Box::new(PredefinedMenuItem::separator(app)?));
     }
 
     // the microphone: while recording the one in use (switching it switches the recording), else the next one's
     let in_use = if active { s.get("microphone").and_then(Value::as_str).map(String::from) } else { None };
     let chosen = in_use.clone().or_else(|| st.prefs.microphone.clone());
-    let label = chosen.clone().unwrap_or_else(|| "System Default".into());
+    let device = chosen.clone().unwrap_or_else(|| tr!("menu.systemDefault"));
     let mut mics: Vec<CheckMenuItem<Wry>> = Vec::new();
     if !active {
-        let default = st.default_device.as_deref().map(|d| format!("System Default ({d})")).unwrap_or("System Default".into());
+        let default = label(st.default_device.as_deref().map(|d| tr!("menu.systemDefaultNamed", device = d))
+            .unwrap_or_else(|| tr!("menu.systemDefault")));
         mics.push(CheckMenuItem::with_id(app, "mic:", default, true, chosen.is_none(), None::<&str>)?);
     }
     for d in &st.devices {
@@ -218,24 +229,24 @@ fn build_menu(app: &AppHandle, st: &State) -> tauri::Result<(Menu<Wry>, MenuItem
     }
     let mic_refs: Vec<&dyn IsMenuItem<Wry>> = mics.iter().map(|m| m as &dyn IsMenuItem<Wry>).collect();
     let mic_enabled = state != "starting" && (!active || in_use.is_some());
-    items.push(Box::new(Submenu::with_id_and_items(app, "mics", format!("Microphone: {label}"), mic_enabled, &mic_refs)?));
+    items.push(Box::new(Submenu::with_id_and_items(app, "mics", label(tr!("menu.microphone", device = device)), mic_enabled, &mic_refs)?));
     items.push(Box::new(PredefinedMenuItem::separator(app)?));
     if active {  // the transcript isn't there yet: the window shows the text so far
-        items.push(Box::new(MenuItem::with_id(app, "open-text", "Show Text So Far…", true, None::<&str>)?));
+        items.push(Box::new(MenuItem::with_id(app, "open-text", label(tr!("menu.textSoFar")), true, None::<&str>)?));
     } else if !str_of(s, "transcript").is_empty() {
-        items.push(Box::new(MenuItem::with_id(app, "transcript", "Open Transcript", true, None::<&str>)?));
+        items.push(Box::new(MenuItem::with_id(app, "transcript", label(tr!("menu.openTranscript")), true, None::<&str>)?));
     }
-    items.push(Box::new(MenuItem::with_id(app, "open", "Open Stenny…", true, None::<&str>)?));
+    items.push(Box::new(MenuItem::with_id(app, "open", label(tr!("menu.open")), true, None::<&str>)?));
     items.push(Box::new(PredefinedMenuItem::separator(app)?));
     // far from Stop, and it asks first: it throws the recording away
     if active {
-        items.push(Box::new(MenuItem::with_id(app, "cancel", "Cancel Recording…", true, None::<&str>)?));
+        items.push(Box::new(MenuItem::with_id(app, "cancel", label(tr!("menu.cancel")), true, None::<&str>)?));
         items.push(Box::new(PredefinedMenuItem::separator(app)?));
     }
-    items.push(Box::new(MenuItem::with_id(app, "feedback", "Send Feedback…", true, None::<&str>)?));
-    items.push(Box::new(MenuItem::with_id(app, "updates", "Check for Updates…", true, None::<&str>)?));
+    items.push(Box::new(MenuItem::with_id(app, "feedback", label(tr!("menu.feedback")), true, None::<&str>)?));
+    items.push(Box::new(MenuItem::with_id(app, "updates", label(tr!("menu.updates")), true, None::<&str>)?));
     items.push(Box::new(PredefinedMenuItem::separator(app)?));
-    items.push(Box::new(MenuItem::with_id(app, "quit", "Quit Stenny", true, None::<&str>)?));
+    items.push(Box::new(MenuItem::with_id(app, "quit", label(tr!("menu.quit")), true, None::<&str>)?));
     let refs: Vec<&dyn IsMenuItem<Wry>> = items.iter().map(|b| b.as_ref()).collect();
     Ok((Menu::with_items(app, &refs)?, status_item))
 }
@@ -245,7 +256,8 @@ fn shape(st: &State) -> String {
     // what the menu's items depend on; the clock goes to the title and the status line is updated in place,
     // because rebuilding the menu closes it while it is open
     format!(
-        "{}|{}|{}|{}|{:?}|{:?}|{:?}|{:?}",
+        "{}|{}|{}|{}|{}|{:?}|{:?}|{:?}|{:?}",
+        i18n::language(),
         str_of(s, "state"),
         str_of(s, "course"),
         str_of(s, "microphone"),
@@ -257,7 +269,7 @@ fn shape(st: &State) -> String {
     )
 }
 
-fn redraw(app: &AppHandle, force: bool) {
+pub(crate) fn redraw(app: &AppHandle, force: bool) {
     let Some(tray) = app.tray_by_id(TRAY) else { return };
     let bar = app.state::<MenuBar>();
     let mut st = bar.0.lock().unwrap();
@@ -298,6 +310,12 @@ fn redraw(app: &AppHandle, force: bool) {
 fn load_lists(app: &AppHandle) {
     let e = engine(app);
     let settings = e.call("settings", json!({})).unwrap_or(Value::Null);
+    // the language, in case the config changed it (Settings tells the app itself, see lib.rs: set_ui_language)
+    if let Some(lang) = settings.get("language").and_then(Value::as_str) {
+        if i18n::set_language(lang) {
+            crate::language_changed(app);
+        }
+    }
     let devices = e.call("devices", json!({})).unwrap_or(Value::Null);
     let bar = app.state::<MenuBar>();
     let mut st = bar.0.lock().unwrap();
@@ -324,7 +342,7 @@ fn update(app: &AppHandle, status: Value) {
         let mut st = bar.0.lock().unwrap();
         let state = str_of(&status, "state").to_string();
         if let Some(error) = status.get("error").and_then(Value::as_str) {
-            messages.push(format!("The recording didn't start.\n\n{error}"));
+            messages.push((true, tr!("note.didntStart", error = error))); // a dialog, not a notification
         }
         let note = str_of(&status, "note");
         if !note.is_empty() {
@@ -332,14 +350,14 @@ fn update(app: &AppHandle, status: Value) {
         }
         let warning = str_of(&status, "warning").to_string();
         if !warning.is_empty() && warning != st.last_warning {
-            messages.push(warning.clone());
+            messages.push((false, warning.clone()));
         }
         st.last_warning = warning;
         let was_session = !matches!(str_of(&st.status, "state"), "idle" | "" | "starting");
         // after a lecture the menu just says "Ready" (where its final transcript is shows in the window);
-        // only a lecture that ended for a reason, like a full disk, says so here
+        // only a lecture that ended for a reason, like a full disk, says so here ("Ready · …", see status_line)
         if was_session && state == "idle" {
-            st.idle_message = if st.last_note.is_empty() { String::new() } else { format!("Ready · {}", st.last_note) };
+            st.idle_message = st.last_note.clone();
             st.last_note.clear();
         }
         // a session that ends properly goes through "stopping"; one that goes from recording to gone was killed
@@ -359,8 +377,8 @@ fn update(app: &AppHandle, status: Value) {
         }
         st.status = status;
     }
-    for m in messages {
-        if m.starts_with("The recording didn't start") {
+    for (as_dialog, m) in messages {
+        if as_dialog {
             let app = app.clone();
             std::thread::spawn(move || alert(&app, "Stenny", &m));
         } else {
@@ -399,9 +417,9 @@ fn handle_vanished(app: &AppHandle, course: String, event: bool, was_recording: 
         params["device"] = json!(m);
     }
     if restart && e.call("start", params).is_ok() {
-        notify(app, &format!("Recording {course} again after a problem. Nothing recorded is lost; the transcript comes later."));
+        notify(app, &tr!("note.restarted", course = course));
     } else {
-        notify(app, &format!("The recording of {course} stopped. What was recorded is saved; its transcript comes later."));
+        notify(app, &tr!("note.stopped", course = course));
     }
 }
 
@@ -431,23 +449,18 @@ pub fn lecturer_agreed(app: &AppHandle, use_: &str, course: &str, event: bool) -
     if e.call("consent", params.clone()).ok().and_then(|r| r.get("given").and_then(Value::as_bool)) == Some(true) {
         return true;
     }
-    let who = if event { "speaker" } else { "lecturer" };
-    let (question, why, yes) = if use_ == "record" {
-        (format!("Did the {who} agree to being recorded?"),
-         format!("Recording {} usually needs the {who}'s OK.", if event { "a talk" } else { "a lecture" }),
-         "Yes, Record")
-    } else {
-        (format!("Did the {who} agree to this?"),
-         format!("Transcripts of {} usually need the {who}'s OK before they're passed on.", if event { "a talk" } else { "a lecture" }),
-         "Yes, Share")
-    };
+    let use_ = if use_ == "record" { "record" } else { "share" };
+    let who = if event { "event" } else { "course" };
+    let question = i18n::text(&format!("consent.{use_}.{who}.question"), &[]);
+    let why = i18n::text(&format!("consent.{use_}.{who}.why"), &[]);
+    let yes = if use_ == "record" { tr!("consent.yesRecord") } else { tr!("consent.yesShare") };
     let answer = app
         .dialog()
-        .message(format!("{why} Stenny asks once for {course}."))
+        .message(tr!("consent.message", why = why, course = course))
         .title(question)
-        .buttons(MessageDialogButtons::OkCancelCustom(yes.into(), "Not Yet".into()))
+        .buttons(MessageDialogButtons::OkCancelCustom(yes.clone(), tr!("consent.notYet")))
         .blocking_show_with_result();
-    let agreed = matches!(&answer, MessageDialogResult::Ok) || matches!(&answer, MessageDialogResult::Custom(t) if t == yes);
+    let agreed = matches!(&answer, MessageDialogResult::Ok) || matches!(&answer, MessageDialogResult::Custom(t) if *t == yes);
     if agreed {
         let _ = e.call("give_consent", params);
     }
@@ -493,15 +506,15 @@ fn cancel_recording(app: &AppHandle) {
         }
         str_of(&st.status, "course").to_string()
     };
+    let delete = tr!("cancelRec.delete");
     let answer = app
         .dialog()
-        .message(format!("The recording of {course} stops without a transcript. Its audio and the text so far \
-                          go to the {}.", if cfg!(windows) { "Recycle Bin" } else { "Trash" }))
-        .title("Delete this recording?")
+        .message(tr!("cancelRec.message", course = course, trash = trash_name()))
+        .title(tr!("cancelRec.title"))
         .kind(MessageDialogKind::Warning)
-        .buttons(MessageDialogButtons::OkCancelCustom("Keep Recording".into(), "Delete Recording".into()))
+        .buttons(MessageDialogButtons::OkCancelCustom(tr!("cancelRec.keep"), delete.clone()))
         .blocking_show_with_result();
-    if matches!(&answer, MessageDialogResult::Custom(t) if t == "Delete Recording") {
+    if matches!(&answer, MessageDialogResult::Custom(t) if *t == delete) {
         send(app, "cancel");
     }
 }
@@ -546,19 +559,18 @@ pub fn confirm_quit(app: &AppHandle) -> bool {
     if !is_active(&status) {
         return true;
     }
+    let (stop, keep) = (tr!("quit.stop"), tr!("quit.keep"));
     let answer = app
         .dialog()
-        .message("Stop it now (the final transcript is made afterwards), or keep it recording in the background? \
-                  You can control it again by reopening Stenny.")
-        .title("A lecture is being recorded")
-        .buttons(MessageDialogButtons::YesNoCancelCustom(
-            "Stop Recording & Quit".into(), "Keep Recording & Quit".into(), "Cancel".into()))
+        .message(tr!("quit.message"))
+        .title(tr!("quit.title"))
+        .buttons(MessageDialogButtons::YesNoCancelCustom(stop.clone(), keep.clone(), tr!("common.cancel")))
         .blocking_show_with_result();
     match answer {
         MessageDialogResult::Yes => { let _ = engine(app).call("command", json!({"cmd": "stop"})); true }
-        MessageDialogResult::Custom(t) if t.starts_with("Stop") => { let _ = engine(app).call("command", json!({"cmd": "stop"})); true }
+        MessageDialogResult::Custom(t) if t == stop => { let _ = engine(app).call("command", json!({"cmd": "stop"})); true }
         MessageDialogResult::No => true,
-        MessageDialogResult::Custom(t) if t.starts_with("Keep") => true,
+        MessageDialogResult::Custom(t) if t == keep => true,
         _ => false,
     }
 }
@@ -601,18 +613,18 @@ pub fn check_updates(app: &AppHandle) {
     let dialog = app.dialog();
     match result {
         Err(e) => {
-            dialog.message(e).title("Couldn't check for updates").kind(MessageDialogKind::Warning).blocking_show();
+            dialog.message(e).title(tr!("updates.failed")).kind(MessageDialogKind::Warning).blocking_show();
         }
         Ok(r) if r.get("update_available").and_then(Value::as_bool) != Some(true) => {
             let current = str_of(&r, "current").to_string();
-            dialog.message(format!("You have the newest version, {current}.")).title("Stenny is up to date").blocking_show();
+            dialog.message(tr!("updates.upToDate", version = current)).title(tr!("updates.upToDate.title")).blocking_show();
         }
         Ok(r) => {
             let (current, latest) = (str_of(&r, "current").to_string(), str_of(&r, "latest").to_string());
             let download = dialog
-                .message(format!("You have {current}."))
-                .title(format!("Stenny {latest} is available"))
-                .buttons(MessageDialogButtons::OkCancelCustom("Download".into(), "Not Now".into()))
+                .message(tr!("updates.available", version = current))
+                .title(tr!("updates.available.title", version = latest))
+                .buttons(MessageDialogButtons::OkCancelCustom(tr!("updates.download"), tr!("updates.notNow")))
                 .blocking_show();
             if download {
                 let _ = tauri_plugin_opener::open_url("https://github.com/hendrikboettcher/stenny/releases/latest", None::<&str>);
@@ -652,18 +664,13 @@ fn start_agent(app: &AppHandle) {
     let app = app.clone();
     std::thread::spawn(move || {
         use std::io::BufRead;
-        let shortcut = engine(&app)
-            .call("settings", json!({}))
-            .ok()
-            .and_then(|s| s.get("pause_shortcut").and_then(Value::as_str).map(String::from))
-            .unwrap_or_else(|| "cmd+shift+ü".into());
-        let data_dir = engine(&app)
-            .call("settings", json!({}))
-            .ok()
-            .and_then(|s| s.get("data_dir").and_then(Value::as_str).map(String::from))
-            .unwrap_or_default();
+        let settings = engine(&app).call("settings", json!({})).unwrap_or(Value::Null);
+        let shortcut = settings.get("pause_shortcut").and_then(Value::as_str).unwrap_or("cmd+shift+ü").to_string();
+        let data_dir = settings.get("data_dir").and_then(Value::as_str).unwrap_or_default().to_string();
+        // its notifications and messages in Stenny's language (restarted when that changes)
+        let lang = i18n::language();
         let child = std::process::Command::new(exe)
-            .args(["--shortcut", &shortcut, "--calendar", "--data-dir", &data_dir])
+            .args(["--shortcut", &shortcut, "--calendar", "--data-dir", &data_dir, "--lang", lang])
             .stdin(std::process::Stdio::piped()) // closes when Stenny quits, and the agent with it
             .stdout(std::process::Stdio::piped())
             .spawn();
@@ -719,7 +726,7 @@ fn start_agent(app: &AppHandle) {
                 app.state::<MenuBar>().0.lock().unwrap().login = Some(state.to_string());
             } else if let Some(problem) = line.strip_prefix("error ") {
                 app.state::<MenuBar>().0.lock().unwrap().shortcut_problem = Some(problem.to_string());
-                notify(&app, &format!("The pause shortcut doesn't work: {problem}"));
+                notify(&app, &tr!("note.shortcutBroken", problem = problem));
             }
         }
     });
@@ -769,7 +776,7 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
         let bar = app.state::<MenuBar>();
         bar.0.lock().unwrap().prefs = load_prefs(app);
     }
-    let menu = Menu::with_items(app, &[&MenuItem::with_id(app, "status", "Starting …", false, None::<&str>)?])?;
+    let menu = Menu::with_items(app, &[&MenuItem::with_id(app, "status", tr!("menu.status.starting"), false, None::<&str>)?])?;
     TrayIconBuilder::with_id(TRAY)
         .icon(icon("idle"))
         .icon_as_template(true)

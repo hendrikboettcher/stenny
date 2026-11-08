@@ -6,12 +6,14 @@ socket (live/control.py): status, pause, resume, stop, microphone.
 """
 
 import json
+import os
 import plistlib
 import subprocess
 import sys
 from pathlib import Path
 
-from . import paths
+from . import i18n, paths
+from .i18n import tr
 from .live import control
 
 _started: dict = {}  # the `stenny live` this server started: {"process": Popen, "course": …}
@@ -63,16 +65,16 @@ def start(cfg, params: dict) -> dict:
     mixed for a talk); `draft`: live text while recording (default on); `file`/`speed`: play an audio file
     instead of the microphone (for testing). Its output goes to live.log, like the Swift app's."""
     if status(cfg, {})["state"] not in ("idle",):
-        raise LiveError("A recording is already running.")
+        raise LiveError(tr("A recording is already running."))
     course, event = params.get("course"), params.get("event")
     if bool(course) == bool(event):
-        raise LiveError("Start either a course or a talk.")
+        raise LiveError(tr("Start either a course or a talk."))
     args = [sys.executable, "-m", "stenny", "live"] + (["--event", event] if event else ["--course", course])
     if params.get("device"):
         args += ["--device", params["device"]]
     if params.get("lang"):
         if params["lang"] not in ("en", "de", "fr", "mixed"):
-            raise LiveError("Stenny is made for English, German and French so far.")
+            raise LiveError(tr("Stenny is made for English, German and French so far."))
         args += ["--lang", params["lang"]]
     if params.get("draft") is False:
         args.append("--no-draft")
@@ -82,7 +84,9 @@ def start(cfg, params: dict) -> dict:
         args += ["--file", str(params["file"]), "--speed", str(params.get("speed", 1.0))]
     paths.SYSTEM_DIR.mkdir(parents=True, exist_ok=True)
     log = open(paths.SYSTEM_DIR / "live.log", "w", encoding="utf-8")
-    proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
+    # its warnings and notes show in the app's menu: in the app's language
+    env = {**os.environ, "STENNY_LANGUAGE": i18n.language()}
+    proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True, env=env)
     log.close()
     _started.update(process=proc, course=event or course)
     return {"ok": True, "state": "starting", "course": event or course}
@@ -92,11 +96,11 @@ def command(cfg, params: dict) -> dict:
     """pause, resume, toggle, stop or cancel (no transcript, files to the Trash) the running recording."""
     cmd = params.get("cmd")
     if cmd not in ("pause", "resume", "toggle", "stop", "cancel"):
-        raise LiveError(f"Unknown command '{cmd}'.")
+        raise LiveError(tr("Unknown command '{cmd}'.", cmd=cmd))
     try:
         return control.send(cmd)
     except control.NoSession:
-        raise LiveError("No recording is running.") from None
+        raise LiveError(tr("No recording is running.")) from None
 
 
 def microphone(cfg, params: dict) -> dict:
@@ -104,9 +108,9 @@ def microphone(cfg, params: dict) -> dict:
     try:
         reply = control.send("microphone", device=params.get("device"))
     except control.NoSession:
-        raise LiveError("No recording is running.") from None
+        raise LiveError(tr("No recording is running.")) from None
     if not reply.get("ok"):
-        raise LiveError(reply.get("error") or "Switching the microphone didn't work.")
+        raise LiveError(reply.get("error") or tr("Switching the microphone didn't work."))
     return reply
 
 
@@ -118,6 +122,7 @@ def devices(cfg, params: dict) -> dict:
 def settings(cfg, params: dict) -> dict:
     """What the app reads at launch: the pause shortcut (as text, like "cmd+shift+ü") and the courses to start."""
     return {"pause_shortcut": cfg.pause_shortcut, "data_dir": str(paths.SYSTEM_DIR),
+            "language": i18n.resolve(cfg.app_language),  # the app's own language: "en" or "de"
             "courses": [c.name for c in cfg.courses.values() if not c.hidden]}
 
 
@@ -147,7 +152,7 @@ def send_feedback(cfg, params: dict) -> dict:
 
     message = (params.get("message") or "").strip()
     if not message:
-        raise LiveError("Write a few words first.")
+        raise LiveError(tr("Write a few words first."))
     body = {"source": "app", "message": message, "contact": (params.get("contact") or "").strip()}
     if params.get("details"):
         model = subprocess.run(["sysctl", "-n", "hw.model"], capture_output=True, text=True).stdout.strip()
@@ -172,8 +177,8 @@ def send_feedback(cfg, params: dict) -> dict:
             reason = json.loads(done.stdout or "{}").get("error")
         except ValueError:
             reason = None
-        raise LiveError(reason or "The feedback didn't go through.")
-    raise LiveError("Couldn't reach stenny.eu. Check your internet connection and try again.")
+        raise LiveError(reason or tr("The feedback didn't go through."))
+    raise LiveError(tr("Couldn't reach stenny.eu. Check your internet connection and try again."))
 
 
 def check_update(cfg, params: dict) -> dict:
@@ -182,7 +187,7 @@ def check_update(cfg, params: dict) -> dict:
     try:
         return update.check()
     except Exception as e:  # noqa: BLE001 — no internet, GitHub down
-        raise LiveError("Couldn't check for updates. Check your internet connection and try again.") from e
+        raise LiveError(tr("Couldn't check for updates. Check your internet connection and try again.")) from e
 
 
 # ---------------------------------------------------------------- "Did the lecturer agree?"
@@ -220,7 +225,7 @@ def _save_consent(given: set[str]) -> None:
 def _consent_id(params: dict) -> str:
     use = params.get("use")
     if use not in ("record", "share") or not params.get("course"):
-        raise LiveError("Consent needs 'use' (record or share) and 'course'.")
+        raise LiveError(tr("Consent needs 'use' (record or share) and 'course'."))
     return f"{use}/{'event' if params.get('event') else 'course'}/{params['course']}"
 
 

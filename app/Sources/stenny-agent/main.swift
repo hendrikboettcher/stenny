@@ -7,8 +7,8 @@ import UserNotifications
 // stenny-agent: the macOS parts of Stenny's new app (desktop/) that Tauri doesn't have, as a helper it starts.
 // One line per event on stdout, one command per line on stdin; it quits when its stdin closes (the app quit).
 //
-//   stenny-agent --shortcut "cmd+shift+ü" [--calendar --data-dir <~/Lectures Data/_System>]
-//   stenny-agent --pdf <copy.html>: makes the shared PDF from the HTML copy ("pdf <path>"), then quits
+//   stenny-agent --shortcut "cmd+shift+ü" [--calendar --data-dir <~/Lectures Data/_System>] [--lang de]
+//   stenny-agent --pdf <copy.html> [--lang de]: makes the shared PDF from the HTML copy ("pdf <path>"), then quits
 //   out: "ready <key code> ⌘⇧Ü" (or "error …"); "hotkey" on every press;
 //        with --calendar, every 30 s: "events [{title, start, end, range, id}, …]" (on now or within 10 min);
 //        "start <course>" when "Start Recording" is clicked in a lecture notification;
@@ -20,6 +20,13 @@ import UserNotifications
 // It runs inside Stenny.app (Contents/MacOS), so the calendar permission and the notifications are Stenny's.
 // The key is given as printed on the keyboard and looked up in the current layout, since Carbon hotkeys use
 // physical key codes (Ü is "[" on a US keyboard). Same rules as the Swift app's Shortcut.swift.
+
+// Stenny's language (`--lang de`, from the app): the few texts this helper shows itself. The app's own texts are
+// in desktop/src/lib/locales; these use the same words ("Vorlesung", "Aufnahme starten").
+let german = CommandLine.arguments.firstIndex(of: "--lang").map { $0 + 1 < CommandLine.arguments.count
+    && CommandLine.arguments[$0 + 1] == "de" } ?? false
+
+func localized(_ english: String, _ deutsch: String) -> String { german ? deutsch : english }
 
 func say(_ line: String) {
     FileHandle.standardOutput.write((line + "\n").data(using: .utf8)!)
@@ -158,7 +165,7 @@ func postLecture(_ json: String) {
           let id = info["id"] as? String, let course = info["course"] as? String else { return }
     let content = UNMutableNotificationContent()
     content.title = "Stenny"
-    content.body = "Record this lecture?\n\(course) · \(info["range"] as? String ?? "")"
+    content.body = localized("Record this lecture?", "Diese Vorlesung aufnehmen?") + "\n\(course) · \(info["range"] as? String ?? "")"
     content.categoryIdentifier = "lecture"
     content.userInfo = ["course": course]
     UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: id, content: content, trigger: nil))
@@ -170,7 +177,7 @@ if args.contains("--calendar") {
         let center = UNUserNotificationCenter.current()
         center.delegate = notifications
         // one action only: with two, macOS folds them into an "Options" menu
-        let start = UNNotificationAction(identifier: "start", title: "Start Recording", options: [])
+        let start = UNNotificationAction(identifier: "start", title: localized("Start Recording", "Aufnahme starten"), options: [])
         center.setNotificationCategories([UNNotificationCategory(identifier: "lecture", actions: [start], intentIdentifiers: [])])
     }
     Task {
@@ -239,7 +246,8 @@ DispatchQueue.main.async {  // once app.run() has launched: AppKit sets up its o
 }
 
 guard let (code, modifiers, label) = parse(args[i + 1]) else {
-    say("error The key of the pause shortcut \(args[i + 1]) isn't on this keyboard.")
+    say("error " + localized("The key of the pause shortcut \(args[i + 1]) isn't on this keyboard.",
+                        "Die Taste des Tastenkürzels \(args[i + 1]) gibt es auf dieser Tastatur nicht."))
     exit(1)
 }
 var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
@@ -250,5 +258,7 @@ InstallEventHandler(GetApplicationEventTarget(), { _, _, _ in
 var ref: EventHotKeyRef?
 let id = EventHotKeyID(signature: OSType(0x53544E59) /* "STNY" */, id: 1)
 let status = RegisterEventHotKey(UInt32(code), UInt32(modifiers), id, GetApplicationEventTarget(), 0, &ref)
-say(status == noErr ? "ready \(code) \(label)" : "error \(label) is taken by another app (status \(status)).")
+say(status == noErr ? "ready \(code) \(label)"
+    : "error " + localized("\(label) is taken by another app (status \(status)).",
+                      "\(label) wird schon von einer anderen App verwendet (Status \(status))."))
 app.run()

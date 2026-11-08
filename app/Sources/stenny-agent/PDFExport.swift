@@ -12,7 +12,8 @@ func makePDF(from page: URL) -> Result<URL, PDFFailure> {
     let pdf = page.deletingPathExtension().appendingPathExtension("pdf")
     guard let data = try? Data(contentsOf: page),
           let text = NSAttributedString(html: data, baseURL: page.deletingLastPathComponent(), documentAttributes: nil)
-    else { return .failure(PDFFailure(message: "The PDF couldn't be made: the copy couldn't be read.")) }
+    else { return .failure(PDFFailure(message: localized("The PDF couldn't be made: the copy couldn't be read.",
+                                                     "Das PDF konnte nicht erstellt werden: Die Kopie war nicht lesbar."))) }
     let info = NSPrintInfo.shared.copy() as! NSPrintInfo
     (info.topMargin, info.bottomMargin, info.leftMargin, info.rightMargin) = (54, 54, 62, 62)
     info.horizontalPagination = .fit
@@ -33,7 +34,7 @@ func makePDF(from page: URL) -> Result<URL, PDFFailure> {
     operation.showsPrintPanel = false
     operation.showsProgressPanel = false
     guard operation.run(), FileManager.default.fileExists(atPath: pdf.path) else {
-        return .failure(PDFFailure(message: "The PDF couldn't be made."))
+        return .failure(PDFFailure(message: localized("The PDF couldn't be made.", "Das PDF konnte nicht erstellt werden.")))
     }
     return .success(pdf)
 }

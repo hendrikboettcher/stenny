@@ -7,10 +7,11 @@
   import Settings from "$lib/Settings.svelte";
   import { renderMarkdown } from "$lib/markdown";
   import {
-    library, lecture, makeCopy, makePdf, finishNow, openTranscript, reveal, revealLabel, shareFiles, lecturerAgreed,
-    renameLecture, deleteLecture, renameCourse, addCourse, removeCourse, deleteCourse, copyText, trashName,
+    library, lecture, makeCopy, makePdf, finishNow, openTranscript, reveal, shareFiles, lecturerAgreed,
+    renameLecture, deleteLecture, renameCourse, addCourse, removeCourse, deleteCourse, copyText,
     type Entry, type Library,
   } from "$lib/engine";
+  import { t, tn, locale, languageName, trashName, revealLabel, type Key } from "$lib/i18n.svelte";
 
   type Group = { course: string; event: boolean };
 
@@ -42,7 +43,7 @@
   let field = $state("");
   let alias = $state("");
   let language = $state("en");
-  const LANGUAGES = [["en", "English"], ["de", "German"], ["fr", "French"], ["mixed", "Mixed"], ["auto", "Auto"]];
+  const LANGUAGES = ["en", "de", "fr", "mixed", "auto"];
 
   const id = (e: Entry) => `${e.kind}/${e.course}/${e.folder}`;
   const same = (a: Group | null, b: Group | null) => !!a && !!b && a.course === b.course && a.event === b.event;
@@ -157,13 +158,13 @@
         group = { course: name, event: true };
         selectedId = id({ ...e, course: name });
       } else {
-        const back = !next || (e.number > 0 && next === `Lecture ${e.number}`);
+        const back = !next || (e.number > 0 && next === t("lib.lectureN", { n: e.number }));
         if (back && !e.title) return;
         await renameLecture(e, back ? "" : next);
       }
       await reload();
     } catch (err) {
-      notice = { text: `Couldn't rename it (${err}).`, error: true };
+      notice = { text: t("lib.renameFailed", { error: String(err) }), error: true };
     }
   }
 
@@ -223,7 +224,7 @@
     try {
       await copyText(STENNY_URL);
     } catch (e) {
-      notice = { text: `Couldn't copy the link (${e}). It's ${STENNY_URL}.`, error: true };
+      notice = { text: t("lib.copyFailed", { error: String(e), url: STENNY_URL }), error: true };
       return;
     }
     linkCopied = true;
@@ -233,22 +234,19 @@
 
   const count = (g: Group) => data?.entries.filter((e) => e.course === g.course && (e.kind === "event") === g.event).length ?? 0;
   const lectureName = (e: Entry) =>
-    e.title ? `“${e.title}”` : e.kind === "event" ? `${e.course} (${prettyDate(e, false)})` : `${rowTitle(e)} of ${e.course}`;
+    e.title ? t("lib.quoted", { title: e.title }) : e.kind === "event" ? `${e.course} (${prettyDate(e, false)})`
+      : t("lib.lectureOfCourse", { lecture: rowTitle(e), course: e.course });
 
-  const languageName = (code: string | null) => {
-    if (!code) return null;
-    try { return new Intl.DisplayNames(["en"], { type: "language" }).of(code) ?? code; } catch { return code; }
-  };
   const prettyDate = (e: Entry, withWeekday = true) => {
     const d = new Date(`${e.date}T12:00:00`);
     if (isNaN(+d)) return e.date;
-    const text = d.toLocaleDateString("en-GB", { weekday: withWeekday ? "short" : undefined, day: "numeric", month: "short", year: "numeric" });
+    const text = d.toLocaleDateString(locale(), { weekday: withWeekday ? "short" : undefined, day: "numeric", month: "short", year: "numeric" });
     const second = e.folder.length > 10 ? ` ${e.folder.slice(10).trim()}` : "";
     return text + second;
   };
-  const rowTitle = (e: Entry) => e.title ?? (e.number > 0 ? `Lecture ${e.number}` : prettyDate(e));
+  const rowTitle = (e: Entry) => e.title ?? (e.number > 0 ? t("lib.lectureN", { n: e.number }) : prettyDate(e));
   // always there, renamed or not, so a lecture keeps the same line whatever its title
-  const number = (e: Entry) => (e.number > 0 ? `Lecture ${e.number}` : null);
+  const number = (e: Entry) => (e.number > 0 ? t("lib.lectureN", { n: e.number }) : null);
   // "1:42:17" → "1 h 42 min": next to a clock time ("16:09") the two mustn't look alike
   const length = (duration: string | null) => {
     const parts = duration?.split(":").map(Number);
@@ -261,15 +259,14 @@
     [number(e), e.number > 0 || e.title ? prettyDate(e) : e.start, length(e.duration)].filter(Boolean).join(" · ");
   const details = (e: Entry) =>
     [number(e), prettyDate(e) + (e.start ? `, ${e.start}` : ""), length(e.duration), languageName(e.language)].filter(Boolean).join(" · ");
-  const statusLabel: Record<string, string> = {
-    live: "Recording", queued: "Waiting", finalizing: "Finishing", draft: "Draft",
-  };
+  const statusLabel = (status: string) =>
+    t((["live", "queued", "finalizing"].includes(status) ? `lib.status.${status}` : "lib.status.draft") as Key);
 
   const FORMATS = [
-    { id: "pdf", title: "PDF", help: "Opens on any phone or computer" },
-    { id: "docx", title: "Word", help: "To read, print or edit" },
-    { id: "md", title: "Markdown", help: "For notes apps and AI chats" },
-  ];
+    { id: "pdf", title: "PDF", help: "lib.format.pdf" },
+    { id: "docx", title: "Word", help: "lib.format.docx" },
+    { id: "md", title: "Markdown", help: "lib.format.md" },
+  ] as const;
 
   async function share(format: string) {
     if (!selected) return;
@@ -281,7 +278,7 @@
       // a PDF is made from the HTML copy (the engine can't paginate)
       const copy = await makeCopy(selected, format === "pdf" ? "html" : format, withSummary && !!selected.summary);
       const path = format === "pdf" ? await makePdf(copy.path) : copy.path;
-      notice = { text: `Made ${path.split(/[\\/]/).pop()}`, path };
+      notice = { text: t("lib.made", { file: path.split(/[\\/]/).pop() ?? path }), path };
       // the system's share menu (AirDrop, Messages, Mail … / Windows' Share panel), at the Share button
       await shareFiles([path], shareButton!.getBoundingClientRect());
     } catch (e) {
@@ -325,7 +322,7 @@
       {#snippet row(g: Group)}
         <div class="group-row" class:active={same(g, group)} oncontextmenu={(ev) => showMenu(ev, { group: g })}>
           <button class="group" onclick={() => pick(g)} title={g.course}>{g.course}</button>
-          <button class="more" aria-label="Options for {g.course}" title="Options"
+          <button class="more" aria-label={t("lib.optionsFor", { course: g.course })} title={t("lib.options")}
                   onclick={(ev) => showMenu(ev, { group: g })}>
             <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.25" /><circle cx="8" cy="8" r="1.25" /><circle cx="12.5" cy="8" r="1.25" /></svg>
           </button>
@@ -338,31 +335,31 @@
         {/if}
       {/snippet}
       <div class="kicker with-add">
-        <span>Courses</span>
-        <button class="add" aria-label="Add Course" title="Add a course" onclick={() => open({ kind: "add" })}>
+        <span>{t("lib.courses")}</span>
+        <button class="add" aria-label={t("lib.addCourse")} title={t("lib.addCourse")} onclick={() => open({ kind: "add" })}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" /></svg>
         </button>
       </div>
       {#each groups.courses as g (g.course)}{@render row(g)}{/each}
       {#if data && !groups.courses.length}
-        <button class="group quiet-add" onclick={() => open({ kind: "add" })}>Add your first course</button>
+        <button class="group quiet-add" onclick={() => open({ kind: "add" })}>{t("lib.addFirstCourse")}</button>
       {/if}
-      {@render section("Talks & events", groups.talks)}
+      {@render section(t("common.talksEvents"), groups.talks)}
     </nav>
     <footer>
-      <button onclick={() => (settingsOpen = true)}>Settings…</button>
-      <button onclick={() => invoke("show_feedback")}>Send Feedback…</button>
-      <button onclick={() => invoke("check_updates")}>Check for Updates…</button>
+      <button onclick={() => (settingsOpen = true)}>{t("lib.settings")}</button>
+      <button onclick={() => invoke("show_feedback")}>{t("lib.feedback")}</button>
+      <button onclick={() => invoke("check_updates")}>{t("lib.updates")}</button>
       <!-- copies stenny.eu, where friends get it; says so for a moment -->
-      <button class="share-stenny" class:copied={linkCopied} onclick={shareStenny} title="Copy the link to stenny.eu"
-              aria-label={linkCopied ? "Link copied" : "Share Stenny: copy the link to stenny.eu"}>
+      <button class="share-stenny" class:copied={linkCopied} onclick={shareStenny} title={t("lib.shareStenny.title")}
+              aria-label={linkCopied ? t("lib.linkCopied") : t("lib.shareStenny.aria")}>
         <span class="icon" aria-hidden="true">
           <svg class="idle" viewBox="0 0 16 16"><path d="M5.5 6H4.5a1 1 0 0 0-1 1v6.5a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-1M8 1.5v8.5M5.5 4 8 1.5 10.5 4" /></svg>
           <svg class="done" viewBox="0 0 16 16"><path d="M3.5 8.5 6.5 11.5 12.5 4.5" /></svg>
         </span>
         <span class="labels">
-          <span class="idle">Share Stenny</span>
-          <span class="done">Link copied</span>
+          <span class="idle">{t("lib.shareStenny")}</span>
+          <span class="done">{t("lib.linkCopied")}</span>
         </span>
       </button>
     </footer>
@@ -371,18 +368,16 @@
   <section class="list">
     <div class="titlebar" data-tauri-drag-region></div>
     {#if group}
-      <div class="kicker list-head">
-        {entries.length} {entries.length === 1 ? "recording" : "recordings"}
-      </div>
+      <div class="kicker list-head">{tn("lib.recordings", entries.length)}</div>
       {#each entries as e (id(e))}
         <button class="row" class:active={id(e) === selectedId} onclick={() => (selectedId = id(e))}
                 oncontextmenu={(ev) => { selectedId = id(e); showMenu(ev, { entry: e }); }}>
           <span class="row-title serif">{rowTitle(e)}</span>
-          {#if isDraft(e)}<span class="status {e.status}">{statusLabel[e.status] ?? "Draft"}</span>{/if}
+          {#if isDraft(e)}<span class="status {e.status}">{statusLabel(e.status)}</span>{/if}
           <span class="row-detail">{rowDetail(e)}</span>
         </button>
       {:else}
-        <p class="empty">No recordings yet.</p>
+        <p class="empty">{t("lib.noRecordings")}</p>
       {/each}
     {/if}
     <div class="bottombar" aria-hidden="true"></div>
@@ -392,22 +387,23 @@
     <div class="titlebar" data-tauri-drag-region></div>
     <!-- deleting: an icon right after the other actions, like Mail's; it asks first, and it's the Trash -->
     {#snippet trashButton(e: Entry)}
-      <button class="trash" aria-label="Move to the {trashName}…" title="Move to the {trashName}…"
+      <button class="trash" aria-label={t("lib.trashButton", { trash: trashName() })}
+              title={t("lib.trashButton", { trash: trashName() })}
               onclick={() => open({ kind: "delete-lecture", entry: e })}>
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.8 4.3h10.4 M6.3 4.3V2.8h3.4v1.5 M4.3 4.3l.6 8.6a1 1 0 0 0 1 .9h4.2a1 1 0 0 0 1-.9l.6-8.6 M6.7 6.8v4.6 M9.3 6.8v4.6" /></svg>
       </button>
     {/snippet}
     {#if selected}
       <article>
-        <div class="kicker">{selected.kind === "event" ? "Talk" : selected.course}</div>
+        <div class="kicker">{selected.kind === "event" ? t("lib.talk") : selected.course}</div>
         <!-- click the heading to rename (see startRename); the pencil only shows while pointing at it -->
         {#if editing === id(selected)}
           {@const e = selected}
           <!-- the field is as wide as its text: a hidden copy of the text (::after) sizes the grid it shares -->
-          <div class="title-wrap serif" data-value={titleField || (e.kind === "event" ? "" : e.number > 0 ? `Lecture ${e.number}` : prettyDate(e))}>
+          <div class="title-wrap serif" data-value={titleField || (e.kind === "event" ? "" : e.number > 0 ? t("lib.lectureN", { n: e.number }) : prettyDate(e))}>
           <input class="title-input" size="1" bind:value={titleField} use:focusAll
-                 aria-label={e.kind === "event" ? "Name of this talk" : "Title of this lecture"}
-                 placeholder={e.kind === "event" ? "" : e.number > 0 ? `Lecture ${e.number}` : prettyDate(e)}
+                 aria-label={e.kind === "event" ? t("lib.rename.talkName") : t("lib.rename.lectureTitle")}
+                 placeholder={e.kind === "event" ? "" : e.number > 0 ? t("lib.lectureN", { n: e.number }) : prettyDate(e)}
                  onkeydown={(ev) => { if (ev.key === "Enter") finishRename(e, true); if (ev.key === "Escape") { ev.stopPropagation(); finishRename(e, false); } }}
                  onblur={() => finishRename(e, true)} />
           </div>
@@ -415,8 +411,8 @@
           <h1 class="serif selectable">{headingOf(selected)}</h1>
         {:else}
           {@const e = selected}
-          <h1 class="serif"><button class="title-button" title="Click to rename"
-              aria-label="{headingOf(e)}, rename" onclick={() => startRename(e)}>{headingOf(e)}<svg
+          <h1 class="serif"><button class="title-button" title={t("lib.rename.click")}
+              aria-label={t("lib.rename.aria", { heading: headingOf(e) })} onclick={() => startRename(e)}>{headingOf(e)}<svg
               class="pen" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.6 2.6a1.4 1.4 0 0 1 2 0l.8.8a1.4 1.4 0 0 1 0 2L6 12.8 2.8 13.2l.4-3.2z M9.4 3.8l2.8 2.8" /></svg></button></h1>
         {/if}
         <p class="meta">{details(selected)}</p>
@@ -424,12 +420,12 @@
         {#if isDraft(selected)}
           <div class="draft">
             <p class="serif">
-              <span class="status {selected.status}">{statusLabel[selected.status] ?? "Draft"}</span>
-              {selected.draft_note ?? "Its transcript comes later."}
+              <span class="status {selected.status}">{statusLabel(selected.status)}</span>
+              {selected.draft_note ?? t("lib.comesLater")}
             </p>
             {#if selected.status === "queued"}
               <button class="pill small" onclick={finish} disabled={busy === "finish"}>
-                {busy === "finish" ? "Starting…" : "Make final transcript now"}
+                {busy === "finish" ? t("common.starting") : t("lib.finishNow")}
               </button>
             {/if}
             {#if !isBusy(selected)}{@render trashButton(selected)}{/if}
@@ -441,67 +437,65 @@
           <div class="share-wrap">
             <button class="pill primary" disabled={busy === "share"} bind:this={shareButton}
                     onclick={(ev) => { ev.stopPropagation(); shareOpen = !shareOpen; }}>
-              {busy === "share" ? "Preparing…" : "Share…"}
+              {busy === "share" ? t("lib.preparing") : t("lib.share")}
             </button>
             {#if shareOpen}
               <div class="menu" role="menu">
                 {#each FORMATS as f}
                   <button role="menuitem" onclick={() => share(f.id)}>
-                    <span>{f.title}</span><small>{f.help}</small>
+                    <span>{f.title}</span><small>{t(f.help)}</small>
                   </button>
                 {/each}
               </div>
             {/if}
           </div>
-          <button class="pill" onclick={() => openTranscript(selected!.transcript)}>Open transcript</button>
-          <button class="pill" onclick={() => reveal(selected!.transcript)}>{revealLabel}</button>
+          <button class="pill" onclick={() => openTranscript(selected!.transcript)}>{t("lib.openTranscript")}</button>
+          <button class="pill" onclick={() => reveal(selected!.transcript)}>{revealLabel()}</button>
           {@render trashButton(selected)}
         </div>
         {/if}
         {#if selected.summary && !isDraft(selected)}
           <label class="check">
-            <input type="checkbox" bind:checked={withSummary} /> Put the summary at the top of shared copies
+            <input type="checkbox" bind:checked={withSummary} /> {t("lib.summaryOnTop")}
           </label>
         {/if}
         {#if notice}
           <p class="notice" class:error={notice.error}>
-            {notice.text}{#if notice.path}. <button class="link" onclick={() => reveal(notice!.path!)}>{revealLabel}</button>{/if}
+            {notice.text}{#if notice.path}. <button class="link" onclick={() => reveal(notice!.path!)}>{revealLabel()}</button>{/if}
           </p>
         {/if}
 
         <hr />
 
         {#if summary === undefined}
-          <p class="quiet serif">Loading…</p>
+          <p class="quiet serif">{t("common.loading")}</p>
         {:else if isDraft(selected)}
           {#if progress}
-            <div class="kicker">Transcribed so far</div>
+            <div class="kicker">{t("lib.soFar")}</div>
             <div class="summary serif selectable">{@html renderMarkdown(progress)}</div>
           {:else}
-            <p class="quiet serif">Nothing transcribed yet. {selected.status === "live"
-              ? "While the Mac is plugged in, the text appears here as the recording goes on."
-              : "The text appears here once the transcript is being made."}</p>
+            <p class="quiet serif">{t("lib.nothingYet")} {selected.status === "live" ? t("lib.nothingYet.live") : t("lib.nothingYet.later")}</p>
           {/if}
         {:else if summary}
-          <div class="kicker">Summary</div>
+          <div class="kicker">{t("lib.summary")}</div>
           <div class="summary serif selectable">{@html renderMarkdown(summary)}</div>
         {:else}
-          <p class="quiet serif">No summary for this {selected.kind === "event" ? "talk" : "lecture"}.</p>
+          <p class="quiet serif">{selected.kind === "event" ? t("lib.noSummary.event") : t("lib.noSummary.lecture")}</p>
         {/if}
       </article>
     {:else if failed}
       <div class="center">
-        <p class="serif big">Couldn't read your lectures</p>
+        <p class="serif big">{t("lib.readFailed")}</p>
         <p class="quiet selectable">{failed}</p>
-        <button class="pill" onclick={reload}>Try again</button>
+        <button class="pill" onclick={reload}>{t("lib.tryAgain")}</button>
       </div>
     {:else if data && group}
       <div class="center">
-        <p class="serif big">Nothing recorded for {group.course} yet</p>
-        <p class="quiet">Start a recording from Stenny in the menu bar; its transcript appears here.</p>
+        <p class="serif big">{t("lib.emptyCourse", { course: group.course })}</p>
+        <p class="quiet">{t("lib.emptyCourse.hint")}</p>
       </div>
     {:else if !data}
-      <div class="center"><p class="quiet serif">Loading…</p></div>
+      <div class="center"><p class="quiet serif">{t("common.loading")}</p></div>
     {/if}
     <div class="bottombar" aria-hidden="true"></div>
   </main>
@@ -514,29 +508,27 @@
     {#if menu.group}
       {@const g = menu.group}
       <button role="menuitem" onclick={() => open({ kind: "rename-group", group: g })}>
-        <span>Rename…</span>
+        <span>{t("lib.menu.rename")}</span>
       </button>
       {#if !g.event}
         <button role="menuitem" onclick={() => open({ kind: "remove-course", group: g })}>
-          <span>Remove Course…</span><small>Its recordings stay, under Settings ▸ Courses</small>
+          <span>{t("lib.menu.removeCourse")}</span><small>{t("lib.menu.removeCourse.hint")}</small>
         </button>
       {/if}
       <div class="menu-line"></div>
       <button role="menuitem" class="danger" onclick={() => open({ kind: "delete-group", group: g })}>
-        <span>{g.event ? "Delete Talk…" : "Delete Course…"}</span>
+        <span>{g.event ? t("lib.menu.deleteTalk") : t("lib.menu.deleteCourse")}</span>
       </button>
     {:else if menu.entry}
       {@const e = menu.entry}
       {#if isBusy(e)}
-        <p class="menu-note">{e.status === "live"
-          ? "Still recording. To throw it away, use Cancel Recording… in Stenny's menu bar."
-          : "Its transcript is being made. Rename or delete it when that's done."}</p>
+        <p class="menu-note">{e.status === "live" ? t("lib.menu.stillRecording") : t("lib.menu.beingMade")}</p>
       {:else}
         <button role="menuitem" onclick={() => open({ kind: "rename-lecture", entry: e })}>
-          <span>Rename…</span>
+          <span>{t("lib.menu.rename")}</span>
         </button>
         <button role="menuitem" class="danger" onclick={() => open({ kind: "delete-lecture", entry: e })}>
-          <span>Move to {trashName}…</span>
+          <span>{t("lib.menu.moveToTrash", { trash: trashName() })}</span>
         </button>
       {/if}
     {/if}
@@ -545,55 +537,48 @@
 
 {#if ask}
   {#if ask.kind === "add"}
-    <Dialog title="Add a course" confirm="Add Course" busy={askBusy} error={askError}
-            text="Mixed is for lecturers who switch languages within a lecture. Auto is for one language per lecture, but not always the same one."
+    <Dialog title={t("add.title")} confirm={t("add.confirm")} busy={askBusy} error={askError} text={t("add.text")}
             oncancel={() => (ask = null)} onconfirm={answer}>
-      <label for="course-name">Name</label>
-      <input id="course-name" bind:value={field} placeholder="e.g. Microeconomics" autocomplete="off" spellcheck="false" />
-      <label for="course-language">Language</label>
+      <label for="course-name">{t("add.name")}</label>
+      <input id="course-name" bind:value={field} placeholder={t("add.namePlaceholder")} autocomplete="off" spellcheck="false" />
+      <label for="course-language">{t("common.language")}</label>
       <select id="course-language" bind:value={language}>
-        {#each LANGUAGES as [code, name]}<option value={code}>{name}</option>{/each}
+        {#each LANGUAGES as code}<option value={code}>{languageName(code)}</option>{/each}
       </select>
-      <label for="course-alias">Short name (optional)</label>
-      <input id="course-alias" bind:value={alias} placeholder="e.g. micro" autocomplete="off" spellcheck="false" />
+      <label for="course-alias">{t("add.alias")}</label>
+      <input id="course-alias" bind:value={alias} placeholder={t("add.aliasPlaceholder")} autocomplete="off" spellcheck="false" />
     </Dialog>
   {:else if ask.kind === "rename-group"}
-    <Dialog title={ask.group.event ? "Rename this talk" : "Rename this course"} confirm="Rename" busy={askBusy} error={askError}
-            text={ask.group.event
-              ? "Its folder and files are renamed too."
-              : "Its folder, files and Obsidian links are renamed too. The old name still finds it in your calendar."}
+    <Dialog title={ask.group.event ? t("renameGroup.title.event") : t("renameGroup.title.course")} confirm={t("common.rename")}
+            busy={askBusy} error={askError}
+            text={ask.group.event ? t("renameGroup.text.event") : t("renameGroup.text.course")}
             oncancel={() => (ask = null)} onconfirm={answer}>
-      <input bind:value={field} aria-label="New name" autocomplete="off" spellcheck="false" />
+      <input bind:value={field} aria-label={t("renameGroup.aria")} autocomplete="off" spellcheck="false" />
     </Dialog>
   {:else if ask.kind === "remove-course"}
     {@const n = count(ask.group)}
-    <Dialog title="Remove {ask.group.course}?" confirm="Remove Course" busy={askBusy} error={askError}
-            text="It leaves this list and calendar matching. {n === 0
-              ? 'Nothing was recorded for it yet; its glossary, if it has one, stays.'
-              : n === 1 ? 'Its transcript and glossary stay.'
-              : `Its ${n} transcripts and glossary stay.`} You'll find it under Past courses in Settings ▸ Courses, where you can bring it back or delete it."
+    <Dialog title={t("remove.title", { course: ask.group.course })} confirm={t("remove.confirm")} busy={askBusy} error={askError}
+            text={t(n === 0 ? "remove.text.none" : n === 1 ? "remove.text.one" : "remove.text.other", { n })}
             oncancel={() => (ask = null)} onconfirm={answer} />
   {:else if ask.kind === "delete-group"}
     {@const n = count(ask.group)}
-    {@const what = ask.group.event ? "talk" : "course"}
-    <Dialog title="Delete {ask.group.course}?" confirm="Delete {ask.group.event ? 'Talk' : 'Course'}" danger
+    {@const what = ask.group.event ? "event" : "course"}
+    <Dialog title={t("deleteGroup.title", { name: ask.group.course })} confirm={t(`deleteGroup.confirm.${what}`)} danger
             busy={askBusy} error={askError}
-            text="This deletes the {what} and also {n === 0 ? 'everything Stenny saved for it' : n === 1
-              ? 'its recording' : `all ${n} of its ${ask.group.event ? 'recordings' : 'lectures'}`}: transcripts, summaries, audio and everything else in Stenny's folders{ask.group.event ? '' : ', its glossary included'}. {ask.group.event ? '' : 'It also leaves the menu. '}Everything goes to the {trashName}; once it's emptied, it's gone for good."
+            text={t(`deleteGroup.text.${what}.${n === 0 ? "none" : n === 1 ? "one" : "other"}`, { n, trash: trashName() })}
             oncancel={() => (ask = null)} onconfirm={answer} />
   {:else if ask.kind === "rename-lecture"}
-    <Dialog title="Rename {ask.entry.number > 0 ? `Lecture ${ask.entry.number}` : 'this recording'}" confirm="Rename"
+    {@const n = ask.entry.number}
+    <Dialog title={n > 0 ? t("renameLecture.title.number", { n }) : t("renameLecture.title.other")} confirm={t("common.rename")}
             busy={askBusy} error={askError}
-            text={ask.entry.number > 0
-              ? `The title shows instead of “Lecture ${ask.entry.number}”. Leave it empty to go back to the number.`
-              : "The title shows instead of the date. Leave it empty to show the date again."}
+            text={n > 0 ? t("renameLecture.text.number", { n }) : t("renameLecture.text.other")}
             oncancel={() => (ask = null)} onconfirm={answer}>
-      <input bind:value={field} aria-label="Title" placeholder="e.g. Decision trees" autocomplete="off" />
+      <input bind:value={field} aria-label={t("renameLecture.aria")} placeholder={t("renameLecture.placeholder")} autocomplete="off" />
     </Dialog>
   {:else if ask.kind === "delete-lecture"}
-    <Dialog title="Move {lectureName(ask.entry)} to the {trashName}?" confirm="Move to {trashName}" danger busy={askBusy} error={askError}
-            text="Its transcript, summary and audio go to the {trashName}, where you can put them back.{ask.entry.kind === 'lecture'
-              ? ' Later lectures of the course move up a number.' : ''}"
+    <Dialog title={t("deleteLecture.title", { name: lectureName(ask.entry), trash: trashName() })}
+            confirm={t("deleteLecture.confirm", { trash: trashName() })} danger busy={askBusy} error={askError}
+            text={t(ask.entry.kind === "lecture" ? "deleteLecture.text.lecture" : "deleteLecture.text.event", { trash: trashName() })}
             oncancel={() => (ask = null)} onconfirm={answer} />
   {/if}
 {/if}

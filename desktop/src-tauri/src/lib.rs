@@ -6,6 +6,7 @@
 //! installed Stenny, which keeps its own icon (one Stenny in the menu bar, never two).
 
 mod engine;
+mod i18n;
 #[cfg(target_os = "macos")]
 mod macos;
 mod menubar;
@@ -13,10 +14,12 @@ mod menubar;
 mod windows_share;
 
 use engine::Engine;
+use i18n::tr;
 use menubar::MenuBar;
 use serde_json::Value;
 use std::sync::Arc;
-use tauri::{AppHandle, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri::menu::{Menu, PredefinedMenuItem, Submenu, HELP_SUBMENU_ID, WINDOW_SUBMENU_ID};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent, Wry};
 
 /// One request to the engine, e.g. `engine("library")`. Runs off the main thread: a request can take a moment.
 #[tauri::command]
@@ -83,13 +86,15 @@ async fn share_files(window: tauri::WebviewWindow, paths: Vec<String>, x: f64, y
 #[tauri::command]
 async fn make_pdf(html: String) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let agent = menubar::agent_path().ok_or("The PDF couldn't be made: stenny-agent is missing.")?;
-        let out = std::process::Command::new(agent).args(["--pdf", &html]).output().map_err(|e| e.to_string())?;
+        let agent = menubar::agent_path().ok_or_else(|| tr!("error.noAgentPdf"))?;
+        // stenny-agent's own messages in Stenny's language
+        let lang = i18n::language();
+        let out = std::process::Command::new(agent).args(["--pdf", &html, "--lang", lang]).output().map_err(|e| e.to_string())?;
         let text = String::from_utf8_lossy(&out.stdout);
         let line = text.lines().last().unwrap_or("");
         match line.strip_prefix("pdf ") {
             Some(path) => Ok(path.to_string()),
-            None => Err(line.strip_prefix("error ").unwrap_or("The PDF couldn't be made.").to_string()),
+            None => Err(line.strip_prefix("error ").map(String::from).unwrap_or_else(|| tr!("error.pdf"))),
         }
     })
     .await
@@ -165,7 +170,7 @@ async fn check_updates(app: AppHandle) -> Result<(), String> {
 async fn start_talk(app: AppHandle, title: String, language: Option<String>) -> Result<(), String> {
     let title = title.trim().to_string();
     if title.is_empty() {
-        return Err("Give the talk a title.".into());
+        return Err(tr!("talk.noTitle"));
     }
     tauri::async_runtime::spawn_blocking(move || menubar::start_with(&app, &title, true, language.as_deref()))
         .await
@@ -181,6 +186,94 @@ fn urlencode(s: &str) -> String {
         .collect()
 }
 
+/// The windows' language ("en" or "de"), asked by each window as it opens (routes/+layout.svelte). From the engine,
+/// so it's always what the config says now; the menu bar follows if it was behind.
+#[tauri::command]
+async fn ui_language(app: AppHandle) -> String {
+    let lang = tauri::async_runtime::spawn_blocking(move || {
+        let engine = app.state::<Arc<Engine>>().inner().clone();
+        let settings = engine.call("settings", serde_json::json!({})).unwrap_or(Value::Null);
+        if let Some(lang) = settings.get("language").and_then(Value::as_str) {
+            if i18n::set_language(lang) {
+                language_changed(&app);
+            }
+        }
+        i18n::language()
+    })
+    .await;
+    lang.unwrap_or("en").to_string()
+}
+
+/// Settings ▸ General ▸ Language changed (and is saved in the config): every window, the menus and the agent follow.
+#[tauri::command]
+async fn set_ui_language(app: AppHandle, language: String) {
+    if i18n::set_language(&language) {
+        let _ = tauri::async_runtime::spawn_blocking(move || language_changed(&app)).await;
+    }
+}
+
+/// After the language changed: the windows (the "language" event, routes/+layout.svelte), their titles, the app
+/// menu, the menu bar's menu, and stenny-agent (its notifications), which is started again with the new language.
+pub fn language_changed(app: &AppHandle) {
+    let _ = app.emit("language", i18n::language());
+    let app2 = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        for (label, key) in [("feedback", "feedback.window"), ("talk", "talk.window")] {
+            if let Some(window) = app2.get_webview_window(label) {
+                let _ = window.set_title(&i18n::text(key, &[]));
+            }
+        }
+        #[cfg(target_os = "macos")]
+        if let Ok(menu) = app_menu(&app2) {
+            let _ = app2.set_menu(menu);
+        }
+    });
+    menubar::redraw(app, true);
+    menubar::restart_agent(app);
+}
+
+/// The app menu while a window of Stenny's is in front (macOS): Tauri's own default, in Stenny's language.
+fn app_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
+    let about = tauri::menu::AboutMetadata {
+        name: Some("Stenny".into()),
+        version: Some(app.package_info().version.to_string()),
+        ..Default::default()
+    };
+    let t = |key: &str| i18n::text(key, &[]);
+    Menu::with_items(app, &[
+        #[cfg(target_os = "macos")]
+        &Submenu::with_items(app, "Stenny", true, &[
+            &PredefinedMenuItem::about(app, Some(&t("app.about")), Some(about))?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::services(app, Some(&t("app.services")))?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::hide(app, Some(&t("app.hide")))?,
+            &PredefinedMenuItem::hide_others(app, Some(&t("app.hideOthers")))?,
+            &PredefinedMenuItem::show_all(app, Some(&t("app.showAll")))?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::quit(app, Some(&t("app.quit")))?,
+        ])?,
+        &Submenu::with_items(app, t("app.file"), true, &[&PredefinedMenuItem::close_window(app, Some(&t("app.closeWindow")))?])?,
+        &Submenu::with_items(app, t("app.edit"), true, &[
+            &PredefinedMenuItem::undo(app, Some(&t("app.undo")))?,
+            &PredefinedMenuItem::redo(app, Some(&t("app.redo")))?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::cut(app, Some(&t("app.cut")))?,
+            &PredefinedMenuItem::copy(app, Some(&t("app.copy")))?,
+            &PredefinedMenuItem::paste(app, Some(&t("app.paste")))?,
+            &PredefinedMenuItem::select_all(app, Some(&t("app.selectAll")))?,
+        ])?,
+        &Submenu::with_items(app, t("app.view"), true, &[&PredefinedMenuItem::fullscreen(app, Some(&t("app.fullscreen")))?])?,
+        &Submenu::with_id_and_items(app, WINDOW_SUBMENU_ID, t("app.window"), true, &[
+            &PredefinedMenuItem::minimize(app, Some(&t("app.minimize")))?,
+            &PredefinedMenuItem::maximize(app, Some(&t("app.zoom")))?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::close_window(app, Some(&t("app.closeWindow")))?,
+        ])?,
+        &Submenu::with_id_and_items(app, HELP_SUBMENU_ID, t("app.help"), true, &[])?,
+    ])
+}
+
 /// Shows a window, creating it the first time: "library" or "talk".
 pub fn show_window(app: &AppHandle, label: &str) {
     let app2 = app.clone();
@@ -194,14 +287,14 @@ pub fn show_window(app: &AppHandle, label: &str) {
         }
         let built = match label.as_str() {
             "feedback" => WebviewWindowBuilder::new(&app2, "feedback", WebviewUrl::App("feedback".into()))
-                .title("Send Feedback")
+                .title(tr!("feedback.window"))
                 .inner_size(460.0, 430.0)
                 .resizable(false)
                 .minimizable(false)
                 .center()
                 .build(),
             "talk" => WebviewWindowBuilder::new(&app2, "talk", WebviewUrl::App("talk".into()))
-                .title("Record a Talk or Event")
+                .title(tr!("talk.window"))
                 .inner_size(460.0, 330.0)
                 .resizable(false)
                 .minimizable(false)
@@ -229,13 +322,16 @@ pub fn quit_as_asked(app: &AppHandle) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let library_only = std::env::args().any(|a| a == "--library");
+    // until the engine says which (menubar.rs, load_lists): the system's
+    i18n::set_language(i18n::system_language());
     let app = tauri::Builder::default()
+        .menu(app_menu)
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .manage(Arc::new(Engine::default()))
         .manage(MenuBar::default())
-        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, share_files, copy_text, check_updates, microphone_pref, set_microphone_pref, login_item, apply_shortcut])
+        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, share_files, copy_text, check_updates, microphone_pref, set_microphone_pref, login_item, apply_shortcut, ui_language, set_ui_language])
         .setup(move |app| {
             if !library_only {
                 // A Dock app with the menu bar icon next to it. Info.plist keeps LSUIElement for the helpers in the
