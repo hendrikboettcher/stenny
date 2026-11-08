@@ -55,8 +55,8 @@ uv tool install -e . --python 3.12   # puts `stenny` on your PATH (~/.local/bin)
 app/install.sh --no-open        # installs the finished Stenny.app to /Applications (or ~/Applications)
 
 # 3. Settings
-stenny init --vault "~/Documents/My Vault"    # any folder works; Obsidian is optional
-open -e ~/"Lectures Data/_System/config.toml" # replace the example courses with yours
+stenny init                     # your Stenny folder: ~/Documents/Stenny (or --folder "<any folder>")
+open -e ~/"Library/Application Support/Stenny/config.toml"   # replace the example courses with yours
 
 # 4. Whisper model (1.6 GB, once)
 stenny download-model
@@ -93,12 +93,12 @@ See `config.example.toml` for every setting.
 
 **Finish setting up Stenny:** until the three things that make Stenny really useful work (at least one course, the AI step, the connector in Claude), a small card at the bottom of the window's sidebar shows how many are done. Click it for the steps, each with its action right there (*Add a course…*, *Sign in…*, *Install…*); a step counts as done when it really works, checked again whenever the window comes back to the front. Choosing *Off* for the AI step counts as done. The × hides the card until Stenny opens again; after a few times it also offers *Don't show this again*. Once everything works it says *You're all set* and is gone for good (`[app] setup_checklist = false`). Settings stays the full place for all of it.
 
-**Share with classmates:** *Share…* in the window makes a clean copy as PDF, Word or Markdown (summary on top, if you like): no file paths, microphone names or Obsidian links. PDF and Word end with a small "Transcribed with Stenny · stenny.eu" line; Markdown doesn't. The copies are saved in `~/Lectures Data/_Shared/`. Stenny asks once per course whether the lecturer is fine with it.
+**Share with classmates:** *Share…* in the window makes a clean copy as PDF, Word or Markdown (summary on top, if you like): no file paths, microphone names or Obsidian links. PDF and Word end with a small "Transcribed with Stenny · stenny.eu" line; Markdown doesn't. The copies are saved in Stenny's caches folder (`~/Library/Caches/Stenny/Shared/`). Stenny asks once per course whether the lecturer is fine with it.
 
 **Other things you can do:**
 - **Use your iPhone as the microphone** (*Microphone ▸*, via Continuity) and put it closer to the lecturer. The Mac's own microphone records as a backup and fills the gaps when you use the phone.
 - **Add the slides** (a PDF dropped into the lecture folder, or `--slides deck.pdf`): better spelling of names and terms, and headings that link to the slide pages.
-- **Talks and events** that aren't courses: *Start Lecture ▸ Other…*. They go to their own `Recordings` folder.
+- **Talks and events** that aren't courses: *Start Lecture ▸ Other…*. They go to the `Talks` folder in your Stenny folder.
 - **Recordings from elsewhere** (Voice Memos, a file): `stenny add recording.m4a --course "Calculus"`.
 
 ### From the terminal
@@ -161,14 +161,14 @@ config.example.toml), or put the entry `stenny mcp --desktop-config` prints into
 ### Without the connector
 
 The transcripts are plain Markdown files, so any tool that reads files can use them. In the Claude desktop app, the
-**Filesystem** connector (Settings ▸ Connectors), limited to your lectures folder and the `Recordings` folder, works
+**Filesystem** connector (Settings ▸ Connectors), limited to your Stenny folder, works
 too. Then a project per course, with the block from `stenny project-instructions` pasted into its instructions, makes
 its chats read the newest transcripts, cite them and keep the course glossary up to date.
 
 ## What ends up where
 
 ```
-<your vault>/Lectures/
+~/Documents/Stenny/                      your Stenny folder: everything you or Claude read (any folder, e.g. in a vault)
 ├── _Course Files/                       generated after every lecture, don't edit
 │   ├── Calculus (overview).md           every lecture with links and topics
 │   ├── Calculus (all lectures).md       every final transcript of the course, with contents
@@ -176,19 +176,29 @@ its chats read the newest transcripts, cite them and keep the course glossary up
 ├── _Glossaries/
 │   └── Calculus (glossary).md           terms + corrections for this course (partly filled automatically)
 ├── _Topics/                             one note per topic, linking the lectures that cover it
-└── Calculus/
-    └── 2026-10-15/
-        ├── Calculus 2026-10-15.md            clean transcript: frontmatter, sections, [h:mm:ss] per paragraph
-        ├── Calculus 2026-10-15 (summary).md  AI summary with timestamps (optional)
-        └── Calculus 2026-10-15 (slides).pdf  the slides (optional)
+├── Calculus/
+│   └── 2026-10-15/
+│       ├── Calculus 2026-10-15.md            clean transcript: frontmatter, sections, [h:mm:ss] per paragraph
+│       ├── Calculus 2026-10-15 (summary).md  AI summary with timestamps (optional)
+│       └── Calculus 2026-10-15 (slides).pdf  the slides (optional)
+└── Talks/                               talks and events (so no course can be called "Talks")
 
-~/Lectures Data/                          everything that isn't for reading
-├── Calculus/                             audio (.opus, ~14 MB per hour), segments.json, raw Whisper output
-├── _Queue/                               final passes waiting (e.g. on battery)
-└── _System/                              config.toml, logs
+Stenny's own files, out of sight (`stenny where` lists them):
+~/Library/Application Support/Stenny/     Windows: %APPDATA%\Stenny (config) and %LOCALAPPDATA%\Stenny (the rest)
+├── config.toml, consent.json
+├── Recordings/Calculus/                  audio (.opus, ~14 MB per hour), segments.json, raw Whisper output
+├── Recordings/Talks/                     the same for talks
+└── Queue/                                final passes waiting (e.g. on battery)
+~/Library/Logs/Stenny/                    stenny.log, live.log, queue.log (Windows: %LOCALAPPDATA%\Stenny\Logs)
+~/.cache/huggingface/                     the Whisper model (Windows: %LOCALAPPDATA%\Stenny\Models)
 ```
 
-Stenny never writes anywhere else in your vault. Each folder holds either only folders or only files. A 1-hour lecture is about 11k tokens, so a semester of one course fits comfortably in a Claude project.
+Time Machine backs up `~/Library`, so the recordings are in your Mac's backups. On Windows, File History doesn't back
+up AppData: copy `%LOCALAPPDATA%\Stenny\Recordings` yourself if you want the audio backed up (`data_dir` in the
+config moves it elsewhere). Older installs kept everything in `~/Lectures Data` and talks in
+`<vault>/Recordings`; Stenny moves them on its first start (`stenny migrate --dry-run` shows what it does).
+
+Stenny never writes outside the Stenny folder (if it is in your vault, nowhere else in the vault). Each folder holds either only folders or only files. A 1-hour lecture is about 11k tokens, so a semester of one course fits comfortably in a Claude project.
 
 ## Courses and languages
 

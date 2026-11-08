@@ -19,12 +19,12 @@ RATE = 16000
 
 def lf(folder, kind="transcript"):
     """A lecture file under its new name, e.g. "Calculus 2026-10-15 (summary).md". The raw output is outside
-    the vault, next to the audio: <data_dir>/Calculus/Calculus 2026-10-15 (raw).md."""
+    the Stenny folder, next to the audio: <data_dir>/Recordings/Calculus/Calculus 2026-10-15 (raw).md."""
     from stenny.vault import LectureFiles
     folder = Path(folder)
     if kind == "raw":
         data_dir = folder.parents[3].parent / "audio"  # the `setup` fixture's data_dir (tmp/audio)
-        return data_dir / "Calculus" / f"Calculus {folder.name} (raw).md"
+        return data_dir / "Recordings" / "Calculus" / f"Calculus {folder.name} (raw).md"
     return LectureFiles(folder, "Calculus").new(kind)
 
 
@@ -61,7 +61,7 @@ class FakeLLM:
 @pytest.fixture
 def setup(tmp_path, monkeypatch):
     (tmp_path / "vault" / "Areas").mkdir(parents=True)
-    cfg = Config(vault=tmp_path / "vault", lectures_dir="Areas/Lectures", data_dir=tmp_path / "audio",
+    cfg = Config(folder=tmp_path / "vault" / "Areas/Lectures", data_dir=tmp_path / "audio",
                  keep_audio=True, llm_backend="fake")
     monkeypatch.setattr(pipeline, "get_backend", lambda cfg: FakeLLM())
     wav = tmp_path / "rec.wav"
@@ -74,7 +74,7 @@ def setup(tmp_path, monkeypatch):
 def test_process_writes_raw_transcript_summary_and_audio(setup):
     cfg, wav = setup
     course = Course("Calculus", language="fr", languages=["fr"], tags=["maths"])
-    gloss = cfg.lectures_root / "_Glossaries" / "Calculus.md"
+    gloss = cfg.folder / "_Glossaries" / "Calculus.md"
     gloss.parent.mkdir(parents=True)
     gloss.write_text("## Terms\n- Riemann\n", encoding="utf-8")
     engine = FakeEngine({"fr": 1.0})
@@ -83,7 +83,7 @@ def test_process_writes_raw_transcript_summary_and_audio(setup):
     info = pipeline.process(wav, cfg, course, engine, when=datetime(2026, 10, 15, 9, 15))
 
     folder = Path(info["folder"])
-    assert folder == cfg.lectures_root / "Calculus" / "2026-10-15"
+    assert folder == cfg.folder / "Calculus" / "2026-10-15"
     assert sorted(p.name for p in folder.iterdir()) == ["Calculus 2026-10-15 (summary).md", "Calculus 2026-10-15.md"]  # the raw output is outside the vault
     assert all(p == "Riemann." for p in engine.prompts)  # glossary prompt on every chunk
     transcript = lf(folder).read_text(encoding="utf-8")
@@ -94,10 +94,10 @@ def test_process_writes_raw_transcript_summary_and_audio(setup):
     assert "Rimane" in raw                                                     # raw stays untouched
     assert 'structure: "ai (Fake LLM)"' in transcript
     assert [f["reason"] for f in info["term_fixes_rejected"]] == ["not a glossary term"]
-    assert (cfg.data_dir / "Calculus" / "2026-10-15.opus").exists()
-    assert (cfg.data_dir / "Calculus" / "2026-10-15.segments.json").exists()
+    assert (cfg.recordings_dir / "Calculus" / "2026-10-15.opus").exists()
+    assert (cfg.recordings_dir / "Calculus" / "2026-10-15.segments.json").exists()
     from stenny.vault import Vault
-    assert Vault(cfg.lectures_root).violations() == []
+    assert cfg.vault_for().violations() == []
 
 
 def test_mixed_language_course_switches_per_chunk(setup, monkeypatch):
@@ -135,7 +135,7 @@ def test_add_with_slides_and_microphone_from_metadata(setup, tmp_path):
                     "com.apple.quicktime.model=iPhone 15 Pro", "-movflags", "use_metadata_tags", str(m4a)], check=True)
     deck = make_pdf(tmp_path / "Cours 3.pdf", [["Intégrale de Riemann", "Les sommes de Darboux"], ["Fin"]])
     course = Course("Calculus", language="fr", languages=["fr"])
-    gloss = cfg.lectures_root / "_Glossaries" / "Calculus.md"
+    gloss = cfg.folder / "_Glossaries" / "Calculus.md"
     gloss.parent.mkdir(parents=True)
     gloss.write_text("## Terms\n- Cauchy\n", encoding="utf-8")
     engine = FakeEngine({"fr": 1.0})
@@ -148,7 +148,7 @@ def test_add_with_slides_and_microphone_from_metadata(setup, tmp_path):
         assert 'microphone: "iPhone 15 Pro"' in lf(folder, kind).read_text(encoding="utf-8")
     assert f'slides: "[[{lf(folder, "slides").name}]]"' in lf(folder).read_text(encoding="utf-8")
     from stenny.vault import Vault
-    assert Vault(cfg.lectures_root).violations() == []
+    assert cfg.vault_for().violations() == []
 
 
 def test_refresh_uses_slides_added_later_without_retranscribing(setup, monkeypatch):
@@ -160,7 +160,7 @@ def test_refresh_uses_slides_added_later_without_retranscribing(setup, monkeypat
     info = pipeline.process(wav, cfg, course, engine, use_llm=False, when=datetime(2026, 10, 15, 9, 15))
     folder = Path(info["folder"])
     calls, raw = engine.calls, lf(folder, "raw").read_text(encoding="utf-8")
-    meta_path = cfg.data_dir / "Calculus" / "2026-10-15.segments.json"
+    meta_path = cfg.recordings_dir / "Calculus" / "2026-10-15.segments.json"
     segments = json.loads(meta_path.read_text(encoding="utf-8"))["segments"]
     assert "Rimane" in lf(folder).read_text(encoding="utf-8")
 
@@ -198,11 +198,11 @@ def test_refresh_live_lecture_from_older_files(setup):
     before = lf(folder).read_text(encoding="utf-8")
     assert 'microphone: "Alex’s iPhone Microphone"' in before and "*[Recording paused 0:00:30–0:00:45]*" in before
 
-    meta_path = cfg.data_dir / "Calculus" / "2026-10-15.segments.json"
+    meta_path = cfg.recordings_dir / "Calculus" / "2026-10-15.segments.json"
     data = json.loads(meta_path.read_text(encoding="utf-8"))
     del data["meta"]["lecture"]                                       # the older segments.json format
     meta_path.write_text(json.dumps(data), encoding="utf-8")
-    (cfg.data_dir / "Calculus" / "2026-10-15.session.json").write_text(json.dumps({
+    (cfg.recordings_dir / "Calculus" / "2026-10-15.session.json").write_text(json.dumps({
         "course": "Calculus", "started_at": "2026-10-15T09:15:00", "folder": "2026-10-15", "source": live.source,
         "microphone": live.microphone, "spans": live.spans, "pauses": [list(p) for p in live.pauses]}), encoding="utf-8")
     lf(folder).write_text(before.replace('microphone: "Alex’s iPhone Microphone"\n', ""), encoding="utf-8")
@@ -218,7 +218,7 @@ def test_refresh_errors_are_clear(setup):
     with pytest.raises(pipeline.LectureError, match="No lecture folder"):
         pipeline.refresh(cfg, course, "2026-10-15")
     from stenny.vault import Vault
-    Vault(cfg.lectures_root).write(cfg.lectures_root / "Calculus" / "2026-10-15" / "Transcript.md", "live draft")
+    cfg.vault_for().write(cfg.folder / "Calculus" / "2026-10-15" / "Transcript.md", "live draft")
     with pytest.raises(pipeline.LectureError, match="final pass first"):
         pipeline.refresh(cfg, course, "2026-10-15")
 
@@ -256,7 +256,7 @@ def test_backup_microphone_fills_a_gap_of_the_main_one(setup, tmp_path):
                                      "spans": [(0, 0.4)]})
     info = pipeline.process(main_pcm, cfg, course, FakeEngine({"fr": 1.0}), use_llm=False, live=live)
     assert info["filled_from_backup_s"] == 10.0
-    data = json.loads((cfg.data_dir / "Calculus" / "2026-10-15.segments.json").read_text(encoding="utf-8"))
+    data = json.loads((cfg.recordings_dir / "Calculus" / "2026-10-15.segments.json").read_text(encoding="utf-8"))
     segs = data["segments"]
     from_backup = [s for s in segs if s.get("backup")]
     assert from_backup and all(30 <= (s["start"] + s["end"]) / 2 < 40 for s in from_backup)
@@ -271,7 +271,7 @@ def test_backup_microphone_fills_a_gap_of_the_main_one(setup, tmp_path):
     assert marker in transcript and "paused:" not in transcript
     assert transcript.index(marker) < transcript.index("**[0:00:29]**")   # marker before the backup text
     assert "*(backup microphone)*" in lf(folder, "raw").read_text(encoding="utf-8")
-    assert (cfg.data_dir / "Calculus" / "2026-10-15.backup.opus").exists()
+    assert (cfg.recordings_dir / "Calculus" / "2026-10-15.backup.opus").exists()
 
 
 def test_lecture_names_numbers_and_course_files(setup):
@@ -294,8 +294,8 @@ def test_lecture_names_numbers_and_course_files(setup):
     assert "# Summary: Calculus – Lecture 2 (2026-10-22)" in LectureFiles(Path(second["folder"]), "Calculus").new("summary").read_text(encoding="utf-8")
     # a live draft in progress is not part of the course files
     from stenny.vault import Vault
-    vault = Vault(cfg.lectures_root)
-    vault.write(LectureFiles(cfg.lectures_root / "Calculus" / "2026-10-29", "Calculus").new("transcript"),
+    vault = cfg.vault_for()
+    vault.write(LectureFiles(cfg.folder / "Calculus" / "2026-10-29", "Calculus").new("transcript"),
                 '---\nstatus: "live"\n---\n# draft\n')
 
     from stenny import course_files
@@ -335,7 +335,7 @@ def test_transcripts_say_they_are_audio_only(setup):
     from stenny.vault import Vault
     transcript = lf(info["folder"]).read_text(encoding="utf-8")
     assert f"> {AUDIO_ONLY}" in transcript
-    all_md = Vault(cfg.lectures_root).course_file("Calculus", "all lectures").read_text(encoding="utf-8")
+    all_md = cfg.vault_for().course_file("Calculus", "all lectures").read_text(encoding="utf-8")
     assert all_md.count("**Audio only:**") == 1                     # once at the top, not per lecture
 
 
@@ -364,7 +364,7 @@ def test_topics_glossary_and_links_between_lectures(setup, monkeypatch):
     llm = TopicLLM()
     monkeypatch.setattr(pipeline, "get_backend", lambda cfg: llm)
     course = cfg.courses["Calculus"]
-    gloss = cfg.lectures_root / "_Glossaries" / "Calculus (glossary).md"
+    gloss = cfg.folder / "_Glossaries" / "Calculus (glossary).md"
     gloss.parent.mkdir(parents=True)
     gloss.write_text("## Terms\n- Riemann\n\n## Corrections\n- Rimann → Riemann\n", encoding="utf-8")
 
@@ -372,9 +372,9 @@ def test_topics_glossary_and_links_between_lectures(setup, monkeypatch):
     fm = parse_frontmatter(lf(first).read_text(encoding="utf-8"))
     # topics need evidence in the text; the course name and invented ones are dropped
     assert fm["topics"] == ["[[_Topics/Riemann|Riemann]]", "[[_Topics/suites|suites]]"]  # most mentioned first
-    topic = (cfg.lectures_root / "_Topics" / "Riemann.md").read_text(encoding="utf-8")
+    topic = (cfg.folder / "_Topics" / "Riemann.md").read_text(encoding="utf-8")
     assert "[[Calculus 2026-10-15|Lecture 1 (2026-10-15)]]" in topic and "## Calculus" in topic
-    assert not (cfg.lectures_root / "_Topics" / "Théorème inventé.md").exists()
+    assert not (cfg.folder / "_Topics" / "Théorème inventé.md").exists()
 
     # glossary: only "Phrase" has evidence (said in every chunk) and isn't known or a common word
     g = Glossary.load(gloss)
@@ -388,13 +388,13 @@ def test_topics_glossary_and_links_between_lectures(setup, monkeypatch):
     fm1, fm2 = parse_frontmatter(lf(first).read_text(encoding="utf-8")), parse_frontmatter(lf(second).read_text(encoding="utf-8"))
     assert fm1["next"] == "[[Calculus 2026-10-22]]" and "previous" not in fm1
     assert fm2["previous"] == "[[Calculus 2026-10-15]]" and "next" not in fm2
-    assert "Lecture 2 (2026-10-22)" in (cfg.lectures_root / "_Topics" / "Riemann.md").read_text(encoding="utf-8")
-    hub = (cfg.lectures_root / "_Course Files" / "Calculus (overview).md").read_text(encoding="utf-8")
+    assert "Lecture 2 (2026-10-22)" in (cfg.folder / "_Topics" / "Riemann.md").read_text(encoding="utf-8")
+    hub = (cfg.folder / "_Course Files" / "Calculus (overview).md").read_text(encoding="utf-8")
     assert "[[Calculus 2026-10-15|transcript]] · [[Calculus 2026-10-15 (summary)|summary]]" in hub
     assert "[[_Glossaries/Calculus (glossary)|Calculus (glossary)]]" in hub and "Topics: Riemann, suites" in hub
     assert "[[Calculus (all lectures)]]" in hub
     assert Glossary.load(gloss).auto_terms == ["Phrase"]  # not added twice
-    assert Vault(cfg.lectures_root).violations() == []
+    assert cfg.vault_for().violations() == []
 
     # a refresh without the AI keeps the topics it had
     pipeline.refresh(cfg, course, "2026-10-15", use_llm=False)
@@ -402,8 +402,8 @@ def test_topics_glossary_and_links_between_lectures(setup, monkeypatch):
 
 
 def test_talk_goes_to_its_own_folder_without_course_files(setup):
-    """A talk or event (`--event`): its own vault folder next to Lectures, no glossary, no course files,
-    no lecture number, no topic links; audio and raw output under the data folder's _Recordings/."""
+    """A talk or event (`--event`): its own folder in the Stenny folder's Talks/, no glossary, no course files,
+    no lecture number, no topic links; audio and raw output under Recordings/Talks/."""
     cfg, wav = setup
     talk = cfg.event("Guest talk: Müller")
     assert talk.name == "Guest talk – Müller" and talk.is_event and talk.languages == ["en", "de", "fr"]
@@ -411,15 +411,15 @@ def test_talk_goes_to_its_own_folder_without_course_files(setup):
     info = pipeline.process(wav, cfg, talk, FakeEngine({"en": 1.0}), when=datetime(2026, 10, 22, 18, 0))
 
     folder = Path(info["folder"])
-    assert folder == cfg.vault / "Areas" / "Recordings" / "Guest talk – Müller" / "2026-10-22"
+    assert folder == cfg.folder / "Talks" / "Guest talk – Müller" / "2026-10-22"
     transcript = LectureFiles(folder, talk.name).new("transcript").read_text(encoding="utf-8")
     assert 'event: "Guest talk – Müller"' in transcript and "course:" not in transcript
     assert "# Guest talk – Müller – 2026-10-22" in transcript and "Lecture 1" not in transcript
     assert "of a talk recorded on 2026-10-22" in transcript and "topics:" not in transcript
-    assert not (cfg.vault / "Areas" / "Recordings" / "_Glossaries").exists()
-    assert not (cfg.vault / "Areas" / "Recordings" / "_Course Files").exists()
-    assert not cfg.lectures_root.exists()                              # nothing written next to the lectures
-    data = cfg.data_dir / "_Recordings" / "Guest talk – Müller"
+    assert not (cfg.folder / "Talks" / "_Glossaries").exists()
+    assert not (cfg.folder / "Talks" / "_Course Files").exists()
+    assert [p.name for p in cfg.folder.iterdir()] == ["Talks"]  # nothing else written into the Stenny folder
+    data = cfg.recordings_dir / "Talks" / "Guest talk – Müller"
     assert (data / "2026-10-22.opus").exists() and (data / "Guest talk – Müller 2026-10-22 (raw).md").exists()
 
 
@@ -441,7 +441,7 @@ def test_talk_checks_each_long_chunk_for_its_language(tmp_path):
             return [{"start": 0.0, "end": 1.0, "text": " x", "avg_logprob": -0.2, "no_speech_prob": 0.0}]
 
     audio = np.concatenate([np.full(60 * SAMPLE_RATE, 0.1, np.float32), np.full(60 * SAMPLE_RATE, 0.2, np.float32)])
-    cfg = Config(vault=tmp_path, lectures_dir="L", data_dir=tmp_path)
+    cfg = Config(folder=tmp_path / "L", data_dir=tmp_path)
     engine = Engine()
     transcribe(audio, cfg.event("Guest talk"), engine, None)
     assert "en" in engine.used and "de" in engine.used and engine.used[0] == "en" and engine.used[-1] == "de"

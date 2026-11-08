@@ -10,8 +10,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from .paths import QUEUE_DIR
-from .paths import SYSTEM_DIR as DATA_DIR  # logs and the queue lock
+from .paths import LOGS_DIR, QUEUE_DIR
 AGENT_LABEL = "local.stenny.queue"
 AGENT_PATH = Path.home() / "Library/LaunchAgents" / f"{AGENT_LABEL}.plist"
 
@@ -105,8 +104,8 @@ class QueueLock:
     a live recording takes it too, or the next scheduled run would start a second pass on the same job."""
 
     def __enter__(self):
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-        self.f = open(DATA_DIR / "queue.lock", "w")
+        QUEUE_DIR.mkdir(parents=True, exist_ok=True)
+        self.f = open(QUEUE_DIR / "queue.lock", "w")
         try:
             _lock(self.f)
         except OSError:
@@ -125,10 +124,10 @@ def keep_awake() -> subprocess.Popen:
     return subprocess.Popen(["caffeinate", "-i", "-w", str(os.getpid())])
 
 
-def install_agent(interval_s: int = 600) -> Path:
-    exe = shutil.which("stenny") or sys.argv[0]
-    log = str(DATA_DIR / "queue.log")
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+def install_agent(interval_s: int = 600, exe: str | None = None) -> Path:
+    exe = exe or shutil.which("stenny") or sys.argv[0]
+    log = str(LOGS_DIR / "queue.log")
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
     plist = {
         "Label": AGENT_LABEL,
         "ProgramArguments": [exe, "queue", "run", "--scheduled"],

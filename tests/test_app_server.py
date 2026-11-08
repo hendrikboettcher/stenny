@@ -20,7 +20,7 @@ def cfg(tmp_path):
     (folder / "Calculus 2026-10-20.md").write_text(transcript_md(lec, PARAGRAPHS, []), encoding="utf-8")
     (folder / "Calculus 2026-10-20 (summary).md").write_text(
         summary_md(lec, "## Overview\nAbout [[_Topics/Limits|limits]]. [0:00:04]", "Claude Code (haiku)"), encoding="utf-8")
-    return SimpleNamespace(lectures_root=tmp_path / "Lectures", events_root=tmp_path / "Lectures",
+    return SimpleNamespace(folder=tmp_path / "Lectures", events_root=tmp_path / "Lectures" / "Talks",
                            courses={"Calculus": SimpleNamespace(name="Calculus", hidden=False)})
 
 
@@ -71,7 +71,7 @@ def test_a_recording_without_transcript_shows_its_text_so_far(cfg, tmp_path):
     lec = Lecture(course="Calculus", date="2026-11-03", start_time="10:00", duration=600, languages=["en"],
                   language_note="live", model="m", source="live", status="live", number=2,
                   names={"transcript": "Calculus 2026-11-03.md"})
-    folder = cfg.lectures_root / "Calculus" / "2026-11-03"
+    folder = cfg.folder / "Calculus" / "2026-11-03"
     folder.mkdir(parents=True)
     (folder / "Calculus 2026-11-03.md").write_text(transcript_md(lec, [], []), encoding="utf-8")
     data = tmp_path / "audio" / "Calculus"

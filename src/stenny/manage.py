@@ -5,7 +5,7 @@ on Windows (with Restore). A course rename moves
 everything that carries its name, so Obsidian, Claude and the window keep agreeing:
 - the vault: the course folder, each lecture's files ("<Course> <date>.md" …), the names and links inside them
   (frontmatter, titles, [[links]], the path of the raw output), the glossary; the course files are made again;
-- ~/Lectures Data: the course's folder and its raw outputs, the paths inside session and segments files;
+- Stenny's data folder (Recordings/): the course's folder and its raw outputs, the paths inside session and segments files;
 - config.toml (the old name stays a calendar word, as the timetable still uses it), the lecturer-OK answers and
   queued final passes.
 Both hold the queue lock, so no final pass starts halfway through; while one runs, they wait for it to finish.
@@ -21,7 +21,7 @@ import unicodedata
 from pathlib import Path
 
 from . import course_files, courses, jobs, paths
-from .config import Config, ConfigError
+from .config import Config, ConfigError, check_course_name
 from .i18n import tr, trash_name
 from .live import control
 from .pipeline import home_relative
@@ -117,6 +117,10 @@ def _target(cfg: Config, name: str, event: bool):
     if event:
         return cfg.event(name)
     try:
+        check_course_name(name)  # never the talks' folder as if it were a course
+    except ConfigError as e:
+        raise ManageError(str(e)) from None
+    try:
         return cfg.course(name)
     except ConfigError:
         # a past course: only its recordings are left (no table in the config)
@@ -142,7 +146,7 @@ def _clean_name(name: str) -> str:
 
 def _lecture(cfg: Config, course: str, folder: str, event: bool):
     target = _target(cfg, course, event)
-    vault = Vault(cfg.root_for(target))
+    vault = cfg.vault_for(target)
     lecture_dir = vault.course_dir(target.name) / folder
     files = LectureFiles(lecture_dir, target.name)
     transcript = files.existing("transcript")
@@ -176,7 +180,7 @@ def rename_lecture(cfg: Config, course: str, folder: str, title: str, event: boo
 
 
 def lecture_paths(cfg: Config, course: str, folder: str, event: bool = False) -> list[Path]:
-    """Everything a lecture has: its vault folder (transcript, summary, slides), and in ~/Lectures Data its
+    """Everything a lecture has: its vault folder (transcript, summary, slides), and in Stenny's data folder (Recordings/) its
     audio, raw output, session and segment files, and queued final passes."""
     target, _, lecture_dir, _, _ = _lecture(cfg, course, folder, event)
     data = cfg.data_for(target)
@@ -214,9 +218,9 @@ def delete_lecture(cfg: Config, course: str, folder: str, event: bool = False) -
 
 
 def discard_recording(cfg: Config, course, folder: str) -> None:
-    """A cancelled recording (live/session.py): its placeholder in the vault and its files in ~/Lectures Data
+    """A cancelled recording (live/session.py): its placeholder in the vault and its files in Stenny's data folder (Recordings/)
     (audio, session, chunks, logs) go to the Trash."""
-    vault = Vault(cfg.root_for(course))
+    vault = cfg.vault_for(course)
     lecture_dir = vault.course_dir(course.name) / folder
     data = cfg.data_for(course)
     files = [p for p in data.iterdir() if p.name.startswith(f"{folder}.")] if data.is_dir() else []
@@ -234,7 +238,7 @@ def discard_recording(cfg: Config, course, folder: str) -> None:
 
 def _replace_names(text: str, old: str, new: str, old_data: str, new_data: str, key: str) -> str:
     """The old name where it is a name: file stems ("Old 2026-10-20 (summary)", links too), the frontmatter's
-    course/event, titles, paths into ~/Lectures Data. The words in the text stay."""
+    course/event, titles, paths into Stenny's data folder (Recordings/). The words in the text stay."""
     text = re.sub(re.escape(old) + r"(?= \d{4}-\d{2}-\d{2})", lambda _: new, text)
     text = re.sub(rf'(?m)^{key}: {re.escape(json.dumps(old, ensure_ascii=False))}$',
                   lambda _: f"{key}: {json.dumps(new, ensure_ascii=False)}", text)
@@ -281,12 +285,14 @@ def rename_course(cfg: Config, old: str, new: str, event: bool = False) -> str:
     """Renames a course (or a talk) everywhere, see the module's note. Returns the new name."""
     new = _clean_name(new)
     target = _target(cfg, old, event)
+    if not event:
+        _target(cfg, new, event)  # not "Talks"
     old = target.name
     if new == old:
         return new
     same = new.casefold() == old.casefold()  # only the case changes: the same folder on macOS
     if not same:
-        taken = (new.casefold() in [g.name.casefold() for g in Vault(cfg.root_for(target)).course_dirs()]
+        taken = (new.casefold() in [g.name.casefold() for g in cfg.vault_for(target).course_dirs()]
                  or (not event and any(new.casefold() == c.casefold() for c in cfg.courses))
                  or (not event and any(new.casefold() in map(str.casefold, c.aliases) for c in cfg.courses.values())))
         if taken:
@@ -294,7 +300,7 @@ def rename_course(cfg: Config, old: str, new: str, event: bool = False) -> str:
     if (rec := _recording()) and rec.get("course") == old:
         raise ManageError(tr("{name} is recording right now. Rename it when the recording is done.", name=old))
 
-    vault = Vault(cfg.root_for(target))
+    vault = cfg.vault_for(target)
     renamed = _target(cfg, new, event) if event else type(target)(**{**target.__dict__, "name": new})
     old_data, new_data = cfg.data_for(target), cfg.data_for(renamed)
     key = "event" if event else "course"
@@ -320,7 +326,7 @@ def rename_course(cfg: Config, old: str, new: str, event: bool = False) -> str:
             for p in (vault.root / TOPICS_DIR).glob("*.md") if (vault.root / TOPICS_DIR).is_dir() else []:
                 _rewrite(p, swap, vault)
 
-        # 2. ~/Lectures Data: the folder, raw outputs, paths in its files
+        # 2. Stenny's data folder (Recordings/): the folder, raw outputs, paths in its files
         if old_data.is_dir():
             old_data.rename(new_data)
             for p in list(new_data.iterdir()):
@@ -397,13 +403,13 @@ def _rename_consent(old: str, new: str, key: str) -> None:
 
 
 def delete_course(cfg: Config, name: str, event: bool = False) -> str:
-    """A whole course (or talk) to the Trash: every lecture in the vault and in ~/Lectures Data (audio, raw
+    """A whole course (or talk) to the Trash: every lecture in the vault and in Stenny's data folder (Recordings/) (audio, raw
     output, session files), its glossary and course files, queued final passes; a course leaves the config."""
     target = _target(cfg, name, event)
     name = target.name
     if (rec := _recording()) and rec.get("course") == name:
         raise ManageError(tr("{name} is recording right now. Delete it when the recording is done.", name=name))
-    vault = Vault(cfg.root_for(target))
+    vault = cfg.vault_for(target)
     data = cfg.data_for(target)
     if not (vault.course_dir(name).exists() or data.exists() or (not event and name in cfg.courses)):
         raise ManageError(tr(f"There's no {'talk' if event else 'course'} called '{{name}}'.", name=name))

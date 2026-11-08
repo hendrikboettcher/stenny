@@ -47,23 +47,23 @@ def test_a_final_transcript_is_never_touched():
 @pytest.fixture
 def cfg(tmp_path, monkeypatch):
     monkeypatch.setattr(jobs, "QUEUE_DIR", tmp_path / "data/_Queue")
-    monkeypatch.setattr(jobs, "DATA_DIR", tmp_path / "data/_System")
+    monkeypatch.setattr(jobs, "LOGS_DIR", tmp_path / "logs")
     monkeypatch.setattr(jobs, "lower_own_priority", lambda mode: None)
     monkeypatch.setattr(resources, "enough_memory_for_final_pass", lambda: True)
-    return Config(vault=tmp_path / "vault", lectures_dir="Lectures", data_dir=tmp_path / "data",
+    return Config(folder=tmp_path / "vault" / "Lectures", data_dir=tmp_path / "data",
                   courses={"Calculus": Course("Calculus", language="fr", languages=["fr"])})
 
 
 class StoppedSession:
     def __init__(self, cfg):
-        folder = cfg.data_dir / "Calculus"
+        folder = cfg.recordings_dir / "Calculus"
         folder.mkdir(parents=True)
         self.pcm_path, self.session_path = folder / "2026-10-31.live.pcm", folder / "2026-10-31.session.json"
         self.pcm_path.write_bytes(b"\0" * 32000)
         self.session_path.write_text(json.dumps({
             "course": "Calculus", "started_at": "2026-10-31T10:00:00", "folder": "2026-10-31", "spans": [[0, 0.0]],
             "pauses": [], "recording": str(self.pcm_path), "state": "stopped", "recorded_samples": 16000}), encoding="utf-8")
-        self.transcript_path = cfg.vault / "Lectures/Calculus/2026-10-31/Calculus 2026-10-31.md"
+        self.transcript_path = cfg.folder / "Calculus/2026-10-31/Calculus 2026-10-31.md"
         self.transcript_path.parent.mkdir(parents=True)
         self.transcript_path.write_text(draft(), encoding="utf-8")
         self.course, self.lang_override, self.backup = Course(name="Calculus"), None, None
@@ -108,7 +108,7 @@ def test_the_final_pass_marks_the_draft_and_an_unplugged_mac_puts_it_back(cfg, m
 
 def test_the_window_and_claude_get_the_same_sentence(cfg, monkeypatch):
     StoppedSession(cfg)
-    cli.mark_draft(cfg.vault / "Lectures/Calculus/2026-10-31/Calculus 2026-10-31.md", "queued", "battery")
+    cli.mark_draft(cfg.folder / "Calculus/2026-10-31/Calculus 2026-10-31.md", "queued", "battery")
     [entry] = share.library(cfg)
     assert entry["status"] == "queued" and "once the Mac is plugged in" in entry["draft_note"]
     assert _status_note(entry) == f" [not transcribed yet. {entry['draft_note']}]"

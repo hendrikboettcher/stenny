@@ -178,7 +178,7 @@ def list_courses(cfg) -> str:
     courses = _courses(cfg)
     lectures = {c: e for c, e in courses.items() if e[0]["kind"] == "lecture"}
     talks = {c: e for c, e in courses.items() if e[0]["kind"] == "event"}
-    vault = Vault(cfg.lectures_root)
+    vault = cfg.vault_for()
     lines = ["Courses (lectures transcribed by Stenny):"]
     for course, entries in lectures.items():
         glossary = Glossary.load(vault.glossary_path(course))
@@ -355,7 +355,7 @@ def search_lectures(cfg, query: str, course: str | None = None, max_results: int
 
 def get_glossary(cfg, course: str) -> str:
     name, _ = _course(cfg, course)
-    path = Vault(cfg.lectures_root).glossary_path(name)
+    path = cfg.vault_for().glossary_path(name)
     if not path.exists():
         return f"{name} has no glossary yet."
     g = Glossary.load(path)
@@ -411,7 +411,7 @@ def suggest_glossary_terms(cfg, course: str, terms: list[str]) -> str:
     name, entries = _course(cfg, course)
     if entries[0]["kind"] != "lecture":
         raise ConnectorError(f"'{name}' is a talk, not a course: talks have no glossary.")
-    vault = Vault(cfg.lectures_root)
+    vault = cfg.vault_for()
     path = vault.glossary_path(name)
     if not path.exists():
         raise ConnectorError(f"{name} has no glossary note yet; Stenny makes one with the course's first lecture.")

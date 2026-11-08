@@ -15,8 +15,12 @@ STENNY_CLI=../.venv/bin/stenny npx vite dev --port 1420   # the interface in a b
 ```
 
 `--library` runs the window without the menu bar icon, for trying a build next to the installed Stenny (never two
-Stenny icons in the menu bar). `STENNY_CLI` picks the engine (default `~/.local/bin/stenny`); `STENNY_HOME` and
-`STENNY_CONFIG` point it at a test copy of the data. Rust comes from rustup (`~/.cargo/bin`).
+Stenny icons in the menu bar). `STENNY_CLI` picks the engine (default `~/.local/bin/stenny`); `STENNY_HOME` puts all of
+Stenny's own files into one test folder (its config.toml at the top, Recordings/, Queue/, Logs/; the Stenny folder is
+whatever that config's `folder` says), `STENNY_CONFIG` names another config. The app never computes a path itself: it
+asks the engine (`settings`, `preferences`; src/stenny/paths.py). When the engine starts it moves an older install
+(`~/Lectures Data`) into today's places and starts a config if there is none (src/stenny/migrate.py, `on_start`).
+Rust comes from rustup (`~/.cargo/bin`).
 
 Without `--library` it is the menu bar app (src-tauri/src/menubar.rs): the classic menu, the clock next to the icon,
 the calendar's lecture with its "Record this lecture?" notification, and the pause shortcut, the last two through

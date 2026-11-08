@@ -134,7 +134,7 @@ class LiveSession:
         self.draft = draft  # transcribe during the recording when plugged in (False: record only)
         self.started_at = datetime.now().replace(microsecond=0)
         self.t0 = time.monotonic()
-        self.vault = Vault(cfg.root_for(course))
+        self.vault = cfg.vault_for(course)
         self.glossary = ensure_glossary(self.vault, course)
         self.source_label = f"live {self.started_at:%Y-%m-%d %H:%M:%S}"
         self.folder = self.vault.lecture_dir(course.name, f"{self.started_at:%Y-%m-%d}", source=self.source_label)

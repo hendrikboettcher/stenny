@@ -3,11 +3,17 @@ import Foundation
 /// Talks to the `stenny` command line tool: its control socket for a running session,
 /// and the executable itself to list courses and start a recording.
 enum StennyCLI {
-    /// The tool's system folder (logs, control socket): ~/Lectures Data/_System, see paths.py.
-    static let dataDir = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Lectures Data/_System")
-    static let socketPath = dataDir.appendingPathComponent("live.sock").path
-    static let logPath = dataDir.appendingPathComponent("live.log").path
+    /// Stenny's own places (src/stenny/paths.py) as the engine says them (`stenny app-settings`, which first moves
+    /// an older install there); the usual ones on a Mac if it can't say.
+    private static let places: [String: Any] = json(["app-settings"]) as? [String: Any] ?? [:]
+    private static let support = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/Stenny")
+    /// The data folder (the control socket, the calendar's titles) and the logs folder.
+    static let dataDir = (places["data_dir"] as? String).map { URL(fileURLWithPath: $0) } ?? support
+    static let logsDir = (places["logs_dir"] as? String).map { URL(fileURLWithPath: $0) }
+        ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/Stenny")
+    static let socketPath = places["socket"] as? String ?? dataDir.appendingPathComponent("live.sock").path
+    static let logPath = logsDir.appendingPathComponent("live.log").path
 
     /// Status of the running session, or nil if none is running.
     struct Status {
@@ -237,7 +243,7 @@ enum StennyCLI {
             sysctlbyname("hw.model", &model, &size, nil, 0)
             body["version"] = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
             body["system"] = "\(String(cString: model)), \(info.physicalMemory / (1 << 30)) GB, \(info.operatingSystemVersionString)"
-            let log = (try? String(contentsOf: dataDir.appendingPathComponent("stenny.log"), encoding: .utf8)) ?? ""
+            let log = (try? String(contentsOf: logsDir.appendingPathComponent("stenny.log"), encoding: .utf8)) ?? ""
             body["log"] = log.split(whereSeparator: \.isNewline).suffix(40).joined(separator: "\n")
         }
         var request = URLRequest(url: URL(string: "https://stenny.eu/api/feedback")!, timeoutInterval: 20)
@@ -301,7 +307,7 @@ enum StennyCLI {
             throw NSError(domain: "Stenny", code: 1, userInfo: [NSLocalizedDescriptionKey:
                 "The `stenny` command was not found. Install it with `uv tool install -e .` in the project folder."])
         }
-        try FileManager.default.createDirectory(at: dataDir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: logsDir, withIntermediateDirectories: true)
         FileManager.default.createFile(atPath: logPath, contents: nil)
         let log = FileHandle(forWritingAtPath: logPath)
         let process = Process()

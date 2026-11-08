@@ -166,8 +166,10 @@ DE = {
         "pause_shortcut „{value}“: Die Taste muss ein einzelnes Zeichen, space oder f1–f20 sein.",
     "No config at {path}. Run `stenny init` to create one.":
         "Unter {path} gibt es keine Konfiguration. Mit `stenny init` legst du eine an.",
-    "Set `vault` in {path} to the folder your transcripts go to (e.g. your Obsidian vault).":
-        "Trag in {path} bei `vault` den Ordner für deine Transkripte ein (z. B. deinen Obsidian-Vault).",
+    "Set `folder` in {path} to the folder your transcripts go to (e.g. ~/Documents/Stenny).":
+        "Trag in {path} bei `folder` den Ordner für deine Transkripte ein (z. B. ~/Documents/Stenny).",
+    "A course can't be called \"{name}\": that's the folder for talks.":
+        "Ein Kurs kann nicht „{name}“ heißen – so heißt der Ordner für Vorträge.",
     "Missing required key {key} in {path}": "In {path} fehlt der Pflichteintrag {key}",
     "[app] language '{value}': use system, en or de.":
         "[app] language „{value}“: Möglich sind system, en und de.",
