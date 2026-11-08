@@ -48,6 +48,8 @@ src/stenny/
   mcp_server.py   `stenny mcp`: connector.py as a local MCP server (stdio, official `mcp` SDK) + study instructions
   app_server.py   `stenny app-server`: the engine behind the new app (desktop/), JSON lines over stdio (library,
                   lecture, make_copy, finish_now); plain functions of (cfg, params), so a phone page can serve them too
+  i18n.py         the engine's messages to the app in its language (English/German, `tr()`, keyed by the English
+                  text); the app's own texts are desktop/src/lib/locales/*.json, shared by Svelte and Rust
   settings.py     the app's Settings: what it shows (`preferences`) and one change at a time
                   (`set_preference`, `set_course_language`); config.toml edited as text, never written if it won't load
   app_live.py     the app's recording methods (status, start → `stenny live` in its own process, pause/resume/stop,
@@ -89,6 +91,9 @@ Vault output: `<vault>/<lectures_dir>/<Course>/<YYYY-MM-DD>/<Course> <YYYY-MM-DD
 - **Pause means the microphone is off:** while paused, the audio source is stopped; never record or buffer paused audio.
 - **The recording comes first (`resources.py`):** low memory costs the live draft, low disk the backup microphone, and a final pass waits for memory like it waits for power. A process that dies mustn't lose a lecture: `stenny recover` queues its final pass, and Stenny starts recording again without the draft.
 - Live timestamps are lecture-clock time (pauses included); keep `spans`/`pauses` in session.json consistent with that.
+- **The app speaks English and German.** New user-facing text goes into both `desktop/src/lib/locales/*.json`
+  (Svelte `t()`, Rust `tr!`) or, for the engine, `tr()` with an entry in `i18n.DE`; German with "du" and the terms
+  in desktop/README.md ("Language"). Vault content (transcripts, summaries, file names) is never translated.
 - **Keep README.md, SETUP.md and config.example.toml current** in the same commit as a change to a feature, a command, a setting or a storage location.
 - Don't install large dependencies (>100 MB) or persistent system config without asking the user. The one exception: setup installs the queue's launchd agent by itself (`stenny schedule uninstall` removes it).
 

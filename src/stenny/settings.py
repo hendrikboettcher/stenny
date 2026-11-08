@@ -7,6 +7,8 @@ import tomllib
 from pathlib import Path
 
 from . import config as config_mod
+from . import i18n
+from .i18n import tr
 from .config import LANGUAGE_MODES, Config, ConfigError, parse_shortcut
 from .courses import _section, _write
 
@@ -16,21 +18,21 @@ SUPPORTED = ("en", "de", "fr")  # the languages Stenny is built and tested for; 
 
 def _bool(v) -> bool:
     if not isinstance(v, bool):
-        raise ConfigError("Expected on or off.")
+        raise ConfigError(tr("Expected on or off."))
     return v
 
 
 def _choice(*options):
     def check(v):
         if v not in options:
-            raise ConfigError(f"Use one of: {', '.join(options)}.")
+            raise ConfigError(tr("Use one of: {options}.", options=", ".join(options)))
         return v
     return check
 
 
 def _time(v) -> str:
     if not isinstance(v, str) or not TIME.fullmatch(v):
-        raise ConfigError("Use a time such as 01:00.")
+        raise ConfigError(tr("Use a time such as 01:00."))
     return v
 
 
@@ -41,13 +43,13 @@ def _shortcut(v) -> str:
 
 def _languages(v) -> list[str]:
     if not isinstance(v, list) or not v or not all(x in SUPPORTED for x in v):
-        raise ConfigError("Stenny is made for English, German and French so far.")
+        raise ConfigError(tr("Stenny is made for English, German and French so far."))
     return list(dict.fromkeys(v))
 
 
 def _backup(v) -> str:
     if not isinstance(v, str) or not v.strip():
-        raise ConfigError("Pick a microphone, Automatic or Off.")
+        raise ConfigError(tr("Pick a microphone, Automatic or Off."))
     return v.strip()
 
 
@@ -64,6 +66,7 @@ SETTINGS = {
     "processing.night_start": _time,
     "processing.night_end": _time,
     "app.pause_shortcut": _shortcut,
+    "app.language": _choice(*i18n.SETTINGS),
     "recordings.languages": _languages,
 }
 
@@ -76,7 +79,10 @@ def get(cfg: Config) -> dict:
         "llm": {"backend": cfg.llm_backend, "summary": cfg.summary},
         "processing": {"priority": cfg.priority, "require_ac_for_queue": cfg.require_ac_for_queue,
                        "night_only": cfg.night_only, "night_start": cfg.night_start, "night_end": cfg.night_end},
-        "app": {"pause_shortcut": cfg.pause_shortcut},
+        "app": {"pause_shortcut": cfg.pause_shortcut, "language": cfg.app_language},
+        # Stenny's own language: what "system" comes to, and the system's (for "System default (Deutsch)")
+        "ui_language": i18n.resolve(cfg.app_language),
+        "system_language": i18n.system_language(),
         "recordings": {"languages": cfg.event_languages, "folder": str(cfg.events_root)},
         "paths": {"vault": str(cfg.vault), "lectures": str(cfg.lectures_root), "data": str(cfg.data_dir),
                   "config": str(cfg.path)},
@@ -130,7 +136,7 @@ def set_line(text: str, span: tuple[int, int] | None, table: str | None, key: st
 def change(cfg: Config, key: str, value) -> dict:
     """Sets one setting (see SETTINGS) and returns all of them again."""
     if key not in SETTINGS:
-        raise ConfigError(f"'{key}' can't be changed here.")
+        raise ConfigError(tr("'{key}' can't be changed here.", key=key))
     value = SETTINGS[key](value)
     table, _, name = key.rpartition(".")
     table = table or None
@@ -143,7 +149,7 @@ def course_language(cfg: Config, course: str, language: str, languages: list[str
     """A course's language: a fixed code, or "auto"/"mixed" among `languages`."""
     c = cfg.course(course)
     if language not in LANGUAGE_MODES and language not in SUPPORTED:
-        raise ConfigError("Stenny is made for English, German and French so far (or mixed, or one per lecture).")
+        raise ConfigError(tr("Stenny is made for English, German and French so far (or mixed, or one per lecture)."))
     text = cfg.path.read_text(encoding="utf-8")
     text = set_line(text, _section(text, c.name), None, "language", language)
     keep = _languages(languages) if language in LANGUAGE_MODES and languages else None

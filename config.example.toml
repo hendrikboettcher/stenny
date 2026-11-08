@@ -27,6 +27,10 @@ night_end = "07:00"
 # on your keyboard (or space, f1–f20). The default suits German keyboards (Ü is right of P); on other
 # keyboards pick something else, e.g. "cmd+shift+p" or "ctrl+opt+space". Stenny's Settings window sets it too.
 pause_shortcut = "cmd+shift+ü"
+# The language of Stenny's windows, menus and notifications: "system" (the first of the system's preferred
+# languages that Stenny has, else English), "en" or "de". Settings ▸ General sets it too. Transcripts keep the
+# language of their course.
+language = "system"
 
 [live]
 # device = "MacBook Air Microphone"   # microphone for `stenny live` (see `stenny devices`);

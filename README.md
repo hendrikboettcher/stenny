@@ -67,6 +67,8 @@ open /Applications/Stenny.app   # allow microphone, calendar and notifications
 open -a Claude Stenny.mcpb
 ```
 
+**Language:** Stenny's windows, menus, dialogs and notifications are in English or German. By default they follow the system's language; *Settings… ▸ General ▸ Language* switches between *System default*, *English* and *Deutsch* at once, without restarting (`[app] language` in the config). Transcripts and summaries keep each course's own language.
+
 See `config.example.toml` for every setting. The AI step uses the `claude` command (Claude Code in the terminal) by default; the Claude desktop app doesn't install it, so run `curl -fsSL https://claude.ai/install.sh | bash` and `claude auth login` once. For the API instead: `uv tool install -e '.[api]' --python 3.12`, set `ANTHROPIC_API_KEY` and `[llm] backend = "api"`. With `backend = "none"` everything stays offline.
 
 ## Daily use

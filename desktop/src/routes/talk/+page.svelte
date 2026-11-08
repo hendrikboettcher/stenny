@@ -3,18 +3,19 @@
   // (as `stenny live --event … --lang …`). The language last picked is picked again.
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { t, languageName } from "$lib/i18n.svelte";
 
-  const LANGUAGES = [["mixed", "Mixed"], ["en", "English"], ["de", "German"], ["fr", "French"]] as const;
+  const LANGUAGES = ["mixed", "en", "de", "fr"];
   const remembered = (() => { try { return localStorage.getItem("talkLanguage"); } catch { return null; } })();
   let title = $state("");
-  let language = $state<string>(LANGUAGES.some(([c]) => c === remembered) ? remembered! : "mixed");
+  let language = $state<string>(LANGUAGES.includes(remembered ?? "") ? remembered! : "mixed");
   let error = $state<string | null>(null);
   let busy = $state(false);
 
   async function start(e: SubmitEvent) {
     e.preventDefault();
     if (!title.trim()) {
-      error = "Give the talk a title, like “Guest talk on climate models”.";
+      error = t("talk.needsTitle");
       return;
     }
     busy = true;
@@ -32,27 +33,26 @@
 </script>
 
 <form onsubmit={start}>
-  <h1 class="serif">Record a talk or event</h1>
-  <p>Not one of your courses: a guest talk, a meeting, a panel. Its transcript goes to Talks &amp; events.</p>
+  <h1 class="serif">{t("talk.title")}</h1>
+  <p>{t("talk.lead")}</p>
   <!-- svelte-ignore a11y_autofocus -->
-  <input bind:value={title} oninput={() => (error = null)} placeholder="Title, e.g. Guest talk on climate models" autofocus />
+  <input bind:value={title} oninput={() => (error = null)} placeholder={t("talk.placeholder")} autofocus />
   <div class="language">
-    <span class="label">Language</span>
-    <div class="segmented" role="radiogroup" aria-label="Language">
-      {#each LANGUAGES as [code, name]}
+    <span class="label">{t("common.language")}</span>
+    <div class="segmented" role="radiogroup" aria-label={t("common.language")}>
+      {#each LANGUAGES as code}
         <button type="button" role="radio" aria-checked={language === code} class:on={language === code}
-                onclick={() => (language = code)}>{name}</button>
+                onclick={() => (language = code)}>{languageName(code)}</button>
       {/each}
     </div>
   </div>
   <p class="hint">
-    {language === "mixed" ? "For speakers who switch: English, German and French are told apart as the talk goes."
-      : `The whole talk in ${LANGUAGES.find(([c]) => c === language)?.[1]}.`}
+    {language === "mixed" ? t("talk.mixed") : t("talk.whole", { language: languageName(language) ?? language })}
   </p>
   {#if error}<p class="error">{error}</p>{/if}
   <div class="buttons">
-    <button type="button" class="pill" onclick={() => getCurrentWindow().close()}>Cancel</button>
-    <button type="submit" class="pill primary" disabled={busy}>{busy ? "Starting…" : "Start Recording"}</button>
+    <button type="button" class="pill" onclick={() => getCurrentWindow().close()}>{t("common.cancel")}</button>
+    <button type="submit" class="pill primary" disabled={busy}>{busy ? t("common.starting") : t("talk.start")}</button>
   </div>
 </form>
 

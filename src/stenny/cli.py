@@ -13,6 +13,7 @@ from pathlib import Path
 from . import config as config_mod
 from . import jobs, resources
 from .config import ConfigError, Course
+from .i18n import tr
 from .paths import tool
 
 EXAMPLE = Path(__file__).resolve().parents[2] / "config.example.toml"
@@ -552,7 +553,7 @@ def finalize(session, cfg, policy: str, use_llm: bool, engine) -> None:
     run_now = policy == "now" or (policy == "auto" and on_power and resources.enough_memory_for_final_pass())
     if not run_now:
         why = "as requested" if policy != "auto" else "memory is low" if on_power else "on battery"
-        session.final_note = session.final_note or f"final pass queued ({why})"
+        session.final_note = session.final_note or tr(f"final pass queued ({why})")  # the app's menu shows it
         mark_draft(session.transcript_path, "queued", "battery" if policy == "auto" and not on_power else None)
         log(f"Final pass queued {why}: {job.name} — runs with `stenny queue run` "
             "or the schedule (`stenny schedule install`).")
@@ -561,7 +562,7 @@ def finalize(session, cfg, policy: str, use_llm: bool, engine) -> None:
 
     with jobs.QueueLock() as lock:
         if lock is None:  # a scheduled run is busy; a later one picks this job up
-            session.final_note = session.final_note or "final pass queued (another one is running)"
+            session.final_note = session.final_note or tr("final pass queued (another one is running)")
             mark_draft(session.transcript_path, "queued")
             log(f"Another final pass is running; this one waits in the queue: {job.name}")
             return
@@ -573,7 +574,7 @@ def finalize(session, cfg, policy: str, use_llm: bool, engine) -> None:
             run_job(job, cfg, engine, stop=jobs.unplugged_check() if policy == "auto" else None)
         except Interrupted as e:
             session.state = "stopped"
-            session.final_note = session.final_note or "final pass queued (unplugged)"
+            session.final_note = session.final_note or tr("final pass queued (unplugged)")
             log(f"Unplugged; final pass {e}. The job waits in the queue and goes on from there: {job.name}")
             return
     session.state = "done"

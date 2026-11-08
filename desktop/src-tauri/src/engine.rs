@@ -2,6 +2,7 @@
 //! first request and restarted if it ever exits. Requests and replies are JSON lines; replies carry the id of
 //! their request, so several windows can ask at once.
 
+use crate::i18n::{self, tr};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
@@ -45,13 +46,15 @@ fn start() -> Result<Running, String> {
             command.env("STENNY_REC", rec);
         }
     }
+    // "System default" in Settings: the language the system prefers, as Rust sees it (src/stenny/i18n.py)
+    command.env("STENNY_SYSTEM_LANGUAGE", i18n::system_language());
     let mut child = command
         .arg("app-server")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .spawn()
-        .map_err(|e| format!("Stenny's engine couldn't be started ({}): {e}", exe.display()))?;
+        .map_err(|e| tr!("error.engine", path = exe.display(), error = e))?;
     let stdin = child.stdin.take().ok_or("no stdin")?;
     let stdout = child.stdout.take().ok_or("no stdout")?;
     let pending: Pending = Arc::default();
@@ -85,12 +88,12 @@ impl Engine {
             let line = json!({"id": id, "method": method, "params": params}).to_string() + "\n";
             if let Err(e) = r.stdin.write_all(line.as_bytes()).and_then(|_| r.stdin.flush()) {
                 *running = None;
-                return Err(format!("Stenny's engine stopped: {e}"));
+                return Err(tr!("error.engineStopped", error = e));
             }
         }
         let reply = rx
             .recv_timeout(Duration::from_secs(120))
-            .map_err(|_| "Stenny's engine didn't answer.".to_string())?;
+            .map_err(|_| tr!("error.engineSilent"))?;
         match reply.get("error").and_then(Value::as_str) {
             Some(message) => Err(message.to_string()),
             None => Ok(reply.get("result").cloned().unwrap_or(Value::Null)),

@@ -2,6 +2,7 @@
   // A small sheet over the window: a question, optional fields, two buttons. Escape or a click outside cancels.
   // `danger`: the main button deletes something; Cancel is then the one Return presses.
   import type { Snippet } from "svelte";
+  import { t } from "$lib/i18n.svelte";
 
   let {
     title, text = "", confirm, danger = false, busy = false, error = null, oncancel, onconfirm, children,
@@ -37,8 +38,8 @@
     {@render children?.()}
     {#if error}<p class="error selectable">{error}</p>{/if}
     <div class="buttons">
-      <button type="button" class="pill" bind:this={cancelButton} onclick={oncancel}>Cancel</button>
-      <button type="submit" class="pill main" class:danger disabled={busy}>{busy ? "One moment…" : confirm}</button>
+      <button type="button" class="pill" bind:this={cancelButton} onclick={oncancel}>{t("common.cancel")}</button>
+      <button type="submit" class="pill main" class:danger disabled={busy}>{busy ? t("common.oneMoment") : confirm}</button>
     </div>
   </form>
 </div>

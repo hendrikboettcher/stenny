@@ -46,6 +46,10 @@
     ],
     "macOS": {
       "minimumSystemVersion": "14.4",
+      "files": {
+        "Resources/en.lproj/InfoPlist.strings": "locales/en.lproj/InfoPlist.strings",
+        "Resources/de.lproj/InfoPlist.strings": "locales/de.lproj/InfoPlist.strings"
+      },
       "hardenedRuntime": false
     }
   }
