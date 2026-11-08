@@ -7,7 +7,7 @@ replace the Swift menu bar app in `app/`. Everything about lectures comes from t
 
 ```bash
 npm install                                   # once
-scripts/helpers.sh                            # the Swift helpers it bundles: stenny-agent, stenny-rec
+scripts/helpers.sh                            # what it bundles: stenny-agent, stenny-rec, Stenny.mcpb (needs Node)
 npm run check                                 # type check
 npm run tauri build -- --debug --bundles app  # src-tauri/target/debug/bundle/macos/Stenny.app
 open -n --env STENNY_CLI=../.venv/bin/stenny src-tauri/target/debug/bundle/macos/Stenny.app --args --library

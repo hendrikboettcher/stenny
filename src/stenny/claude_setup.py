@@ -175,9 +175,11 @@ def installed_extension(data: Path | None = None) -> dict | None:
 
 
 def connector_file() -> Path | None:
-    """Stenny.mcpb: next to Stenny's code in a download (setup's folder), or built there by connector/build.sh."""
+    """Stenny.mcpb: the one bundled with the app ($STENNY_CONNECTOR, set by desktop/src-tauri/src/engine.rs), else
+    next to Stenny's code in a download (setup's folder), or built there by connector/build.sh."""
     root = Path(__file__).resolve().parents[2]
-    return next((p for p in (root / "Stenny.mcpb", root / "dist/Stenny.mcpb") if p.is_file()), None)
+    bundled = [Path(os.environ["STENNY_CONNECTOR"])] if os.environ.get("STENNY_CONNECTOR") else []
+    return next((p for p in (*bundled, root / "Stenny.mcpb", root / "dist/Stenny.mcpb") if p.is_file()), None)
 
 
 def stenny_command() -> list[str]:

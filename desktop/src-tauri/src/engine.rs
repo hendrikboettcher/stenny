@@ -46,6 +46,14 @@ fn start() -> Result<Running, String> {
             command.env("STENNY_REC", rec);
         }
     }
+    // the connector bundled with this app (Contents/Resources on macOS, next to the program on Windows), so
+    // Settings ▸ Use with Claude can install it again whatever folder Stenny's code is in (claude_setup.py)
+    if let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.to_path_buf())) {
+        let bundled = [dir.join("../Resources/Stenny.mcpb"), dir.join("Stenny.mcpb")];
+        if let Some(file) = bundled.into_iter().find(|f| f.exists()) {
+            command.env("STENNY_CONNECTOR", file);
+        }
+    }
     // "System default" in Settings: the language the system prefers, as Rust sees it (src/stenny/i18n.py)
     command.env("STENNY_SYSTEM_LANGUAGE", i18n::system_language());
     let mut child = command

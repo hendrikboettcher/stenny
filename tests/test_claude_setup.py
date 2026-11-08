@@ -159,3 +159,12 @@ def test_removes_the_connector_from_claude_code(fake_claude, monkeypatch):
     status = claude_setup.remove_from_claude_code(None)
     assert status["code"]["added"] is False
     assert (fake_claude.dir / "removed").read_text().strip() == "mcp remove --scope user stenny"
+
+
+def test_the_connector_bundled_with_the_app_comes_first(tmp_path, monkeypatch):
+    bundled = tmp_path / "Stenny.mcpb"
+    bundled.write_bytes(b"zip")
+    monkeypatch.setenv("STENNY_CONNECTOR", str(bundled))
+    assert claude_setup.connector_file() == bundled
+    monkeypatch.setenv("STENNY_CONNECTOR", str(tmp_path / "missing.mcpb"))
+    assert claude_setup.connector_file() != tmp_path / "missing.mcpb"
