@@ -6,7 +6,7 @@ import tomllib
 import unicodedata
 from pathlib import Path
 
-from .config import LANGUAGE_MODES, Config, ConfigError
+from .config import LANGUAGE_MODES, Config, ConfigError, check_course_name
 from .i18n import tr
 from .vault import safe_name
 
@@ -43,6 +43,7 @@ def add(cfg: Config, name: str, language: str, languages: list[str] | None = Non
     alias = alias.strip() if alias else None
     if not name:
         raise ConfigError(tr("A course needs a name."))
+    check_course_name(name)
     if safe_name(name) != name:
         raise ConfigError(tr("A course name can't contain these characters: / \\ : # ^ [ ] | * ? \" < >. Try '{name}'.",
                                 name=safe_name(name)))

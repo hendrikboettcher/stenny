@@ -1,7 +1,15 @@
-"""All writes into the Obsidian vault go through here.
+"""All writes into the Stenny folder (`folder` in config.toml, e.g. ~/Documents/Stenny or a folder in an Obsidian
+vault) go through here:
+
+    <Stenny folder>/
+    ├── <Course>/<YYYY-MM-DD>/   transcript, summary, slides
+    ├── Talks/<Title>/<date>/    talks and events (TALKS_DIR)
+    ├── _Glossaries/
+    ├── _Course Files/
+    └── _Topics/
 
 Two guarantees:
-- nothing is written outside the configured lectures root;
+- nothing is written outside the Stenny folder;
 - folder rule: every folder holds either only folders or only files, never both.
 Hidden entries (".DS_Store", our ".tmp" files) are ignored for the rule.
 """
@@ -11,6 +19,7 @@ import re
 import shutil
 from pathlib import Path
 
+TALKS_DIR = "Talks"  # talks and events; the one place its name is set (a course can't be called that)
 GLOSSARY_DIR = "_Glossaries"
 COURSE_FILES_DIR = "_Course Files"
 TOPICS_DIR = "_Topics"
@@ -80,13 +89,16 @@ class LectureFiles:
 
 
 class Vault:
-    def __init__(self, root: Path):
+    """`root`: the Stenny folder, or its Talks/ folder (then `top` is the Stenny folder, which may be created too)."""
+
+    def __init__(self, root: Path, top: Path | None = None):
         self.root = root.expanduser().resolve()
+        self.top = top.expanduser().resolve() if top else self.root
 
     def _inside(self, path: Path) -> Path:
         path = path.resolve()
         if path != self.root and self.root not in path.parents:
-            raise VaultError(f"Refusing to write outside the lectures folder: {path}")
+            raise VaultError(f"Refusing to write outside the Stenny folder: {path}")
         return path
 
     def _check_can_hold(self, folder: Path, kind: str) -> None:
@@ -105,8 +117,8 @@ class Vault:
             missing.append(p)
             p = p.parent
         for d in reversed(missing):
-            if d != self.root and self.root not in d.parents:
-                raise VaultError(f"{d} does not exist; create the vault folders above the lectures root yourself.")
+            if d != self.top and self.top not in d.parents:
+                raise VaultError(f"{d} does not exist; create the folders above the Stenny folder yourself.")
             self._check_can_hold(d.parent, "dir")
             d.mkdir()
         return path
@@ -135,14 +147,14 @@ class Vault:
         return path
 
     def move_out(self, path: Path, dest: Path) -> Path:
-        """Move one of our files out of the lectures folder (e.g. the raw output, by `stenny migrate`)."""
+        """Move one of our files out of the Stenny folder (e.g. the raw output, by `stenny migrate`)."""
         path = self._inside(path)
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(path, dest)
         return dest
 
     def rename(self, path: Path, new: Path) -> Path:
-        """Rename a file within the same folder of the lectures folder."""
+        """Rename a file within the same folder of the Stenny folder."""
         path, new = self._inside(path), self._inside(new)
         if new.parent != path.parent or new.exists():
             raise VaultError(f"Can't rename {path.name} to {new}")
@@ -199,8 +211,9 @@ class Vault:
         return sorted(p.stem for p in _visible(self.root / TOPICS_DIR) if p.suffix == ".md")
 
     def course_dirs(self) -> list[Path]:
-        """Every course folder (the root's folders except the generated "_…" ones)."""
-        return sorted(d for d in _visible(self.root) if d.is_dir() and not d.name.startswith("_"))
+        """Every course folder (the root's folders except the generated "_…" ones and Talks/), or in Talks/ every talk."""
+        talks = self.root == self.top and self.root / TALKS_DIR
+        return sorted(d for d in _visible(self.root) if d.is_dir() and not d.name.startswith("_") and d != talks)
 
     def violations(self) -> list[Path]:
         """Folders under the root that break the folder rule (for checks and tests)."""

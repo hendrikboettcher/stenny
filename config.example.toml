@@ -1,9 +1,12 @@
-# Stenny configuration. `stenny init --vault <folder>` copies it to ~/Lectures Data/_System/config.toml.
+# Stenny configuration. `stenny init [--folder <folder>]` copies it to Stenny's config place: on a Mac
+# ~/Library/Application Support/Stenny/config.toml, on Windows %APPDATA%\Stenny\config.toml (`stenny where`).
 # Paths may use ~. Nothing personal is hardcoded in the code; everything lives here.
 
-vault = "CHANGE-ME"                          # the folder transcripts go to, e.g. your Obsidian vault
-lectures_dir = "Lectures"                    # inside the vault; the tool never writes elsewhere
-# data_dir = "~/Lectures Data"               # audio, segments.json, raw output, logs: everything outside the vault
+folder = "~/Documents/Stenny"                # everything you or Claude read: courses, Talks, glossaries, course
+                                             # files, topics. A folder in an Obsidian vault works too. Stenny
+                                             # never writes anywhere else.
+# data_dir = "/Volumes/Disk/Stenny"          # where Recordings/ goes (audio, segments.json, raw output); default:
+                                             # Stenny's own app-data folder, see `stenny where`
 keep_audio = true                            # false = don't archive audio (the original file is never deleted)
 
 [transcription]
@@ -45,9 +48,8 @@ language = "system"
                     # (e.g. while you use the iPhone): "auto" = the Mac's own microphone, "off", or a name
 
 # Talks and events (Stenny: Start Lecture ▸ Other…, or `stenny live --event "Title"`): not courses.
-# They go to their own vault folder; default: "Recordings" next to lectures_dir.
+# They go to the Talks folder inside the Stenny folder (so a course can't be called "Talks").
 # [recordings]
-# folder = "Recordings"
 # languages = ["en", "de", "fr"]           # detected among these, about every 25 s
 
 # Only for developers: the Claude extension (Stenny.mcpb) normally runs the installed `stenny`; this runs

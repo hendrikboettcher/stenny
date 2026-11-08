@@ -20,17 +20,17 @@ def env(tmp_path, monkeypatch):
     lecturer's OK; the Trash is a folder."""
     vault, data, system = tmp_path / "vault", tmp_path / "data", tmp_path / "data" / "_System"
     system.mkdir(parents=True)
-    (system / "config.toml").write_text(f'vault = "{vault.as_posix()}"\nlectures_dir = "Lectures"\ndata_dir = "{data.as_posix()}"\n\n'
+    (system / "config.toml").write_text(f'folder = "{(vault / "Lectures").as_posix()}"\ndata_dir = "{data.as_posix()}"\n\n'
                                         f'[courses."{NAME}"]  # mine\nlanguage = "en"\naliases = ["da"]\n\n'
                                         '[courses.Other]\nlanguage = "fr"\n', encoding="utf-8")
-    monkeypatch.setattr(paths, "SYSTEM_DIR", system)
-    monkeypatch.setattr(jobs, "DATA_DIR", system)
-    monkeypatch.setattr(jobs, "QUEUE_DIR", data / "_Queue")
+    monkeypatch.setattr(paths, "CONFIG_DIR", system)
+    monkeypatch.setattr(jobs, "LOGS_DIR", system)
+    monkeypatch.setattr(jobs, "QUEUE_DIR", data / "Queue")
     monkeypatch.setattr(manage, "_recording", lambda: None)
     trashed = tmp_path / "Trash"
     trashed.mkdir()
     monkeypatch.setattr(manage, "trash", lambda items: [shutil.move(p, trashed / p.name) for p in items if p.exists()])
-    root, course_data = vault / "Lectures", data / NAME
+    root, course_data = vault / "Lectures", data / "Recordings" / NAME
     course_data.mkdir(parents=True)
     dates = ["2026-10-20", "2026-10-27", "2026-10-29"]
     for n, date in enumerate(dates, 1):
@@ -60,7 +60,7 @@ def env(tmp_path, monkeypatch):
     cfg = config_mod.load(system / "config.toml")
     from stenny import course_files
     from stenny.vault import Vault
-    course_files.rebuild(Vault(cfg.lectures_root), NAME, log=lambda *_: None)
+    course_files.rebuild(cfg.vault_for(), NAME, log=lambda *_: None)
     return cfg, trashed
 
 
@@ -87,7 +87,7 @@ def test_the_final_pass_keeps_the_title(env):
     from stenny.vault import LectureFiles
     cfg, _ = env
     manage.rename_lecture(cfg, NAME, "2026-10-27", "Trees")
-    assert own_title(LectureFiles(cfg.lectures_root / NAME / "2026-10-27", NAME)) == "Trees"
+    assert own_title(LectureFiles(cfg.folder / NAME / "2026-10-27", NAME)) == "Trees"
     lec = Lecture(course=NAME, date="2026-10-27", start_time="10:00", duration=60, languages=["en"], language_note="",
                   model="m", source="s", number=2, name="Trees")
     assert parse_frontmatter(transcript_md(lec, PARAGRAPHS, SECTIONS))["title"] == "Trees"
@@ -96,12 +96,12 @@ def test_the_final_pass_keeps_the_title(env):
 def test_delete_lecture_trashes_everything_and_renumbers(env):
     cfg, trashed = env
     manage.delete_lecture(cfg, NAME, "2026-10-27")
-    assert not (cfg.lectures_root / NAME / "2026-10-27").exists()
+    assert not (cfg.folder / NAME / "2026-10-27").exists()
     assert {p.name for p in trashed.iterdir()} == {"2026-10-27", "2026-10-27.opus", "2026-10-27.session.json",
                                                    "2026-10-27.segments.json",
                                                    f"{NAME} 2026-10-27 (raw).md", "j.json"}
-    assert (cfg.data_dir / NAME / "2026-10-20.opus").exists()
-    third = parse_frontmatter((cfg.lectures_root / NAME / "2026-10-29" / f"{NAME} 2026-10-29.md").read_text(encoding="utf-8"))
+    assert (cfg.recordings_dir / NAME / "2026-10-20.opus").exists()
+    third = parse_frontmatter((cfg.folder / NAME / "2026-10-29" / f"{NAME} 2026-10-29.md").read_text(encoding="utf-8"))
     assert third["lecture"] == 2 and third["previous"] == f"[[{NAME} 2026-10-20]]"
 
 
@@ -109,12 +109,12 @@ def test_deleting_the_last_lecture_removes_the_course_folder(env):
     cfg, _ = env
     for d in ["2026-10-20", "2026-10-27", "2026-10-29"]:
         manage.delete_lecture(cfg, NAME, d)
-    assert not (cfg.lectures_root / NAME).exists()
+    assert not (cfg.folder / NAME).exists()
 
 
 def test_a_running_recording_is_neither_renamed_nor_deleted(env):
     cfg, _ = env
-    path = cfg.lectures_root / NAME / "2026-10-29" / f"{NAME} 2026-10-29.md"
+    path = cfg.folder / NAME / "2026-10-29" / f"{NAME} 2026-10-29.md"
     path.write_text(path.read_text(encoding="utf-8").replace('status: "final"', 'status: "live"'), encoding="utf-8")
     for call in (lambda: manage.delete_lecture(cfg, NAME, "2026-10-29"),
                  lambda: manage.rename_lecture(cfg, NAME, "2026-10-29", "x")):
@@ -126,7 +126,7 @@ def test_rename_course_everywhere(env):
     cfg, _ = env
     new = "Data Analytics – Fall"
     manage.rename_course(cfg, "da", new)
-    root, data = cfg.lectures_root, cfg.data_dir
+    root, data = cfg.folder, cfg.recordings_dir
     assert not (root / NAME).exists() and not (data / NAME).exists()
     transcript = root / new / "2026-10-29" / f"{new} 2026-10-29.md"
     text = transcript.read_text(encoding="utf-8")
@@ -146,7 +146,7 @@ def test_rename_course_everywhere(env):
     assert meta == {"folder": str(root / new / "2026-10-20"), "lecture": {"course": new}}
     job = json.loads((jobs.QUEUE_DIR / "j.json").read_text(encoding="utf-8"))
     assert job["course"] == new and job["live"] == str(data / new / "2026-10-27.session.json")
-    assert json.loads((paths.SYSTEM_DIR / "consent.json").read_text(encoding="utf-8")) == ["record/course/" + new, "share/course/Other"]
+    assert json.loads((paths.CONFIG_DIR / "consent.json").read_text(encoding="utf-8")) == ["record/course/" + new, "share/course/Other"]
     text = cfg.path.read_text(encoding="utf-8")
     assert "# mine" in text
     course = config_mod.load(cfg.path).course(new)
@@ -161,7 +161,7 @@ def test_rename_course_refuses_a_taken_name(env):
             manage.rename_course(cfg, NAME, name)
     with pytest.raises(manage.ManageError, match="can't contain"):
         manage.rename_course(cfg, NAME, "A/B")
-    assert (cfg.lectures_root / NAME).exists()
+    assert (cfg.folder / NAME).exists()
 
 
 def test_rename_course_waits_for_a_running_final_pass(env):
@@ -169,7 +169,7 @@ def test_rename_course_waits_for_a_running_final_pass(env):
     with jobs.QueueLock():
         with pytest.raises(manage.ManageError, match="being made"):
             manage.rename_course(cfg, NAME, "New")
-    assert (cfg.lectures_root / NAME).exists()
+    assert (cfg.folder / NAME).exists()
 
 
 def test_the_app_server_reports_problems_as_messages(env):
@@ -187,12 +187,12 @@ def test_the_app_server_reports_problems_as_messages(env):
 def test_delete_course_trashes_it_all_and_leaves_the_config(env):
     cfg, trashed = env
     manage.delete_course(cfg, "da")
-    root = cfg.lectures_root
-    assert not (root / NAME).exists() and not (cfg.data_dir / NAME).exists()
+    root = cfg.folder
+    assert not (root / NAME).exists() and not (cfg.recordings_dir / NAME).exists()
     assert {p.name for p in trashed.iterdir()} >= {NAME, f"{NAME} (glossary).md", f"{NAME} (overview).md", "j.json"}
     left = config_mod.load(cfg.path)
     assert list(left.courses) == ["Other"] and "# mine" not in cfg.path.read_text(encoding="utf-8")
-    assert json.loads((paths.SYSTEM_DIR / "consent.json").read_text(encoding="utf-8")) == ["share/course/Other"]
+    assert json.loads((paths.CONFIG_DIR / "consent.json").read_text(encoding="utf-8")) == ["share/course/Other"]
     assert share.library(left) == []
 
 
@@ -201,9 +201,9 @@ def test_delete_a_talk(env, tmp_path):
     talk = cfg.events_root / "Guest Talk" / "2026-10-22"
     talk.mkdir(parents=True)
     (talk / "Guest Talk 2026-10-22.md").write_text('---\nevent: "Guest Talk"\n---\n# Guest Talk – 2026-10-22\n', encoding="utf-8")
-    (cfg.data_dir / "_Recordings" / "Guest Talk").mkdir(parents=True)
+    (cfg.recordings_dir / "Talks" / "Guest Talk").mkdir(parents=True)
     manage.delete_course(cfg, "Guest Talk", event=True)
-    assert not (cfg.events_root / "Guest Talk").exists() and not (cfg.data_dir / "_Recordings" / "Guest Talk").exists()
+    assert not (cfg.events_root / "Guest Talk").exists() and not (cfg.recordings_dir / "Talks" / "Guest Talk").exists()
     assert list(config_mod.load(cfg.path).courses) == [NAME, "Other"]
 
 

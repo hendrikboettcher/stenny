@@ -64,13 +64,13 @@ def cfg(tmp_path, monkeypatch):
                   [{"start": 5.0, "text": "A draft about derivatives."}], [])
     (lectures / "_Glossaries").mkdir()
     (lectures / "_Glossaries" / "Calculus (glossary).md").write_text(GLOSSARY, encoding="utf-8")
-    write_lecture(tmp_path / "Vault" / "Recordings",
+    write_lecture(lectures / "Talks",
                   lecture(course="Some Talk", kind="event", number=0, date="2026-10-22", topics=[]),
                   [{"start": 3.0, "text": "A talk about limits of AI."}], [])
     toml = tmp_path / "config.toml"
-    toml.write_text(f'vault = "{(tmp_path / "Vault").as_posix()}"\nlectures_dir = "Lectures"\n\n[courses.Calculus]\n'
-                    'language = "en"\naliases = ["Calc"]\n\n[courses."Linear Algebra"]\nlanguage = "en"\n'
-                    '\n[recordings]\nfolder = "Recordings"\n', encoding="utf-8")
+    toml.write_text(f'folder = "{(lectures).as_posix()}"\n\n[courses.Calculus]\n'
+                    'language = "en"\naliases = ["Calc"]\n\n[courses."Linear Algebra"]\nlanguage = "en"\n',
+                    encoding="utf-8")
     monkeypatch.setenv("STENNY_CONFIG", str(toml))
     return config_mod.load()
 
@@ -79,7 +79,7 @@ PRIVATE = ["Lectures Data", "opus", "some-model", "iPhone", "MacBook", "[[", "--
 
 
 def assert_clean(text: str, cfg) -> None:
-    for gone in [*PRIVATE, str(cfg.vault)]:
+    for gone in [*PRIVATE, str(cfg.folder)]:
         assert gone not in text
 
 
@@ -197,7 +197,7 @@ def test_slides_text(cfg):
 
 
 def test_suggested_terms_need_evidence_and_touch_only_the_automatic_section(cfg):
-    path = cfg.lectures_root / "_Glossaries" / "Calculus (glossary).md"
+    path = cfg.folder / "_Glossaries" / "Calculus (glossary).md"
     text = connector.suggest_glossary_terms(
         cfg, "Calculus", ["Bolzano-Weierstrass", "Intermediate Value Theorem", "Hilbert", "epsilon-delta", "Koshi"])
     assert "Added to Calculus's glossary (Terms added automatically): Bolzano-Weierstrass, Intermediate Value Theorem" in text

@@ -31,7 +31,9 @@ lecture notifications, open at login, PDF for Share…), and the old Swift app i
 ```
 src/stenny/
   cli.py          argparse entry point (`stenny …` subcommands)
-  config.py       ~/Lectures Data/_System/config.toml (or $STENNY_CONFIG): paths, model, courses, pause shortcut
+  paths.py        the ONLY code that knows Stenny's own places (config, data, logs, cache, models) on macOS and
+                  Windows; everyone else asks the engine (`stenny where --json`, `app-settings`)
+  config.py       config.toml in the config place (or $STENNY_CONFIG): the Stenny folder, model, courses, shortcut
   audio.py        load/convert/archive audio via ffmpeg
   engines/        Whisper engines behind one interface (mlx first)
   textproc.py     segment cleanup: hallucination filter, gap filling, paragraphs
@@ -53,7 +55,7 @@ src/stenny/
   settings.py     the app's Settings: what it shows (`preferences`) and one change at a time
                   (`set_preference`, `set_course_language`); config.toml edited as text, never written if it won't load
   app_live.py     the app's recording methods (status, start → `stenny live` in its own process, pause/resume/stop,
-                  microphone, devices, match_courses, recover) and the consent answers (_System/consent.json)
+                  microphone, devices, match_courses, recover) and the consent answers (consent.json next to config.toml)
   pipeline.py     audio → segments → paragraphs → files; `postprocess` (text + AI step) and `refresh` (AI step
                   again from segments.json, no re-transcription)
   llm/            backends (claude_code, anthropic_api, its key from keychain.py) + guard (no invented content) + guard (no invented content)
@@ -61,7 +63,9 @@ src/stenny/
   claude_setup.py what Settings checks and sets up for Claude, no tokens spent: is the AI step's option ready (Claude Code
                   installed + signed in, an API key Anthropic accepts), the connector in Claude Desktop / Claude Code
   render.py       Markdown + YAML frontmatter
-  vault.py        safe writes into the vault, folder rule enforcement
+  vault.py        safe writes into the Stenny folder (courses, Talks/, _Glossaries …), folder rule enforcement
+  migrate.py      `stenny migrate`: an older install (~/Lectures Data, talks in <vault>/Recordings) into today's
+                  places, once; the app runs it at start (`on_start`, also makes a config if there is none)
   jobs.py         queue, AC-power check, priority wrappers
   live/           live mode: sources.py (mic/file via ffmpeg), session.py (record, chunk, draft,
                   pause/resume, spans → lecture time), control.py (Unix socket JSON API)
@@ -78,15 +82,15 @@ tests/            pytest, no model downloads needed
 bench/            engine benchmark scripts
 ```
 
-Vault output: `<vault>/<lectures_dir>/<Course>/<YYYY-MM-DD>/<Course> <YYYY-MM-DD>{.md, (summary).md, (slides).pdf}`, plus `<lectures_dir>/_Glossaries/<Course> (glossary).md`, `<lectures_dir>/_Course Files/` and `<lectures_dir>/_Topics/`. **All file names come from `vault.LectureFiles`** (older lectures keep `Transcript.md` etc.). The files are meant as AI context: keep them self-describing (course, lecture number, date in frontmatter and title) and linked to each other.
+Stenny folder (`folder` in config.toml, default `~/Documents/Stenny`, may be inside an Obsidian vault): `<folder>/<Course>/<YYYY-MM-DD>/<Course> <YYYY-MM-DD>{.md, (summary).md, (slides).pdf}`, talks in `<folder>/Talks/<Title>/<date>/` (`vault.TALKS_DIR`; a course can't be called that), plus `<folder>/_Glossaries/<Course> (glossary).md`, `<folder>/_Course Files/` and `<folder>/_Topics/`. **All file names come from `vault.LectureFiles`** (older lectures keep `Transcript.md` etc.). The files are meant as AI context: keep them self-describing (course, lecture number, date in frontmatter and title) and linked to each other.
 
 ## Rules
-- **Never create, modify or delete anything in the vault outside the configured `lectures_dir`.** All vault writes go through `vault.py`.
+- **Never create, modify or delete anything outside the Stenny folder** (`folder` in config.toml; it may sit inside the user's Obsidian vault). All writes there go through `vault.py`.
 - **Folder rule:** each folder contains either only folders or only files, never both. `vault.py` enforces this; don't bypass it.
-- **Raw transcript is sacred:** the raw output (`~/Lectures Data/<Course>/… (raw).md`, outside the vault) is written before any post-processing and never changed by the LLM step.
+- **Raw transcript is sacred:** the raw output (`Recordings/<Course>/… (raw).md` in Stenny's data place, outside the Stenny folder) is written before any post-processing and never changed by the LLM step.
 - **The LLM never rewrites text.** It returns an edit list (section headings with optional slide ranges, term fixes) that `llm/guard.py` validates and applies. A term fix must point to a glossary term, or to words found verbatim in the slide text (stricter where Whisper was confident). Slide ranges must exist in the PDF. Free-form LLM text appears only in `Summary.md`, clearly labelled. Topics and automatic glossary terms don't change the text, but they too need evidence (`guard.validate_topics` / `validate_terms`): a topic's words must be in the transcript or slides, a term on the slides or transcribed the same way twice. Never add corrections automatically.
-- `segments.json` (outside the vault) keeps every segment plus the lecture details (`meta.lecture`), so `stenny refresh` can rebuild everything after Whisper without the audio.
-- **Only what you or Claude read goes into the vault** (transcripts, summaries, glossaries, course files, topic notes). Everything else (audio, segments.json, raw output, queue, logs, config) lives in ONE folder, `~/Lectures Data/` (`paths.py`; `data_dir` in the config). Never upload audio anywhere.
+- `segments.json` (in Recordings/, outside the Stenny folder) keeps every segment plus the lecture details (`meta.lecture`), so `stenny refresh` can rebuild everything after Whisper without the audio.
+- **Only what you or Claude read goes into the Stenny folder** (transcripts, summaries, glossaries, course files, topic notes). Everything else lives in the system's app-data places, and only `paths.py` knows them: config.toml + consent.json in `~/Library/Application Support/Stenny/` (Windows `%APPDATA%\Stenny\`); `Recordings/<Course>/` (audio, segments.json, sessions, raw output) and `Queue/` in `~/Library/Application Support/Stenny/` (Windows `%LOCALAPPDATA%\Stenny\`, or `data_dir` in the config); logs in `~/Library/Logs/Stenny/` (Windows `%LOCALAPPDATA%\Stenny\Logs\`); shared copies in the caches folder. `STENNY_HOME` puts them all in one folder (tests, development). Never upload audio anywhere.
 - **No hardcoded personal paths, names or courses in code, tests or docs.** Everything comes from the config; examples stay neutral.
 - Heavy commands must respect the priority settings (`nice`/`taskpolicy`) unless the user passes `--now`.
 - **Microphone capture goes through `stenny-rec` (AVAudioEngine), never through Python** and not through ffmpeg's avfoundation input, which silently dropped ~1 s every ~8 s. Check every change to live mode with `stenny check`.
@@ -114,5 +118,7 @@ uv run stenny live --course "<name>" --file sample.m4a --speed 3   # test live m
 app/build.sh                           # build + install the menu bar app (--no-install: only build)
 uv run stenny course add "<name>" -l en  # or `course hide`; config.toml stays as text, comments intact
 uv run stenny recover                  # queue the final pass of recordings whose process died
+uv run stenny where                    # where the Stenny folder, config, recordings and logs are (--json)
+uv run stenny migrate --dry-run        # what moving an older install (~/Lectures Data) would do
 app/release.sh                         # release zip; --publish tags and uploads it. Push and release together
 ```

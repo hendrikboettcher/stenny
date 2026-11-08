@@ -12,7 +12,8 @@ from stenny.live import control
 
 @pytest.fixture
 def home(tmp_path, monkeypatch):
-    monkeypatch.setattr(paths, "SYSTEM_DIR", tmp_path)
+    for name in ("CONFIG_DIR", "LOGS_DIR"):
+        monkeypatch.setattr(paths, name, tmp_path)
     monkeypatch.setattr("stenny.jobs.QUEUE_DIR", tmp_path / "_Queue")
     monkeypatch.setattr(control, "send", lambda *a, **k: (_ for _ in ()).throw(control.NoSession("none")))
     app_live._started.clear()

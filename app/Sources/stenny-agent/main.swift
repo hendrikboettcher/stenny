@@ -7,7 +7,7 @@ import UserNotifications
 // stenny-agent: the macOS parts of Stenny's new app (desktop/) that Tauri doesn't have, as a helper it starts.
 // One line per event on stdout, one command per line on stdin; it quits when its stdin closes (the app quit).
 //
-//   stenny-agent --shortcut "cmd+shift+ü" [--calendar --data-dir <~/Lectures Data/_System>] [--lang de]
+//   stenny-agent --shortcut "cmd+shift+ü" [--calendar --data-dir <Stenny's data folder, from the engine>] [--lang de]
 //   stenny-agent --pdf <copy.html> [--lang de]: makes the shared PDF from the HTML copy ("pdf <path>"), then quits
 //   out: "ready <key code> ⌘⇧Ü" (or "error …"); "hotkey" on every press;
 //        with --calendar, every 30 s: "events [{title, start, end, range, id}, …]" (on now or within 10 min);

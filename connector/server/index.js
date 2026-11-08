@@ -11,11 +11,18 @@ const path = require("path");
 const windows = process.platform === "win32";
 const exe = windows ? "stenny.exe" : "stenny";
 
-// Stenny's config (paths.py / config.py): only for developers, `[connector] stenny = "…"` runs another copy of
-// Stenny, e.g. a development checkout, instead of the installed one. Users never set anything.
-function configured() {
-  const home = process.env.STENNY_HOME || path.join(os.homedir(), "Lectures Data");
-  const file = process.env.STENNY_CONFIG || path.join(home, "_System", "config.toml");
+// Stenny's config: only for developers, `[connector] stenny = "…"` runs another copy of Stenny, e.g. a development
+// checkout, instead of the installed one. Users never set anything. Where the config is, only Stenny knows
+// (`stenny where --json`, see src/stenny/paths.py); an older Stenny without `where` has no such setting to read.
+function configFile(command) {
+  if (process.env.STENNY_CONFIG) return process.env.STENNY_CONFIG;
+  const done = spawnSync(command, ["where", "--json"], { encoding: "utf8", timeout: 30000 });
+  if (done.status !== 0) return null;
+  try { return JSON.parse(done.stdout).config || null; } catch { return null; }
+}
+
+function configured(command) {
+  const file = configFile(command);
   let text;
   try { text = fs.readFileSync(file, "utf8"); } catch { return null; }
   let inSection = false;
@@ -29,14 +36,14 @@ function configured() {
 }
 
 function candidates() {
-  const out = [];
-  const chosen = configured();
-  if (chosen) out.push(chosen);
-  out.push(path.join(os.homedir(), ".local", "bin", exe)); // `uv tool install` (Stenny's setup)
+  const out = [path.join(os.homedir(), ".local", "bin", exe)]; // `uv tool install` (Stenny's setup)
   for (const dir of (process.env.PATH || "").split(path.delimiter)) {
     if (dir) out.push(path.join(dir, exe));
   }
-  return [...new Set(out)];
+  const installed = [...new Set(out)].filter((c) => fs.existsSync(c));
+  // the copy the config names, if any, goes first
+  const chosen = installed.length ? configured(installed[0]) : null;
+  return chosen ? [...new Set([chosen, ...installed])] : installed;
 }
 
 function hasConnector(command) {

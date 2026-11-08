@@ -86,8 +86,7 @@ def get(cfg: Config) -> dict:
         "ui_language": i18n.resolve(cfg.app_language),
         "system_language": i18n.system_language(),
         "recordings": {"languages": cfg.event_languages, "folder": str(cfg.events_root)},
-        "paths": {"vault": str(cfg.vault), "lectures": str(cfg.lectures_root), "data": str(cfg.data_dir),
-                  "config": str(cfg.path)},
+        "paths": {"lectures": str(cfg.folder), "data": str(cfg.data_dir), "config": str(cfg.path)},
         "model": cfg.model,
         "courses": [{"name": c.name, "language": c.language, "languages": c.languages}
                     for c in cfg.courses.values() if not c.hidden],

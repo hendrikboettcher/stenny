@@ -188,7 +188,7 @@ def wait_until(cond, timeout=10):
 
 def test_pause_resume_timeline(tmp_path, monkeypatch):
     (tmp_path / "vault" / "Areas").mkdir(parents=True)
-    cfg = Config(vault=tmp_path / "vault", lectures_dir="Areas/Lectures", data_dir=tmp_path / "audio")
+    cfg = Config(folder=tmp_path / "vault" / "Areas/Lectures", data_dir=tmp_path / "audio")
     mic = FakeMic(startup_blocks=30)  # 3 s until the first audio, on start and on every resume
     s = LiveSession(cfg, Course("Calculus", language="fr"), mic, FakeEngine())
     short_chunks(s, monkeypatch)
@@ -238,7 +238,7 @@ def test_pause_resume_timeline(tmp_path, monkeypatch):
 
 def test_microphone_dropout_keeps_session_and_marks_gap(tmp_path, monkeypatch):
     (tmp_path / "vault" / "Areas").mkdir(parents=True)
-    cfg = Config(vault=tmp_path / "vault", lectures_dir="Areas/Lectures", data_dir=tmp_path / "audio")
+    cfg = Config(folder=tmp_path / "vault" / "Areas/Lectures", data_dir=tmp_path / "audio")
     mic = FakeMic(dropout=(8.0, 14.0))
     s = LiveSession(cfg, Course("Calculus", language="fr"), mic, FakeEngine())
     short_chunks(s, monkeypatch)
@@ -269,7 +269,7 @@ def test_microphone_dropout_keeps_session_and_marks_gap(tmp_path, monkeypatch):
 def run_session(tmp_path, monkeypatch, mic, until=30.0, stall=0.05, backup=None, script=None, on_power=True,
                 engine=None, lengths=(5.0, 3.0)):
     (tmp_path / "vault" / "Areas").mkdir(parents=True, exist_ok=True)
-    cfg = Config(vault=tmp_path / "vault", lectures_dir="Areas/Lectures", data_dir=tmp_path / "audio")
+    cfg = Config(folder=tmp_path / "vault" / "Areas/Lectures", data_dir=tmp_path / "audio")
     s = LiveSession(cfg, Course("Calculus", language="fr"), mic, engine or FakeEngine(), backup=backup)
     short_chunks(s, monkeypatch, on_power, lengths)
     monkeypatch.setattr(s, "now", lambda: mic.t)
@@ -506,7 +506,7 @@ def test_cancel_ends_without_a_transcript_and_trashes_the_recording(tmp_path, mo
 
     from stenny import cli, manage
     (tmp_path / "vault" / "Areas").mkdir(parents=True)
-    cfg = Config(vault=tmp_path / "vault", lectures_dir="Areas/Lectures", data_dir=tmp_path / "audio")
+    cfg = Config(folder=tmp_path / "vault" / "Areas/Lectures", data_dir=tmp_path / "audio")
     mic = FakeMic()
     s = LiveSession(cfg, Course("Calculus", language="fr"), mic, FakeEngine())
     short_chunks(s, monkeypatch)
@@ -526,7 +526,7 @@ def test_cancel_ends_without_a_transcript_and_trashes_the_recording(tmp_path, mo
     monkeypatch.setattr(jobs, "enqueue", lambda *a, **k: queued.append(a))
     cli.discard(s, cfg)
     assert not queued
-    assert not (cfg.lectures_root / "Calculus").exists()       # the placeholder (and its now empty course)
-    assert not list((tmp_path / "audio" / "Calculus").iterdir())
+    assert not (cfg.folder / "Calculus").exists()       # the placeholder (and its now empty course)
+    assert not list((tmp_path / "audio" / "Recordings" / "Calculus").iterdir())
     names = {p.name for p in trashed.iterdir()}
     assert {s.folder.name, s.pcm_path.name, s.session_path.name} <= names

@@ -1,4 +1,4 @@
-"""Configuration: one TOML file (default ~/Lectures Data/_System/config.toml, or $STENNY_CONFIG)."""
+"""Configuration: one TOML file, config.toml in Stenny's config place (paths.py), or $STENNY_CONFIG."""
 
 import os
 import re
@@ -9,9 +9,11 @@ from pathlib import Path
 
 from . import paths
 from . import i18n as _i18n
+from .vault import TALKS_DIR, Vault, safe_name
 from .i18n import tr as _tr  # `tr` is the transcription table in load()
 
 DEFAULT_PATH = paths.CONFIG_PATH
+EXAMPLE = Path(__file__).resolve().parents[2] / "config.example.toml"
 LANGUAGE_MODES = ("auto", "mixed")  # anything else is a fixed Whisper language code
 DEFAULT_PAUSE_SHORTCUT = "cmd+shift+ü"  # Ü is the key right of P on German keyboards
 MODIFIERS = {"cmd": "cmd", "command": "cmd", "shift": "shift", "ctrl": "ctrl", "control": "ctrl",
@@ -54,9 +56,8 @@ class Course:
 
 @dataclass
 class Config:
-    vault: Path
-    lectures_dir: str
-    data_dir: Path                            # everything that isn't for reading (paths.py); per course
+    folder: Path                              # the Stenny folder: everything for reading (vault.py)
+    data_dir: Path = paths.DATA_DIR           # holds Recordings/ (audio, segments, raw output); paths.py
     keep_audio: bool = True
     model: str = "mlx-community/whisper-large-v3-turbo"
     llm_backend: str = "claude-code"          # claude-code | api | none
@@ -73,7 +74,6 @@ class Config:
     live_recorder: str = "native"             # native (bundled stenny-rec, CoreAudio) | ffmpeg
     live_backup: str = "auto"                 # second microphone for the main one's gaps: auto | off | device name
     courses: dict[str, Course] = field(default_factory=dict)
-    events_dir: str | None = None             # vault folder for talks and events; None = "Recordings" next to lectures_dir
     event_languages: list[str] = field(default_factory=lambda: ["en", "de", "fr"])
     pause_shortcut: str = DEFAULT_PAUSE_SHORTCUT  # Stenny's global pause/resume shortcut, see parse_shortcut
     app_language: str = "system"              # the app's own language: system | en | de (i18n.py)
@@ -85,28 +85,33 @@ class Config:
         return {name: c for name, c in self.courses.items() if not c.hidden}
 
     @property
-    def lectures_root(self) -> Path:
-        return self.vault / self.lectures_dir
+    def events_root(self) -> Path:
+        """Talks and events: their own folder inside the Stenny folder."""
+        return self.folder / TALKS_DIR
 
     @property
-    def events_root(self) -> Path:
-        return self.vault / (self.events_dir or str(Path(self.lectures_dir).parent / "Recordings"))
+    def recordings_dir(self) -> Path:
+        return self.data_dir / paths.RECORDINGS
 
     def event(self, title: str) -> Course:
         """A talk or event: not a course, so no glossary, course files or lecture numbers. Its files go to
         `<events_root>/<title>/<date>/`; a speaker may switch language, so it's checked for each ~25 s."""
-        from .vault import safe_name
         title = re.sub(r"\s*:\s*", " – ", title.strip())  # "Guest talk: Müller" → "Guest talk – Müller"
         return Course(name=safe_name(title), language="mixed", languages=self.event_languages,
                       tags=["talk"], kind="event")
 
     def root_for(self, course: Course) -> Path:
-        """The vault folder a recording's files go to."""
-        return self.events_root if course.is_event else self.lectures_root
+        """The folder a recording's readable files go to."""
+        return self.events_root if course.is_event else self.folder
+
+    def vault_for(self, course: Course | None = None) -> Vault:
+        """Writes into the Stenny folder: a course's files (course None: glossaries, course files, topics) or a talk's."""
+        return Vault(self.root_for(course) if course else self.folder, top=self.folder)
 
     def data_for(self, course: Course) -> Path:
-        """Audio, segments and raw output: `<data_dir>/<Course>/`, or `<data_dir>/_Recordings/<title>/` for events."""
-        return self.data_dir / "_Recordings" / course.name if course.is_event else self.data_dir / course.name
+        """Audio, segments and raw output: `Recordings/<Course>/`, or `Recordings/Talks/<title>/` for a talk."""
+        base = self.recordings_dir / TALKS_DIR if course.is_event else self.recordings_dir
+        return base / course.name
 
     def course(self, name: str) -> Course:
         # macOS can hand over arguments decomposed ("o" + combining ¨), while config.toml has "ö"
@@ -190,12 +195,31 @@ def _path(value: str) -> Path:
     return Path(os.path.expanduser(value))
 
 
+def check_course_name(name: str) -> None:
+    """A course can't be called like the talks' folder: both would be the same folder."""
+    if safe_name(name).casefold() == TALKS_DIR.casefold():
+        raise ConfigError(_tr("A course can't be called \"{name}\": that's the folder for talks.", name=TALKS_DIR))
+
+
 def config_path() -> Path:
-    """$STENNY_CONFIG, else the config in ~/Lectures Data/_System/, else (before `stenny migrate`) the old one."""
+    """$STENNY_CONFIG, else the config in Stenny's config place, else (before `stenny migrate`) an older one."""
     if os.environ.get("STENNY_CONFIG"):
         return _path(os.environ["STENNY_CONFIG"])
-    legacy = paths.LEGACY_CONFIG_DIR / "config.toml"
-    return legacy if not DEFAULT_PATH.exists() and legacy.exists() else DEFAULT_PATH
+    if DEFAULT_PATH.exists() or os.environ.get("STENNY_HOME"):
+        return DEFAULT_PATH
+    for legacy in (paths.LEGACY_SYSTEM_DIR / "config.toml", paths.LEGACY_CONFIG_DIR / "config.toml"):
+        if legacy.exists():
+            return legacy
+    return DEFAULT_PATH
+
+
+def folder_of(data: dict) -> str | None:
+    """The Stenny folder as config.toml says it: `folder`, or before `stenny migrate` `vault` + `lectures_dir`."""
+    if data.get("folder"):
+        return data["folder"]
+    if data.get("vault"):
+        return str(Path(data["vault"]) / data.get("lectures_dir", "Lectures"))
+    return None
 
 
 def load(path: Path | None = None) -> Config:
@@ -203,8 +227,9 @@ def load(path: Path | None = None) -> Config:
     if not path.exists():
         raise ConfigError(_tr("No config at {path}. Run `stenny init` to create one.", path=path))
     data = tomllib.loads(path.read_text(encoding="utf-8"))
-    if not data.get("vault") or "CHANGE-ME" in str(data.get("vault")):
-        raise ConfigError(_tr("Set `vault` in {path} to the folder your transcripts go to (e.g. your Obsidian vault).",
+    folder = folder_of(data)
+    if not folder or "CHANGE-ME" in folder:
+        raise ConfigError(_tr("Set `folder` in {path} to the folder your transcripts go to (e.g. ~/Documents/Stenny).",
                                path=path))
     pause_shortcut = data.get("app", {}).get("pause_shortcut", DEFAULT_PAUSE_SHORTCUT)
     parse_shortcut(pause_shortcut)
@@ -215,16 +240,16 @@ def load(path: Path | None = None) -> Config:
         tr, llm, proc = data.get("transcription", {}), data.get("llm", {}), data.get("processing", {})
         courses = {}
         for name, c in data.get("courses", {}).items():
+            check_course_name(name)
             language = c.get("language", "fr")
             languages = c.get("languages") or ([language] if language not in LANGUAGE_MODES else ["fr", "de", "en"])
             courses[name] = Course(name=name, language=language, languages=languages,
                                    tags=c.get("tags", []), aliases=c.get("aliases", []),
                                    calendar=c.get("calendar", []), hidden=c.get("hidden", False))
         return Config(
-            vault=_path(data["vault"]),
-            lectures_dir=data.get("lectures_dir", "Lectures"),
-            # "audio_dir": the name before everything moved into one folder
-            data_dir=_path(data.get("data_dir") or data.get("audio_dir") or str(paths.HOME)),
+            folder=_path(folder),
+            # "audio_dir": the name before `stenny migrate` (paths.py)
+            data_dir=_path(data.get("data_dir") or data.get("audio_dir") or str(paths.DATA_DIR)),
             keep_audio=data.get("keep_audio", True),
             model=tr.get("model", Config.model),
             llm_backend=llm.get("backend", Config.llm_backend),
@@ -241,7 +266,6 @@ def load(path: Path | None = None) -> Config:
             live_recorder=data.get("live", {}).get("recorder", "native"),
             live_backup=data.get("live", {}).get("backup", "auto"),
             courses=courses,
-            events_dir=data.get("recordings", {}).get("folder"),
             event_languages=data.get("recordings", {}).get("languages", ["en", "de", "fr"]),
             pause_shortcut=pause_shortcut,
             app_language=app_language,

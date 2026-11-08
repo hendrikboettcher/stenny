@@ -44,7 +44,11 @@ fn open_transcript(path: String) -> Result<(), String> {
 
 #[tauri::command]
 fn reveal(path: String) -> Result<(), String> {
-    tauri_plugin_opener::reveal_item_in_dir(path).map_err(|e| e.to_string())
+    // a folder Stenny hasn't made yet (Talks before the first talk): the nearest folder above it that's there
+    let mut shown = std::path::PathBuf::from(&path);
+    while !shown.exists() && shown.pop() {}
+    tauri_plugin_opener::reveal_item_in_dir(if shown.as_os_str().is_empty() { path.into() } else { shown })
+        .map_err(|e| e.to_string())
 }
 
 /// Share…: the system's share menu for the copy just made: on macOS below the Share button (its rectangle in the

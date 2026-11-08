@@ -11,12 +11,13 @@ from importlib.metadata import version as package_version
 from pathlib import Path
 
 from . import config as config_mod
-from . import jobs, resources
+from . import jobs, paths, resources
 from .config import ConfigError, Course
 from .i18n import tr
 from .paths import tool
+from .vault import TALKS_DIR
 
-EXAMPLE = Path(__file__).resolve().parents[2] / "config.example.toml"
+EXAMPLE = config_mod.EXAMPLE
 ICLOUD_INBOX = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/Lectures"
 
 
@@ -62,15 +63,34 @@ def cmd_init(args) -> None:
     dest = config_mod.config_path()
     if dest.exists():
         sys.exit(f"Config already exists: {dest}")
+    if args.vault:  # the options before `folder`
+        args.folder = str(Path(args.vault) / (args.lectures_dir or "Lectures"))
+    folder = Path(args.folder).expanduser() if args.folder else paths.default_folder()
     text = EXAMPLE.read_text(encoding="utf-8")
-    if args.vault:
-        text = text.replace('vault = "CHANGE-ME"', f'vault = {json.dumps(args.vault, ensure_ascii=False)}')
-    if args.lectures_dir:
-        text = text.replace('lectures_dir = "Lectures"', f'lectures_dir = {json.dumps(args.lectures_dir, ensure_ascii=False)}')
+    text = text.replace('folder = "~/Documents/Stenny"', f"folder = {json.dumps(paths.tilde(folder), ensure_ascii=False)}")
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(text, encoding="utf-8")
-    todo = "your courses" if args.vault else "`vault` and your courses"
-    print(f"Wrote {dest}. Edit it to set {todo}.")
+    folder.mkdir(parents=True, exist_ok=True)
+    print(f"Wrote {dest} (Stenny folder: {folder}). Edit it to set your courses.")
+
+
+def cmd_where(args) -> None:
+    """Where Stenny keeps everything (paths.py), for people and for the connector and the app (--json)."""
+    places = paths.places()
+    try:
+        cfg = config_mod.load()
+        places.update(folder=str(cfg.folder), talks=str(cfg.events_root), recordings=str(cfg.recordings_dir),
+                      config=str(cfg.path), error=None)
+    except ConfigError as e:
+        places.update(config=str(config_mod.config_path()), folder=None, talks=None, recordings=None, error=str(e))
+    if args.json:
+        print(json.dumps(places, ensure_ascii=False))
+        return
+    for key in ("config", "folder", "talks", "recordings", "queue", "logs", "shared", "models"):
+        if places.get(key):
+            print(f"{key + ':':12}{places[key]}")
+    if places["error"]:
+        print(places["error"])
 
 
 def cmd_download_model(args) -> None:
@@ -90,14 +110,17 @@ def cmd_download_model(args) -> None:
 
 
 def cmd_app_settings(args) -> None:
-    """Settings Stenny (the menu bar app) reads at launch, as JSON."""
+    """Settings Stenny (the menu bar app) reads at launch, as JSON. Moves an older install first (migrate.py)."""
     from .config import DEFAULT_PAUSE_SHORTCUT, parse_shortcut
+    from .migrate import on_start
+    on_start()
     try:
         shortcut = config_mod.load().pause_shortcut
         error = None
     except ConfigError as e:  # no or broken config: Stenny still gets its default shortcut
         shortcut, error = DEFAULT_PAUSE_SHORTCUT, str(e)
-    print(json.dumps({"pause_shortcut": parse_shortcut(shortcut), "pause_shortcut_text": shortcut, "error": error},
+    print(json.dumps({"pause_shortcut": parse_shortcut(shortcut), "pause_shortcut_text": shortcut, "error": error,
+                      "data_dir": str(paths.DATA_DIR), "logs_dir": str(paths.LOGS_DIR), "socket": str(paths.SOCKET)},
                      ensure_ascii=False))
 
 
@@ -115,7 +138,7 @@ def cmd_courses(args) -> None:
         print(json.dumps([{"name": c.name, "language": c.language, "aliases": c.aliases}
                           for c in cfg.visible_courses.values()], ensure_ascii=False))
         return
-    print(f"Config: {cfg.path}\nLectures: {cfg.lectures_root}\n")
+    print(f"Config: {cfg.path}\nLectures: {cfg.folder}\n")
     for c in cfg.courses.values():
         langs = c.language if c.fixed_language else f"{c.language} {c.languages}"
         aliases = f"  aliases: {', '.join(c.aliases)}" if c.aliases else ""
@@ -204,7 +227,7 @@ def cmd_refresh(args) -> None:
         course = cfg.event(args.course) if args.event else cfg.course(args.course)
     except ConfigError as e:
         # an ad-hoc course (`stenny add --lang …`): its folder in the vault is enough, refresh needs no language
-        root = cfg.lectures_root
+        root = cfg.folder
         found = [p.name for p in root.iterdir() if p.is_dir() and p.name.casefold() == args.course.casefold()] \
             if root.is_dir() else []
         if not found:
@@ -262,7 +285,7 @@ def cmd_project_instructions(args) -> None:
     for i, name in enumerate(names):
         if len(names) > 1:
             print(f"{'' if i == 0 else chr(10)}===== {name} =====")
-        print(PROJECT_TEXT.format(root=cfg.lectures_root, course=safe_name(name)))
+        print(PROJECT_TEXT.format(root=cfg.folder, course=safe_name(name)))
 
 
 def cmd_mcp(args) -> None:
@@ -307,7 +330,7 @@ def cmd_course_files(args) -> None:
     from .course_files import rebuild
     from .vault import Vault
 
-    vault = Vault(cfg.lectures_root)
+    vault = cfg.vault_for()
     names = [resolve_course(cfg, args.course, None).name] if args.course else list(cfg.courses)
     for name in names:
         if not rebuild(vault, name):
@@ -387,7 +410,7 @@ def cmd_queue(args) -> None:
 def draft_path(cfg, course, folder: str) -> Path | None:
     """A live recording's transcript file (its live draft until the final pass replaces it)."""
     from .vault import LectureFiles, Vault
-    return LectureFiles(Vault(cfg.root_for(course)).course_dir(course.name) / folder, course.name).existing("transcript")
+    return LectureFiles(cfg.vault_for(course).course_dir(course.name) / folder, course.name).existing("transcript")
 
 
 def mark_draft(path: Path | None, status: str, waiting: str | None = None) -> None:
@@ -499,6 +522,11 @@ def stop_orphan_recorders(*recordings: Path) -> None:
                 time.sleep(0.1)
 
 
+def recording_sessions(cfg) -> list[Path]:
+    """Every recording's session.json: courses' and talks' (Recordings/<Course>/, Recordings/Talks/<Title>/)."""
+    return [*cfg.recordings_dir.glob("*/*.session.json"), *(cfg.recordings_dir / TALKS_DIR).glob("*/*.session.json")]
+
+
 def recover_sessions(cfg) -> list[dict]:
     """A recording whose process died (macOS killed it, a crash, a restart of the Mac) still has its audio
     file, but no final pass waiting. Queue one: the transcript comes later, the lecture isn't lost."""
@@ -514,7 +542,7 @@ def recover_sessions(cfg) -> list[dict]:
         except (OSError, ValueError, KeyError):
             continue
     recovered = []
-    for path in [*cfg.data_dir.glob("*/*.session.json"), *cfg.data_dir.glob("_Recordings/*/*.session.json")]:
+    for path in recording_sessions(cfg):
         try:
             d = json.loads(path.read_text(encoding="utf-8"))
             pcm = Path(d["recording"])
@@ -531,7 +559,7 @@ def recover_sessions(cfg) -> list[dict]:
         if backup and Path(backup["recording"]).exists():
             backup["recorded_samples"] = Path(backup["recording"]).stat().st_size // 2
         path.write_text(json.dumps(d, indent=1), encoding="utf-8")
-        kind = d.get("kind") or ("event" if path.parent.parent.name == "_Recordings" else "lecture")
+        kind = d.get("kind") or ("event" if path.parent.parent == cfg.recordings_dir / TALKS_DIR else "lecture")
         job = jobs.enqueue(pcm, d["course"], d.get("lang"), True, live=path, kind=kind)
         mark_job_draft(cfg, job, "queued")
         log(f"Recovered the recording {pcm.name} of {d['course']}: final pass queued")
@@ -610,7 +638,7 @@ def cmd_check(args) -> None:
     from .pipeline import lecture_time, time_ranges
     from .textproc import SAMPLE_RATE, fmt_hms
 
-    sessions = [*cfg.data_dir.glob("*/*.session.json"), *cfg.data_dir.glob("_Recordings/*/*.session.json")]
+    sessions = recording_sessions(cfg)
     path = args.session or max(sessions, key=lambda p: p.stat().st_mtime, default=None)
     if not path or not path.exists():
         sys.exit("No live session found.")
@@ -691,7 +719,7 @@ def cmd_schedule(args) -> None:
     if args.action == "install":
         path = jobs.install_agent()
         print(f"Installed {path}: checks the queue every 15 min (runs only on AC power"
-              f"{' and at night' if load_config().night_only else ''}). Log: {jobs.DATA_DIR / 'queue.log'}")
+              f"{' and at night' if load_config().night_only else ''}). Log: {jobs.LOGS_DIR / 'queue.log'}")
     else:
         print("Removed." if jobs.uninstall_agent() else "No schedule installed.")
 
@@ -722,8 +750,8 @@ def cmd_watch(args) -> None:
     from . import audio as audio_io
     from .pipeline import log
 
-    seen_file = jobs.DATA_DIR / "watch-seen.txt"
-    jobs.DATA_DIR.mkdir(parents=True, exist_ok=True)
+    seen_file = paths.DATA_DIR / "watch-seen.txt"
+    paths.DATA_DIR.mkdir(parents=True, exist_ok=True)
     seen = set(seen_file.read_text().splitlines()) if seen_file.exists() else set()
     sizes: dict[Path, int] = {}
     log(f"Watching {args.inbox} (Ctrl+C to stop)")
@@ -751,16 +779,16 @@ def cmd_watch(args) -> None:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(prog="stenny", description="Transcribe lectures locally into your Obsidian vault.")
+    ap = argparse.ArgumentParser(prog="stenny", description="Transcribe lectures locally into Markdown files (your Stenny folder).")
     ap.add_argument("--version", action="version", version=f"stenny {package_version('stenny')}")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    p = sub.add_parser("add", help="transcribe audio file(s) into the vault")
+    p = sub.add_parser("add", help="transcribe audio file(s) into the Stenny folder")
     p.add_argument("files", nargs="+", type=Path)
     t = p.add_mutually_exclusive_group(required=True)
     t.add_argument("--course", "-c", help="course name or alias from the config")
     t.add_argument("--event", "-e", metavar="TITLE", help="a talk or event (not a course): its own folder in "
-                                                           "Recordings, e.g. --event \"Guest talk Müller\"")
+                                                           "Talks, e.g. --event \"Guest talk Müller\"")
     p.add_argument("--lang", "-l", help="language for this file, overriding the course setting: a Whisper code (e.g. fr), "
                    "auto (one language, detected) or mixed (detected throughout)")
     p.add_argument("--date", help="lecture date/time if the file's own timestamp is wrong (YYYY-MM-DD[THH:MM])")
@@ -816,7 +844,7 @@ def main() -> None:
     p.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
     p.set_defaults(func=cmd_library)
 
-    p = sub.add_parser("share", help="clean copy of a transcript to send to someone (in ~/Lectures Data/_Shared)")
+    p = sub.add_parser("share", help="clean copy of a transcript to send to someone (in Stenny's cache folder, see `stenny where`)")
     p.add_argument("course", help="course name (or a talk's title, with --event)")
     p.add_argument("date", help="lecture folder name, e.g. 2026-10-15 or \"2026-10-15 (2)\"")
     p.add_argument("--event", action="store_true", help="COURSE is the title of a talk or event")
@@ -830,7 +858,7 @@ def main() -> None:
     p.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
     p.set_defaults(func=cmd_courses)
 
-    p = sub.add_parser("live", help="record a lecture or talk live into the vault (draft now, final transcript after)")
+    p = sub.add_parser("live", help="record a lecture or talk live into the Stenny folder (draft now, final transcript after)")
     t = p.add_mutually_exclusive_group(required=True)
     t.add_argument("--course", "-c", help="course name or alias from the config")
     t.add_argument("--event", "-e", metavar="TITLE", help="a talk or event (not a course), e.g. --event \"Guest talk\"")
@@ -865,10 +893,16 @@ def main() -> None:
     p.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
     p.set_defaults(func=cmd_control, cmd="microphone")
 
-    p = sub.add_parser("init", help="create ~/Lectures Data/_System/config.toml from the example")
-    p.add_argument("--vault", help="folder the transcripts go to, e.g. your Obsidian vault")
-    p.add_argument("--lectures-dir", help="folder inside the vault for lectures (default: Lectures)")
+    p = sub.add_parser("init", help="create Stenny's config.toml from the example (see `stenny where`)")
+    p.add_argument("--folder", help="the Stenny folder, where transcripts go (default: ~/Documents/Stenny); "
+                   "a folder in an Obsidian vault works too")
+    p.add_argument("--vault", help=argparse.SUPPRESS)          # before `--folder`: --vault V --lectures-dir L
+    p.add_argument("--lectures-dir", help=argparse.SUPPRESS)
     p.set_defaults(func=cmd_init)
+
+    p = sub.add_parser("where", help="where Stenny keeps your transcripts, its config, recordings and logs")
+    p.add_argument("--json", action="store_true", help="as JSON (for the app and the connector)")
+    p.set_defaults(func=cmd_where)
 
     p = sub.add_parser("download-model", help="download the Whisper model now (about 1.6 GB, once)")
     p.set_defaults(func=cmd_download_model)
@@ -876,7 +910,7 @@ def main() -> None:
     p = sub.add_parser("app-settings", help="settings the Stenny app reads at launch (JSON)")
     p.set_defaults(func=cmd_app_settings)
 
-    p = sub.add_parser("migrate", help="move everything outside the vault into ~/Lectures Data (once)")
+    p = sub.add_parser("migrate", help="move an older install (~/Lectures Data) into today's places (once; the app does it too)")
     p.add_argument("--dry-run", action="store_true", help="only list what would be moved")
     p.set_defaults(func=cmd_migrate)
 
