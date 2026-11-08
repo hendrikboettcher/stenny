@@ -128,10 +128,43 @@
     menu = { x: Math.min(x, window.innerWidth - 230), y: Math.min(y, window.innerHeight - 120), ...target };
   }
 
-  // the heading's pencil: a talk's heading is the talk's name, a lecture's is its title
-  function renameSelected(e: Entry) {
-    if (e.kind === "event") open({ kind: "rename-group", group: { course: e.course, event: true } });
-    else open({ kind: "rename-lecture", entry: e });
+  // Renaming in place, like Notes or Notion: click the heading, type, Enter (Escape keeps the old name). A talk's
+  // heading is the talk's name; a lecture's is its title, and an empty one (or "Lecture 5") goes back to the number.
+  let editing = $state<string | null>(null); // id() of the entry whose heading is being edited
+  let titleField = $state("");
+  const headingOf = (e: Entry) => (e.kind === "event" ? e.course : rowTitle(e));
+
+  function startRename(e: Entry) {
+    if (isBusy(e) || editing) return;
+    titleField = headingOf(e);
+    editing = id(e);
+  }
+
+  function focusAll(input: HTMLInputElement) {
+    input.focus();
+    input.select();
+  }
+
+  async function finishRename(e: Entry, keep: boolean) {
+    if (editing !== id(e)) return;
+    editing = null;
+    const next = titleField.trim().normalize("NFC");
+    if (!keep || next === headingOf(e)) return;
+    try {
+      if (e.kind === "event") {
+        if (!next) return;
+        const { name } = await renameCourse(e.course, true, next);
+        group = { course: name, event: true };
+        selectedId = id({ ...e, course: name });
+      } else {
+        const back = !next || (e.number > 0 && next === `Lecture ${e.number}`);
+        if (back && !e.title) return;
+        await renameLecture(e, back ? "" : next);
+      }
+      await reload();
+    } catch (err) {
+      notice = { text: `Couldn't rename it (${err}).`, error: true };
+    }
   }
 
   function open(a: Ask) {
@@ -357,9 +390,9 @@
 
   <main class="detail">
     <div class="titlebar" data-tauri-drag-region></div>
-    <!-- deleting: an icon at the end of the actions, apart from the others; it asks first, and it's the Trash -->
+    <!-- deleting: an icon right after the other actions, like Mail's; it asks first, and it's the Trash -->
     {#snippet trashButton(e: Entry)}
-      <button class="icon-button trash" aria-label="Move to the {trashName}…" title="Move to the {trashName}…"
+      <button class="trash" aria-label="Move to the {trashName}…" title="Move to the {trashName}…"
               onclick={() => open({ kind: "delete-lecture", entry: e })}>
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.8 4.3h10.4 M6.3 4.3V2.8h3.4v1.5 M4.3 4.3l.6 8.6a1 1 0 0 0 1 .9h4.2a1 1 0 0 0 1-.9l.6-8.6 M6.7 6.8v4.6 M9.3 6.8v4.6" /></svg>
       </button>
@@ -367,12 +400,22 @@
     {#if selected}
       <article>
         <div class="kicker">{selected.kind === "event" ? "Talk" : selected.course}</div>
-        <!-- the pencil renames what the heading shows: a lecture's title, or a talk's name -->
-        <h1 class="serif"><span class="selectable">{selected.kind === "event" ? selected.course : rowTitle(selected)}</span>{#if !isBusy(selected)}<button
-            class="icon-button edit" aria-label={selected.kind === "event" ? "Rename this talk" : "Rename this lecture"}
-            title="Rename" onclick={() => renameSelected(selected!)}>
-            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.6 2.6a1.4 1.4 0 0 1 2 0l.8.8a1.4 1.4 0 0 1 0 2L6 12.8 2.8 13.2l.4-3.2z M9.4 3.8l2.8 2.8" /></svg>
-          </button>{/if}</h1>
+        <!-- click the heading to rename (see startRename); the pencil only shows while pointing at it -->
+        {#if editing === id(selected)}
+          {@const e = selected}
+          <input class="serif title-input" bind:value={titleField} use:focusAll
+                 aria-label={e.kind === "event" ? "Name of this talk" : "Title of this lecture"}
+                 placeholder={e.kind === "event" ? "" : e.number > 0 ? `Lecture ${e.number}` : prettyDate(e)}
+                 onkeydown={(ev) => { if (ev.key === "Enter") finishRename(e, true); if (ev.key === "Escape") { ev.stopPropagation(); finishRename(e, false); } }}
+                 onblur={() => finishRename(e, true)} />
+        {:else if isBusy(selected)}
+          <h1 class="serif selectable">{headingOf(selected)}</h1>
+        {:else}
+          {@const e = selected}
+          <h1 class="serif"><button class="title-button" title="Click to rename"
+              aria-label="{headingOf(e)}, rename" onclick={() => startRename(e)}>{headingOf(e)}<svg
+              class="pen" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.6 2.6a1.4 1.4 0 0 1 2 0l.8.8a1.4 1.4 0 0 1 0 2L6 12.8 2.8 13.2l.4-3.2z M9.4 3.8l2.8 2.8" /></svg></button></h1>
+        {/if}
         <p class="meta">{details(selected)}</p>
 
         {#if isDraft(selected)}
@@ -640,20 +683,31 @@
   .draft .pill, .draft .trash { margin-top: 10px; }
   .draft .trash { margin-left: 4px; vertical-align: top; }
 
-  /* round icon buttons: the heading's pencil (quiet until pointed at) and the actions' trash */
-  .icon-button {
-    border: 1px solid transparent; background: none; color: var(--muted); padding: 0; border-radius: 999px;
-    display: inline-grid; place-items: center; flex: none;
+  /* the heading renames in place: pointing at it shows a soft background and a faint pencil, clicking edits it */
+  .title-button {
+    font: inherit; letter-spacing: inherit; color: inherit; text-align: left; border: 0; background: none;
+    padding: 0 8px; margin: 0 -8px; border-radius: 8px; cursor: text; max-width: calc(100% + 16px);
   }
-  .icon-button svg { display: block; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
-  .icon-button:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 7%, transparent); }
-  .edit { width: 30px; height: 30px; margin-left: 6px; vertical-align: 3px; opacity: 0.7; }
-  .edit svg { width: 17px; height: 17px; }
-  .edit:hover, .edit:focus-visible { opacity: 1; }
-  .trash { width: 33px; height: 33px;  /* as tall as the pills beside it */ border-color: var(--line); background: var(--card); }
-  .trash svg { width: 16px; height: 16px; }
-  .trash:hover { color: var(--rec); border-color: color-mix(in srgb, var(--rec) 40%, var(--line)); background: var(--card); }
-  .actions .trash { margin-left: auto; }
+  .title-button:hover, .title-button:focus-visible { background: color-mix(in srgb, var(--ink) 5%, transparent); }
+  .pen {
+    display: inline-block; width: 16px; height: 16px; margin-left: 10px; vertical-align: 4px; opacity: 0;
+    fill: none; stroke: var(--muted); stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; transition: opacity 0.15s;
+  }
+  .title-button:hover .pen, .title-button:focus-visible .pen { opacity: 1; }
+  .title-input {
+    display: block; width: calc(100% + 16px); font-size: 34px; line-height: 1.1; font-weight: 440; letter-spacing: -0.02em;
+    margin: 6px -8px 6px; padding: 0 7px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink);
+    outline: none;
+  }
+  .title-input:focus { border-color: color-mix(in srgb, var(--ink) 35%, var(--line)); }
+
+  /* deleting: a round icon button in the actions' row, grey until pointed at */
+  .trash {
+    width: 33px; height: 33px; padding: 0; flex: none; border-radius: 999px; display: inline-grid; place-items: center;
+    border: 1px solid var(--line); background: var(--card); color: var(--muted);  /* as tall as the pills beside it */
+  }
+  .trash svg { display: block; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
+  .trash:hover { color: var(--rec); border-color: color-mix(in srgb, var(--rec) 40%, var(--line)); }
 
   .actions { display: flex; gap: 8px; margin-top: 24px; flex-wrap: wrap; }
   .pill {
