@@ -32,7 +32,7 @@ class FakeMic:
 
     def __init__(self, startup_blocks=0, dropout=None, zeros=None):
         self.ticks, self.running, self.rng, self.out = 0, False, np.random.default_rng(0), None
-        self.hold = None        # the clock stands still at this tick while a test acts there (see at())
+        self.scheduled = []     # (tick, action, result box, done): run by the clock's thread (see at())
         self.startup_blocks, self.warming = startup_blocks, 0
         self.dropout = dropout  # (start, end): simulated time in which the device delivers nothing
         self.zeros = zeros      # (start, end): the device delivers exact digital silence (iPhone locked)
@@ -46,24 +46,35 @@ class FakeMic:
         return self.ticks / 10
 
     def at(self, t, action):
-        """Runs `action` when the simulated clock reaches t, holding the clock there until it's done: however late
-        the test's thread gets to run (a busy CI runner, Windows' scheduler), the action happens at t."""
-        target = round(t * 10)
+        """Runs `action` (a command to the session) when the simulated clock reaches t. The clock's own thread runs
+        it, between two ticks: it happens at t however late the test's thread would get to run (a busy CI runner,
+        Windows' scheduler), and the clock doesn't stand still waiting for it, which would look like a lost
+        microphone. Returns what the action returned."""
+        done, box = threading.Event(), {}
         with self.lock:
-            self.hold = target
-        wait_until(lambda: self.ticks >= target)
-        try:
-            return action()
-        finally:
-            with self.lock:
-                self.hold = None
+            self.scheduled.append((round(t * 10), action, box, done))
+        if not done.wait(30):
+            raise TimeoutError(f"the clock never reached {t} s")
+        if "error" in box:
+            raise box["error"]
+        return box.get("result")
+
+    def _run_due(self):
+        with self.lock:
+            due = [job for job in self.scheduled if job[0] <= self.ticks]
+            self.scheduled = [job for job in self.scheduled if job[0] > self.ticks]
+        for _, action, box, done in due:  # outside the lock: the session stops and starts the microphone
+            try:
+                box["result"] = action()
+            except Exception as e:  # noqa: BLE001 — raised again in the test's thread
+                box["error"] = e
+            done.set()
 
     def _clock(self):
         while True:
             time.sleep(TICK_S)
+            self._run_due()
             with self.lock:
-                if self.hold is not None and self.ticks >= self.hold:
-                    continue
                 self.ticks += 1
                 for twin in self.twins:  # the backup keeps delivering through the main mic's gaps
                     if twin.out:

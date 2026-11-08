@@ -385,8 +385,10 @@ def _replace_job(text: str, old: str, new: str, old_data: Path, new_data: Path) 
         return text
     job["course"] = new
     for k in ("file", "live"):
-        if job.get(k) and job[k].startswith(str(old_data) + "/"):
-            job[k] = str(new_data) + job[k][len(str(old_data)):]
+        try:  # as a Path, so "/" and Windows' "\" both count
+            job[k] = str(new_data / Path(job[k]).relative_to(old_data)) if job.get(k) else job.get(k)
+        except ValueError:
+            pass
     return json.dumps(job, indent=1)
 
 

@@ -285,7 +285,7 @@ def test_lecture_names_numbers_and_course_files(setup):
     from stenny.render import parse_frontmatter
     t1 = lf(first["folder"]).read_text(encoding="utf-8")
     assert parse_frontmatter(t1)["lecture"] == 1 and "# Calculus – Lecture 1 (2026-10-15)" in t1
-    assert f"`{str(lf(first['folder'], 'raw')).replace(str(Path.home()), '~')}` (outside the vault)" in t1
+    assert f"`{pipeline.home_relative(lf(first['folder'], 'raw'))}` (outside the vault)" in t1
     assert "`Calculus 2026-10-15.md` in the vault" in lf(first["folder"], "raw").read_text(encoding="utf-8")  # and back
     assert "[[Calculus 2026-10-15]]" in lf(first["folder"], "summary").read_text(encoding="utf-8")
     # the 22nd was made before the 15th was added: rebuilding the course files (done by process) renumbered it
