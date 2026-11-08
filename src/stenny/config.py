@@ -60,6 +60,7 @@ class Config:
     data_dir: Path = paths.DATA_DIR           # holds Recordings/ (audio, segments, raw output); paths.py
     keep_audio: bool = True
     model: str = "mlx-community/whisper-large-v3-turbo"
+    engine: str = "auto"                      # auto (mlx on a Mac, faster-whisper elsewhere) | mlx | faster-whisper
     llm_backend: str = "claude-code"          # claude-code | api | none
     llm_model: str = "claude-haiku-5-5"       # model for `claude -p --model`
     api_model: str = "claude-haiku-5-5"
@@ -222,6 +223,13 @@ def folder_of(data: dict) -> str | None:
     return None
 
 
+def _engine(value: str) -> str:
+    from .engines import ENGINES
+    if value not in ENGINES:
+        raise ConfigError(_tr("[transcription] engine '{value}': use auto, mlx or faster-whisper.", value=value))
+    return value
+
+
 def load(path: Path | None = None) -> Config:
     path = path or config_path()
     if not path.exists():
@@ -252,6 +260,7 @@ def load(path: Path | None = None) -> Config:
             data_dir=_path(data.get("data_dir") or data.get("audio_dir") or str(paths.DATA_DIR)),
             keep_audio=data.get("keep_audio", True),
             model=tr.get("model", Config.model),
+            engine=_engine(tr.get("engine", "auto")),
             llm_backend=llm.get("backend", Config.llm_backend),
             llm_model=llm.get("model", Config.llm_model),
             api_model=llm.get("api_model", Config.api_model),

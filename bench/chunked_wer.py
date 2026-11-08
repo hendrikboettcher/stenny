@@ -1,6 +1,7 @@
 """Compare the pipeline's chunked transcription (as `stenny add` runs it) against a reference text.
 
-Usage: uv run python bench/chunked_wer.py audio.wav reference.txt [--lang fr] [--prompt "terms…"]
+Usage: uv run python bench/chunked_wer.py audio.wav reference.txt [--lang fr] [--prompt "terms…"] [--engine mlx]
+faster-whisper on a Mac: uv run --with faster-whisper python bench/chunked_wer.py … --engine faster-whisper
 """
 
 import argparse
@@ -23,16 +24,17 @@ ap.add_argument("audio", type=Path)
 ap.add_argument("reference", type=Path)
 ap.add_argument("--lang", default="fr")
 ap.add_argument("--prompt")
+ap.add_argument("--engine", default="mlx", help="mlx | faster-whisper (stenny.engines)")
 args = ap.parse_args()
 
 audio = audio_io.load(args.audio)
 t0 = time.time()
 segments, _, _ = transcribe(audio, Course("bench", language=args.lang, languages=[args.lang]),
-                            get_engine("mlx-community/whisper-large-v3-turbo"), args.prompt)
+                            get_engine("mlx-community/whisper-large-v3-turbo", args.engine), args.prompt)
 wall = time.time() - t0
 text = " ".join(p["text"] for p in to_paragraphs(mark_dropped(segments, args.prompt)))
-args.audio.with_suffix(".chunked.out").write_text(text)
+args.audio.with_suffix(f".{args.engine}.chunked.out").write_text(text)
 ref = normalize(args.reference.read_text())
-print(json.dumps({"engine": "mlx-chunked", "clip": args.audio.name, "wall_s": round(wall, 1),
+print(json.dumps({"engine": f"{args.engine}-chunked", "clip": args.audio.name, "wall_s": round(wall, 1),
                   "x_realtime": round(len(audio) / 16000 / wall, 1),
                   "wer_pct": round(100 * wer(ref, trim_to_reference(ref, normalize(text))), 2)}))
