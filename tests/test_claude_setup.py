@@ -151,33 +151,6 @@ def test_app_server_reports_setup_errors_as_messages(monkeypatch, tmp_path):
         assert method in app_server.METHODS
 
 
-def test_removing_takes_out_only_stennys_extension(tmp_path):
-    extension(tmp_path, "ant.dir.filesystem", "filesystem", True)
-    extension(tmp_path, "local.mcpb.stenny", "stenny", True)
-    (tmp_path / "extensions-installations.json").write_text(json.dumps(
-        {"extensions": {"ant.dir.filesystem": {"v": 1}, "local.mcpb.stenny": {"v": 2}}}))
-    assert claude_setup.remove_extension_files(tmp_path) is True
-    assert claude_setup.installed_extension(tmp_path) is None
-    assert not (tmp_path / "Claude Extensions Settings" / "local.mcpb.stenny.json").exists()
-    assert (tmp_path / "Claude Extensions" / "ant.dir.filesystem").is_dir()
-    assert (tmp_path / "Claude Extensions Settings" / "ant.dir.filesystem.json").exists()
-    left = json.loads((tmp_path / "extensions-installations.json").read_text())
-    assert left == {"extensions": {"ant.dir.filesystem": {"v": 1}}}
-    assert claude_setup.remove_extension_files(tmp_path) is False  # nothing left to remove
-
-
-def test_removing_waits_for_claude_to_close(tmp_path, monkeypatch):
-    extension(tmp_path, "local.mcpb.stenny", "stenny", True)
-    monkeypatch.setattr(claude_setup, "claude_data_dir", lambda: tmp_path)
-    monkeypatch.setattr(claude_setup, "claude_running", lambda: True)
-    monkeypatch.setattr(claude_setup, "_quit_claude", lambda: False)
-    with pytest.raises(claude_setup.SetupError):
-        claude_setup.remove_connector(None)
-    assert claude_setup.installed_extension(tmp_path) is not None  # untouched while Claude is open
-    monkeypatch.setattr(claude_setup, "claude_running", lambda: False)
-    assert claude_setup.remove_connector(None)["installed"] is False
-
-
 @posix
 def test_removes_the_connector_from_claude_code(fake_claude, monkeypatch):
     monkeypatch.setenv("HOME", str(fake_claude.dir))

@@ -220,10 +220,10 @@ def add_to_claude_code(cfg, params: dict) -> dict:
     return _setup(claude_setup.add_to_claude_code, cfg)
 
 
-def remove_connector(cfg, params: dict) -> dict:
-    """Stenny out of Claude Desktop again (Claude closes for a moment on macOS)."""
+def open_claude(cfg, params: dict) -> dict:
+    """The Claude desktop app, where the connector is removed again."""
     from . import claude_setup
-    return _setup(claude_setup.remove_connector, cfg)
+    return _setup(claude_setup.open_claude, cfg)
 
 
 def remove_from_claude_code(cfg, params: dict) -> dict:
@@ -242,7 +242,7 @@ METHODS = {"ping": ping, "library": library, "lecture": lecture, "make_copy": ma
            "ai_status": ai_status, "set_api_key": set_api_key, "remove_api_key": remove_api_key,
            "claude_sign_in": claude_sign_in, "connector_status": connector_status,
            "install_connector": install_connector, "add_to_claude_code": add_to_claude_code,
-           "remove_connector": remove_connector, "remove_from_claude_code": remove_from_claude_code, **app_live.METHODS}
+           "open_claude": open_claude, "remove_from_claude_code": remove_from_claude_code, **app_live.METHODS}
 
 
 def handle(cfg, request: dict) -> dict:

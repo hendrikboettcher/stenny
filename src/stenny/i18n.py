@@ -223,5 +223,5 @@ DE = {
     "Claude couldn't open the connector: {error}": "Claude konnte den Connector nicht öffnen: {error}",
     "Claude Code couldn't add the connector: {error}": "Claude Code konnte den Connector nicht hinzufügen: {error}",
     "Claude Code couldn't remove the connector: {error}": "Claude Code konnte den Connector nicht entfernen: {error}",
-    "Close Claude first, then try again.": "Schließ Claude zuerst und versuch es dann noch mal.",
+    "Couldn't open Claude: {error}": "Claude ließ sich nicht öffnen: {error}",
 }

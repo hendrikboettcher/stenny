@@ -287,7 +287,8 @@
     }
   }
 
-  // Removing the connector again, after an "are you sure" (Claude Desktop: Claude closes for a moment on macOS)
+  // Removing the connector again. Claude Code: after an "are you sure", `claude mcp remove`. Claude Desktop keeps its
+  // extensions in memory and removes them itself, so its dialog says where and opens Claude; coming back re-checks.
   let connRemove = $state<"desktop" | "code" | null>(null);
   let connRemoveBusy = $state(false);
   let connRemoveError = $state<string | null>(null);
@@ -297,9 +298,11 @@
     connRemoveBusy = true;
     connRemoveError = null;
     try {
-      conn = await engine<ConnectorStatus>(connRemove === "desktop" ? "remove_connector" : "remove_from_claude_code");
+      if (connRemove === "desktop") await engine("open_claude");
+      else conn = await engine<ConnectorStatus>("remove_from_claude_code");
+      const removed = connRemove === "code";
       connRemove = null;
-      done();
+      if (removed) done();
     } catch (e) {
       connRemoveError = String(e);
     } finally {
@@ -897,7 +900,8 @@
 {/if}
 
 {#if connRemove}
-  <Dialog title={t(`settings.claude.remove.${connRemove}.title`)} confirm={t("settings.claude.remove.confirm")} danger
+  <Dialog title={t(`settings.claude.remove.${connRemove}.title`)} danger={connRemove === "code"}
+          confirm={connRemove === "desktop" ? t("settings.claude.openClaude") : t("settings.claude.remove.confirm")}
           busy={connRemoveBusy} error={connRemoveError} text={t(`settings.claude.remove.${connRemove}.text`)}
           oncancel={() => (connRemove = null)} onconfirm={removeConnector} />
 {/if}
