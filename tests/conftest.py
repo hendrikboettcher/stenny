@@ -39,6 +39,7 @@ def places(tmp_path, monkeypatch):
     monkeypatch.setattr(jobs, "LOGS_DIR", values["LOGS_DIR"])
     monkeypatch.setattr(jobs, "AGENT_PATH", home / "Library/LaunchAgents/local.stenny.queue.plist")
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    monkeypatch.setattr(paths, "_windows_documents", lambda: str(home / "Documents"))  # not the runner's own
     monkeypatch.setenv("HOME", str(home))  # "~" in config.toml
     monkeypatch.setenv("USERPROFILE", str(home))
     monkeypatch.delenv("STENNY_HOME", raising=False)

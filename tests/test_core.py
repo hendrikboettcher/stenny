@@ -307,6 +307,7 @@ def test_guard_topics_and_terms_need_evidence():
     assert guard.validate_topics(["Théorème de Rolle"], text, Slides()) == ["Théorème de Rolle"]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="moves the old macOS folders (~/.config/lecture …), macOS only")
 def test_migrate_carries_the_oldest_layout_all_the_way_to_todays_places(places):
     """~/.config/lecture, ~/Lectures Audio, ~/.local/share/lecture and raw outputs in the vault: first into
     ~/Lectures Data as it was, then on into the app-data places (test_folders.py has that step in detail)."""

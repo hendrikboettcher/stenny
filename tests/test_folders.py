@@ -147,19 +147,22 @@ def test_init_suggests_documents_stenny(places, monkeypatch, capsys):
     cli.cmd_init(Namespace(folder=None, vault=None, lectures_dir=None))
     cfg = config_mod.load()
     assert cfg.path == places.config_path and cfg.folder == places.home / "Documents/Stenny" and cfg.folder.is_dir()
-    assert places.config_path.read_text().startswith("# Stenny configuration")
+    assert places.config_path.read_text(encoding="utf-8").startswith("# Stenny configuration")
 
 
 def test_the_app_starts_a_config_without_example_courses(places):
     mig.on_start(log=lambda m: None)
     cfg = config_mod.load()
     assert cfg.folder == places.home / "Documents/Stenny" and cfg.courses == {}
-    assert "One table per course" in places.config_path.read_text()  # the explanation stays
+    assert "One table per course" in places.config_path.read_text(encoding="utf-8")  # the explanation stays
     mig.on_start(log=lambda m: None)  # and it's left alone afterwards
     assert config_mod.load().courses == {}
 
 
 # ---------------------------------------------------------------- `stenny migrate` from ~/Lectures Data
+
+# the older layouts were a Mac's only: Windows never had ~/Lectures Data
+mac_only = pytest.mark.skipif(sys.platform == "win32", reason="the layouts before were macOS only")
 
 OLD_CONFIG = '''# Stenny configuration. `stenny init --vault <folder>` copies it to ~/Lectures Data/_System/config.toml.
 
@@ -234,6 +237,7 @@ def old_install(places):
     return places
 
 
+@mac_only
 def test_migrate_moves_lectures_data_into_the_app_data_places(old_install):
     p = old_install
     home, rec = p.home, p.data_dir / "Recordings"
@@ -246,7 +250,7 @@ def test_migrate_moves_lectures_data_into_the_app_data_places(old_install):
     said.clear()
     mig.migrate(log=said.append)
     # the config: vault + lectures_dir → folder, the talks' folder out, everything else and its comments as it was
-    text = p.config_path.read_text()
+    text = p.config_path.read_text(encoding="utf-8")
     assert text.splitlines()[2].startswith('folder = "~/Vault/Studies/Lectures"  # ')
     assert "lectures_dir" not in text and 'vault = ' not in text and 'folder = "Studies/Recordings"' not in text
     assert 'backend = "claude-code"   # mine' in text and 'languages = ["en", "de"]' in text
@@ -255,28 +259,28 @@ def test_migrate_moves_lectures_data_into_the_app_data_places(old_install):
     # data
     calc = rec / "Calculus"
     assert (calc / "2026-10-20.opus").read_bytes() == b"ogg"
-    assert json.loads((calc / "2026-10-20.session.json").read_text())["recording"] == f"{calc}/2026-10-20.live.pcm"
-    meta = json.loads((calc / "2026-10-20.segments.json").read_text())["meta"]["lecture"]
+    assert json.loads((calc / "2026-10-20.session.json").read_text(encoding="utf-8"))["recording"] == f"{calc}/2026-10-20.live.pcm"
+    meta = json.loads((calc / "2026-10-20.segments.json").read_text(encoding="utf-8"))["meta"]["lecture"]
     assert meta["audio"] == f"{calc}/2026-10-20.opus"
     assert meta["transcript"] == f"{lectures}/Calculus/2026-10-20/Calculus 2026-10-20.md"  # unchanged: same folder
-    assert f"{calc}/2026-10-20.opus" in (calc / "Calculus 2026-10-20 (raw).md").read_text()
+    assert f"{calc}/2026-10-20.opus" in (calc / "Calculus 2026-10-20 (raw).md").read_text(encoding="utf-8")
     talk_data = rec / "Talks" / "Guest talk – Müller"
-    meta = json.loads((talk_data / "2026-10-22.segments.json").read_text())["meta"]["lecture"]
+    meta = json.loads((talk_data / "2026-10-22.segments.json").read_text(encoding="utf-8"))["meta"]["lecture"]
     assert meta["audio"] == f"{talk_data}/2026-10-22.opus"
     assert meta["transcript"] == f"{talks}/Guest talk – Müller/2026-10-22/Guest talk – Müller 2026-10-22.md"
-    job = json.loads((p.queue_dir / "job.json").read_text())
+    job = json.loads((p.queue_dir / "job.json").read_text(encoding="utf-8"))
     assert job["file"] == f"{calc}/2026-10-27.live.pcm" and job["live"] == f"{calc}/2026-10-27.session.json"
     # talks into the Stenny folder, with their paths; what isn't Stenny's stays
-    talk = (talks / "Guest talk – Müller/2026-10-22/Guest talk – Müller 2026-10-22.md").read_text()
+    talk = (talks / "Guest talk – Müller/2026-10-22/Guest talk – Müller 2026-10-22.md").read_text(encoding="utf-8")
     assert f"{talk_data}/Guest talk – Müller 2026-10-22 (raw).md" in talk
     assert "Lectures Data" not in talk
     assert f"{calc}/2026-10-20.opus" in (
-        lectures / "Calculus/2026-10-20/Calculus 2026-10-20.md").read_text()
+        lectures / "Calculus/2026-10-20/Calculus 2026-10-20.md").read_text(encoding="utf-8")
     assert (home / "Vault/Studies/Recordings/Holiday photos/beach.jpg").exists()
     assert [e["course"] for e in share.library(cfg)] == ["Calculus", "Guest talk – Müller"]
     assert Vault(lectures).violations() == []
     # the rest of _System and _Shared
-    assert (p.config_dir / "consent.json").read_text() == '["record/course/Calculus"]'
+    assert (p.config_dir / "consent.json").read_text(encoding="utf-8") == '["record/course/Calculus"]'
     assert (p.logs_dir / "stenny.log").exists() and (p.logs_dir / "live.log").exists()
     assert (p.data_dir / "calendar-titles.json").exists() and (p.shared_dir / "Calculus (2026-10-20).md").exists()
     # ~/Lectures Data keeps only what Stenny doesn't know, and says so
@@ -289,6 +293,7 @@ def test_migrate_moves_lectures_data_into_the_app_data_places(old_install):
     assert not p.legacy_home.exists() and not mig.needed()
 
 
+@mac_only
 def test_a_data_dir_of_ones_own_stays_and_gets_recordings_inside(places):
     disk = places.home / "Disk"
     write_config(places.legacy_system_dir / "config.toml",
@@ -296,29 +301,31 @@ def test_a_data_dir_of_ones_own_stays_and_gets_recordings_inside(places):
     (disk / "Calculus").mkdir(parents=True)
     (disk / "Calculus" / "2026-10-20.session.json").write_text(json.dumps({"recording": f"{disk}/Calculus/a.pcm"}))
     mig.migrate(log=lambda m: None)
-    assert 'data_dir = "~/Disk"' in places.config_path.read_text()
+    assert 'data_dir = "~/Disk"' in places.config_path.read_text(encoding="utf-8")
     session = disk / "Recordings" / "Calculus" / "2026-10-20.session.json"
-    assert json.loads(session.read_text())["recording"] == f"{disk}/Recordings/Calculus/a.pcm"
+    assert json.loads(session.read_text(encoding="utf-8"))["recording"] == f"{disk}/Recordings/Calculus/a.pcm"
     assert config_mod.load().data_for(Course("Calculus")) == disk / "Recordings/Calculus"
     (disk / "Physics").mkdir()  # another round (say, after a partly failed one) moves only what's new
     (disk / "Physics" / "x.json").write_text(json.dumps({"a": f"{disk}/Physics/x"}))
     write_config(places.legacy_system_dir / "config.toml", f'vault = "~/Vault"\ndata_dir = "~/Disk"\n')
     places.config_path.unlink()
     mig.migrate(log=lambda m: None)
-    assert json.loads(session.read_text())["recording"] == f"{disk}/Recordings/Calculus/a.pcm"  # not twice
-    assert json.loads((disk / "Recordings/Physics/x.json").read_text())["a"] == f"{disk}/Recordings/Physics/x"
+    assert json.loads(session.read_text(encoding="utf-8"))["recording"] == f"{disk}/Recordings/Calculus/a.pcm"  # not twice
+    assert json.loads((disk / "Recordings/Physics/x.json").read_text(encoding="utf-8"))["a"] == f"{disk}/Recordings/Physics/x"
 
 
+@mac_only
 def test_data_dir_set_to_lectures_data_itself_is_dropped(places):
     write_config(places.legacy_system_dir / "config.toml",
                  'vault = "~/Vault"\nlectures_dir = "Lectures"\ndata_dir = "~/Lectures Data"   # explicit\n')
     (places.legacy_home / "Calculus").mkdir()
     (places.legacy_home / "Calculus" / "a.opus").write_bytes(b"x")
     mig.migrate(log=lambda m: None)
-    assert "data_dir" not in places.config_path.read_text()
+    assert "data_dir" not in places.config_path.read_text(encoding="utf-8")
     assert (places.data_dir / "Recordings/Calculus/a.opus").exists() and not places.legacy_home.exists()
 
 
+@mac_only
 def test_across_disks_it_copies_checks_and_then_deletes(old_install, monkeypatch):
     real = os.rename
 
@@ -344,6 +351,7 @@ def test_a_copy_that_doesnt_arrive_whole_leaves_the_original(tmp_path, monkeypat
     assert (src / "x.opus").read_bytes() == b"12345" and not (tmp_path / "b" / "Calculus").exists()
 
 
+@mac_only
 def test_migrate_waits_while_a_recording_runs(old_install, monkeypatch):
     monkeypatch.setattr(mig.control, "is_running", lambda path=None: True)
     with pytest.raises(mig.MigrateError, match="recording"):
@@ -353,7 +361,7 @@ def test_migrate_waits_while_a_recording_runs(old_install, monkeypatch):
     assert old_install.legacy_home.exists() and any("next start" in s for s in said)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="the queue's lock before 0.5 was a Mac's")
+@mac_only
 def test_migrate_waits_while_an_old_final_pass_runs(old_install):
     import fcntl
     with open(old_install.legacy_system_dir / "queue.lock", "w") as held:
@@ -362,6 +370,7 @@ def test_migrate_waits_while_an_old_final_pass_runs(old_install):
     assert mig.busy() is None
 
 
+@mac_only
 def test_the_queues_background_job_logs_to_the_new_place(old_install, monkeypatch):
     import plistlib
     from stenny import jobs
