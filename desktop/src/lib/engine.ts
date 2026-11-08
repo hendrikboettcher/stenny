@@ -58,19 +58,27 @@ export const shareFiles = (paths: string[], anchor: DOMRect) =>
 export const lecturerAgreed = (e: Entry, use: "share" | "record") =>
   inApp ? invoke<boolean>("lecturer_agreed", { purpose: use, course: e.course, event: e.kind === "event" }) : Promise.resolve(true);
 
+// After the course list changed: the menu bar's Start Lecture menu reads it again now, not at its next minute
+async function coursesChanged<T>(done: Promise<T>): Promise<T> {
+  const result = await done;
+  if (inApp) invoke("courses_changed").catch(() => {});
+  return result;
+}
+
 // Renaming, deleting (to the Trash or Recycle Bin) and the course list (src/stenny/manage.py, courses.py)
 export const renameLecture = (e: Entry, title: string) =>
   engine<{ title: string | null }>("rename_lecture", { ...where(e), title });
 export const deleteLecture = (e: Entry) => engine<{ message: string }>("delete_lecture", where(e));
 export const renameCourse = (course: string, event: boolean, name: string) =>
-  engine<{ name: string }>("rename_course", { course, event, name });
+  coursesChanged(engine<{ name: string }>("rename_course", { course, event, name }));
 export const addCourse = (name: string, language: string, alias: string) =>
-  engine<{ message: string }>("add_course", { name, language, alias });
+  coursesChanged(engine<{ message: string }>("add_course", { name, language, alias }));
 // to the clipboard (in a browser during development: the browser's)
 export const copyText = (text: string) => (inApp ? invoke<void>("copy_text", { text }) : navigator.clipboard.writeText(text));
 // a whole course or talk and all its recordings to the Trash (Recycle Bin on Windows)
 export const deleteCourse = (course: string, event: boolean) =>
-  engine<{ message: string }>("delete_course", { course, event });
-export const removeCourse = (course: string) => engine<{ message: string }>("remove_course", { course });
+  coursesChanged(engine<{ message: string }>("delete_course", { course, event }));
+export const removeCourse = (course: string) => coursesChanged(engine<{ message: string }>("remove_course", { course }));
 // a removed course back: `add` restores it with its earlier settings (the language counts only for a new one)
-export const bringBack = (course: string) => engine<{ message: string }>("add_course", { name: course, language: "auto" });
+export const bringBack = (course: string) =>
+  coursesChanged(engine<{ message: string }>("add_course", { name: course, language: "auto" }));

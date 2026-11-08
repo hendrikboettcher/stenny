@@ -423,6 +423,12 @@ fn handle_vanished(app: &AppHandle, course: String, event: bool, was_recording: 
     }
 }
 
+/// The course list changed in a window (added, removed, deleted, renamed, brought back): the next poll, within
+/// 3 s, reads it again and rebuilds Start Lecture, instead of waiting for the minute.
+pub fn lists_changed(app: &AppHandle) {
+    app.state::<MenuBar>().0.lock().unwrap().lists_loaded = None;
+}
+
 pub fn start_polling(app: AppHandle) {
     std::thread::spawn(move || loop {
         let stale = {

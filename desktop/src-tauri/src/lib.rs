@@ -205,6 +205,12 @@ async fn ui_language(app: AppHandle) -> String {
 }
 
 /// Settings ▸ General ▸ Language changed (and is saved in the config): every window, the menus and the agent follow.
+/// A window changed the course list (lib/engine.ts, coursesChanged): the menu bar reads it again.
+#[tauri::command]
+fn courses_changed(app: AppHandle) {
+    menubar::lists_changed(&app);
+}
+
 #[tauri::command]
 async fn set_ui_language(app: AppHandle, language: String) {
     if i18n::set_language(&language) {
@@ -331,7 +337,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(Arc::new(Engine::default()))
         .manage(MenuBar::default())
-        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, share_files, copy_text, check_updates, microphone_pref, set_microphone_pref, login_item, apply_shortcut, ui_language, set_ui_language])
+        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, share_files, copy_text, check_updates, microphone_pref, set_microphone_pref, login_item, apply_shortcut, ui_language, set_ui_language, courses_changed])
         .setup(move |app| {
             if !library_only {
                 // A Dock app with the menu bar icon next to it. Info.plist keeps LSUIElement for the helpers in the
