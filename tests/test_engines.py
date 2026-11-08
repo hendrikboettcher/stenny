@@ -35,9 +35,10 @@ class FakeWhisper:
     """faster_whisper.WhisperModel: segments come lazily, the language info at once."""
     made = []
 
-    def __init__(self, model, device, compute_type):
+    def __init__(self, model, device, compute_type, download_root=None):
         self.calls = []
         FakeWhisper.made.append((model, device, compute_type))
+        FakeWhisper.root = download_root
 
     def transcribe(self, audio, **kw):
         self.calls.append(kw)
@@ -73,10 +74,10 @@ def test_language_probs_only_among_the_allowed(fake):
 
 
 def test_a_gpu_without_its_libraries_falls_back_to_the_cpu(fake, monkeypatch):
-    def picky(model, device, compute_type):
+    def picky(model, device, compute_type, **kw):
         if device == "cuda":
             raise RuntimeError("Library cublas64_12.dll is not found")
-        return FakeWhisper(model, device, compute_type)
+        return FakeWhisper(model, device, compute_type, **kw)
     monkeypatch.setitem(sys.modules, "faster_whisper", SimpleNamespace(WhisperModel=picky))
     monkeypatch.setattr(faster_engine, "_cuda", lambda: True)
     engine = FasterWhisperEngine("large-v3-turbo")
@@ -96,3 +97,13 @@ def test_the_engine_setting(tmp_path):
     path.write_text(f'vault = "{tmp_path.as_posix()}"\n[transcription]\nengine = "cpu"\n', encoding="utf-8")
     with pytest.raises(config_mod.ConfigError):
         config_mod.load(path)
+
+
+def test_the_model_goes_to_stennys_models_folder(fake, monkeypatch, tmp_path):
+    from stenny import paths
+    monkeypatch.setattr(paths, "models_dir", lambda: tmp_path / "Models")
+    FasterWhisperEngine("large-v3-turbo").transcribe(np.zeros(16000, np.float32), "en")
+    assert fake.root == str(tmp_path / "Models")
+    monkeypatch.setattr(paths, "models_dir", lambda: None)  # a Mac: the Hugging Face cache
+    FasterWhisperEngine("large-v3-turbo").transcribe(np.zeros(16000, np.float32), "en")
+    assert fake.root is None

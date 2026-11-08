@@ -33,15 +33,20 @@ class FasterWhisperEngine:
         if self._whisper is None:
             from faster_whisper import WhisperModel
 
+            from .. import paths
+
+            root = paths.models_dir()  # %LOCALAPPDATA%\Stenny\Models on Windows; None: the Hugging Face cache
+            kw = {"download_root": str(root)} if root else {}
+
             if self.device in ("auto", "cuda") and _cuda():
                 try:
-                    self._whisper = WhisperModel(self.model, device="cuda", compute_type="float16")
+                    self._whisper = WhisperModel(self.model, device="cuda", compute_type="float16", **kw)
                     return self._whisper
                 except (RuntimeError, ValueError, OSError):
                     if self.device == "cuda":
                         raise
                     # CUDA is there but its libraries (cuBLAS, cuDNN) aren't: the CPU does it
-            self._whisper = WhisperModel(self.model, device="cpu", compute_type="int8")
+            self._whisper = WhisperModel(self.model, device="cpu", compute_type="int8", **kw)
         return self._whisper
 
     def transcribe(self, audio: np.ndarray, language: str, prompt: str | None = None) -> list[dict]:
