@@ -6,10 +6,10 @@
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import Figure from "$lib/Figure.svelte";
   import Dialog from "$lib/Dialog.svelte";
-  import { addCourse, bringBack, deleteCourse, engine, library, removeCourse, reveal } from "$lib/engine";
+  import { addCourse, bringBack, deleteCourse, engine, library, removeCourse, reveal, type AiStatus, type ConnectorStatus } from "$lib/engine";
   import { t, tn, setLanguage, languageName, trashName, revealLabel } from "$lib/i18n.svelte";
 
   interface Settings {
@@ -17,32 +17,13 @@
     live: { draft: boolean; backup: string };
     llm: { backend: "claude-code" | "api" | "none"; summary: boolean };
     processing: { priority: "normal" | "low" | "background"; require_ac_for_queue: boolean; night_only: boolean; night_start: string; night_end: string };
-    app: { pause_shortcut: string; language: "system" | "en" | "de" };
+    app: { pause_shortcut: string; language: "system" | "en" | "de"; setup_checklist: boolean };
     ui_language: "en" | "de";        // what "system" comes to, or the language picked
     system_language: "en" | "de";
     recordings: { languages: string[]; folder: string };
     paths: { vault: string; lectures: string; data: string; config: string };
     model: string;
     courses: { name: string; language: string; languages: string[] }[];
-  }
-
-  // Whether the chosen option of the AI step works right now (src/stenny/claude_setup.py, no tokens spent)
-  interface AiStatus {
-    backend: "claude-code" | "api" | "none";
-    state: "ready" | "missing" | "signed_out" | "unknown" | "no_key" | "bad_key" | "unchecked" | "off";
-    account?: string | null;
-    source?: "keychain" | "environment";
-    hint?: string;
-    detail?: string;
-  }
-  // The Stenny connector in Claude Desktop (and Claude Code)
-  interface ConnectorStatus {
-    desktop: boolean;
-    installed: boolean;
-    enabled: boolean;
-    version: string | null;
-    file: string | null;
-    code: { available: boolean; added: boolean };
   }
 
   const inApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -59,9 +40,9 @@
   const LANGS = ["en", "de", "fr"];
   const langName = (code: string) => (LANGS.includes(code) ? languageName(code)! : code.toUpperCase());
 
-  let { onclose }: { onclose: () => void } = $props();
+  let { onclose, start = "general" }: { onclose: () => void; start?: Section } = $props();
 
-  let section = $state<Section>("general");
+  let section = $state<Section>(untrack(() => start));
   let s = $state<Settings | null>(null);
   let loadError = $state<string | null>(null);
   let error = $state<string | null>(null);

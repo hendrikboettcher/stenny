@@ -6,6 +6,7 @@
   import Figure from "$lib/Figure.svelte";
   import Dialog from "$lib/Dialog.svelte";
   import Settings from "$lib/Settings.svelte";
+  import SetupChecklist from "$lib/SetupChecklist.svelte";
   import { renderMarkdown } from "$lib/markdown";
   import {
     library, lecture, makeCopy, makePdf, finishNow, openTranscript, reveal, shareFiles, lecturerAgreed,
@@ -26,6 +27,7 @@
   let shareOpen = $state(false);
   let shareButton = $state<HTMLButtonElement | null>(null); // the share menu opens below it
   let settingsOpen = $state(false); // the footer's Settings…: the window shows Settings instead (lib/Settings.svelte)
+  let settingsSection = $state<"general" | "transcripts" | "claude">("general"); // where Settings opens
   let linkCopied = $state(false); // the footer's Share Stenny: "Link copied" for a moment
   let copiedTimer: ReturnType<typeof setTimeout> | undefined;
   let busy = $state<string | null>(null);   // "share" | "finish"
@@ -120,8 +122,13 @@
   function settingsShortcut(e: KeyboardEvent) {
     if (e.key === "," && (onWindows ? e.ctrlKey : e.metaKey) && !e.altKey && !e.shiftKey) {
       e.preventDefault();
-      settingsOpen = true;
+      openSettings();
     }
+  }
+
+  function openSettings(section: typeof settingsSection = "general") {
+    settingsSection = section;
+    settingsOpen = true;
   }
 
   onMount(() => {
@@ -130,7 +137,7 @@
     window.addEventListener("focus", onFocus);
     window.addEventListener("keydown", settingsShortcut);
     let unlisten: (() => void) | undefined;
-    if ("__TAURI_INTERNALS__" in window) listen("open-settings", () => (settingsOpen = true)).then((u) => (unlisten = u));
+    if ("__TAURI_INTERNALS__" in window) listen("open-settings", () => openSettings()).then((u) => (unlisten = u));
     return () => {
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("keydown", settingsShortcut);
@@ -327,7 +334,7 @@
                onblur={() => (menu = null)} />
 
 {#if settingsOpen}
-  <Settings onclose={() => { settingsOpen = false; reload(); }} />
+  <Settings start={settingsSection} onclose={() => { settingsOpen = false; reload(); }} />
 {:else}
 <div class="window">
   <aside class="sidebar">
@@ -365,8 +372,11 @@
       {/if}
       {@render section(t("common.talksEvents"), groups.talks)}
     </nav>
+    <!-- "Finish setting up Stenny", until courses, the AI step and the connector work (lib/SetupChecklist.svelte) -->
+    <SetupChecklist courses={data ? groups.courses.length : null} onaddcourse={() => open({ kind: "add" })}
+                    onsettings={openSettings} />
     <footer>
-      <button class="with-key" onclick={() => (settingsOpen = true)}>
+      <button class="with-key" onclick={() => openSettings()}>
         <span>{t("lib.settings")}</span><kbd aria-label={onWindows ? "Control comma" : "Command comma"}>{settingsKey}</kbd>
       </button>
       <button onclick={() => invoke("show_feedback")}>{t("lib.feedback")}</button>
