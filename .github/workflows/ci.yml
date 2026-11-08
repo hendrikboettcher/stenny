@@ -27,6 +27,8 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
+      # the app bundles its own ffmpeg (app/build-ffmpeg.sh); the tests use whatever is on the PATH
+      - uses: FedericoCarboni/setup-ffmpeg@v3
       - name: Install
         run: uv sync --locked --group dev
       - name: Tests
