@@ -306,6 +306,7 @@ Say clearly: **✅ Setup is finished.** Then, short:
 - Before a lecture: wait for the notification, or click Stenny's icon ▸ *Start Lecture* ▸ course. Keep the MacBook **open** while recording.
 - Stop: click the dot ▸ *Stop & Make Final Transcript*. On power, a 3-hour lecture's transcript is ready after about 20–25 minutes; on battery it waits until they plug in.
 - Afterwards: Stenny's icon ▸ *Open Stenny…* shows every lecture with its summary. *Share…* there makes a clean copy (PDF, Word or Markdown) to send to classmates.
+- If a step above was skipped (no course, the AI step not signed in, the connector not installed), the window's *Finish setting up Stenny* card lists what's left, with a button for each, until it's done.
 - If memory or disk runs low, the recording goes on first: the live text pauses, or the final transcript waits. If something crashes, Stenny saves the audio and starts recording again by itself.
 - **Ask the lecturer first.** Many universities need the lecturer's consent before a lecture is recorded. Keep recordings and transcripts to themselves.
 - New versions: Stenny's icon ▸ *Check for Updates…*.

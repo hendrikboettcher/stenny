@@ -57,10 +57,16 @@ def test_adds_a_missing_key_and_a_missing_table(path):
     assert cfg.course("Calculus").language == "en"  # the new key went into [processing], not into a course
 
 
+def test_the_setup_card_goes_for_good(path):
+    assert config_mod.load(path).setup_checklist is True
+    got = change(path, "app.setup_checklist", False)
+    assert got["app"]["setup_checklist"] is False and config_mod.load(path).setup_checklist is False
+
+
 @pytest.mark.parametrize("key,value", [
     ("llm.backend", "gpt"), ("processing.night_start", "25:00"), ("app.pause_shortcut", "shift+p"),
     ("keep_audio", "yes"), ("vault", "/elsewhere"), ("recordings.languages", ["English"]),
-    ("recordings.languages", ["en", "es"]),
+    ("recordings.languages", ["en", "es"]), ("app.setup_checklist", "no"),
 ])
 def test_refuses_and_leaves_the_file_alone(path, key, value):
     with pytest.raises(ConfigError):

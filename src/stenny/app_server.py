@@ -231,6 +231,19 @@ def remove_from_claude_code(cfg, params: dict) -> dict:
     return _setup(claude_setup.remove_from_claude_code, cfg)
 
 
+def setup_status(cfg, params: dict) -> dict:
+    """The library window's "Finish setting up Stenny" card: whether it's still wanted (`[app] setup_checklist`),
+    and the real state of each step, checked now: courses, the AI step (ai_status), the connector. Nothing is
+    checked once the card is gone for good."""
+    if not getattr(cfg, "setup_checklist", True):
+        return {"show": False}
+    from . import claude_setup
+    return {"show": True,
+            "courses": sum(1 for c in cfg.courses.values() if not c.hidden),
+            "ai": claude_setup.ai_status(cfg),
+            "connector": claude_setup.connector_status(cfg)}
+
+
 def ping(cfg, params: dict) -> dict:
     return {"version": package_version("stenny")}
 
@@ -242,7 +255,8 @@ METHODS = {"ping": ping, "library": library, "lecture": lecture, "make_copy": ma
            "ai_status": ai_status, "set_api_key": set_api_key, "remove_api_key": remove_api_key,
            "claude_sign_in": claude_sign_in, "connector_status": connector_status,
            "install_connector": install_connector, "add_to_claude_code": add_to_claude_code,
-           "open_claude": open_claude, "remove_from_claude_code": remove_from_claude_code, **app_live.METHODS}
+           "open_claude": open_claude, "remove_from_claude_code": remove_from_claude_code,
+           "setup_status": setup_status, **app_live.METHODS}
 
 
 def handle(cfg, request: dict) -> dict:

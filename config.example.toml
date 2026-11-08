@@ -32,6 +32,9 @@ pause_shortcut = "cmd+shift+ü"
 # languages that Stenny has, else English), "en" or "de". Settings ▸ General sets it too. Transcripts keep the
 # language of their course.
 language = "system"
+# The "Finish setting up Stenny" card in the library window, until your courses, the AI step and the connector for
+# Claude are set up. Stenny sets this to false once they are (or when you choose "Don't show this again").
+# setup_checklist = true
 
 [live]
 # device = "MacBook Air Microphone"   # microphone for `stenny live` (see `stenny devices`);

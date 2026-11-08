@@ -24,6 +24,33 @@ export interface Library {
   courses: { name: string; hidden: boolean }[];
 }
 
+// Whether the chosen option of the AI step works right now (src/stenny/claude_setup.py, no tokens spent)
+export interface AiStatus {
+  backend: "claude-code" | "api" | "none";
+  state: "ready" | "missing" | "signed_out" | "unknown" | "no_key" | "bad_key" | "unchecked" | "off";
+  account?: string | null;
+  source?: "keychain" | "environment";
+  hint?: string;
+  detail?: string;
+}
+// The Stenny connector in Claude Desktop (and Claude Code)
+export interface ConnectorStatus {
+  desktop: boolean;
+  installed: boolean;
+  enabled: boolean;
+  version: string | null;
+  file: string | null;
+  code: { available: boolean; added: boolean };
+}
+// The library window's "Finish setting up Stenny" card (app_server.setup_status): show is false once it's gone
+// for good, and then nothing else is checked
+export interface SetupStatus {
+  show: boolean;
+  courses?: number;
+  ai?: AiStatus;
+  connector?: ConnectorStatus;
+}
+
 const inApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 // In the app: through Rust (engine.rs). In a browser during development: through dev/engine-bridge.js.
@@ -37,6 +64,7 @@ export async function engine<T>(method: string, params: Record<string, unknown> 
 const where = (e: Entry) => ({ course: e.course, folder: e.folder, event: e.kind === "event" });
 
 export const library = () => engine<Library>("library");
+export const setupStatus = () => engine<SetupStatus>("setup_status");
 // progress: the text so far of a recording whose transcript isn't done yet
 export const lecture = (e: Entry) =>
   engine<{ entry: Entry; summary: string | null; progress: string | null }>("lecture", where(e));

@@ -91,3 +91,22 @@ def test_a_recording_without_transcript_shows_its_text_so_far(cfg, tmp_path):
     final = app_server.handle(cfg, {"id": 2, "method": "lecture",
                                     "params": {"course": "Calculus", "folder": "2026-10-20"}})["result"]
     assert final["progress"] is None
+
+
+def test_setup_status_checks_each_step(cfg, monkeypatch):
+    """The "Finish setting up Stenny" card: courses, the AI step and the connector, each as it really is now."""
+    from stenny import claude_setup
+    monkeypatch.setattr(claude_setup, "ai_status", lambda c: {"backend": "claude-code", "state": "signed_out"})
+    monkeypatch.setattr(claude_setup, "connector_status",
+                        lambda c: {"desktop": True, "installed": False, "code": {"available": True, "added": False}})
+    cfg.courses["Old"] = SimpleNamespace(name="Old", hidden=True)
+    result = app_server.handle(cfg, {"id": 1, "method": "setup_status"})["result"]
+    assert result["show"] and result["courses"] == 1  # a removed course doesn't count
+    assert result["ai"]["state"] == "signed_out" and result["connector"]["installed"] is False
+
+
+def test_setup_status_checks_nothing_once_the_card_is_gone(cfg, monkeypatch):
+    from stenny import claude_setup
+    monkeypatch.setattr(claude_setup, "ai_status", lambda c: pytest.fail("checked"))
+    cfg.setup_checklist = False
+    assert app_server.handle(cfg, {"id": 1, "method": "setup_status"})["result"] == {"show": False}

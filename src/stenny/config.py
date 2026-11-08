@@ -77,6 +77,7 @@ class Config:
     event_languages: list[str] = field(default_factory=lambda: ["en", "de", "fr"])
     pause_shortcut: str = DEFAULT_PAUSE_SHORTCUT  # Stenny's global pause/resume shortcut, see parse_shortcut
     app_language: str = "system"              # the app's own language: system | en | de (i18n.py)
+    setup_checklist: bool = True              # the library window's "Finish setting up Stenny" card (False: gone)
     path: Path | None = None
 
     @property
@@ -244,6 +245,7 @@ def load(path: Path | None = None) -> Config:
             event_languages=data.get("recordings", {}).get("languages", ["en", "de", "fr"]),
             pause_shortcut=pause_shortcut,
             app_language=app_language,
+            setup_checklist=data.get("app", {}).get("setup_checklist", True),
             path=path,
         )
     except KeyError as e:

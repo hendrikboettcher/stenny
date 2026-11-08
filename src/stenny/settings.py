@@ -67,6 +67,7 @@ SETTINGS = {
     "processing.night_end": _time,
     "app.pause_shortcut": _shortcut,
     "app.language": _choice(*i18n.SETTINGS),
+    "app.setup_checklist": _bool,
     "recordings.languages": _languages,
 }
 
@@ -79,7 +80,8 @@ def get(cfg: Config) -> dict:
         "llm": {"backend": cfg.llm_backend, "summary": cfg.summary},
         "processing": {"priority": cfg.priority, "require_ac_for_queue": cfg.require_ac_for_queue,
                        "night_only": cfg.night_only, "night_start": cfg.night_start, "night_end": cfg.night_end},
-        "app": {"pause_shortcut": cfg.pause_shortcut, "language": cfg.app_language},
+        "app": {"pause_shortcut": cfg.pause_shortcut, "language": cfg.app_language,
+                "setup_checklist": cfg.setup_checklist},
         # Stenny's own language: what "system" comes to, and the system's (for "System default (Deutsch)")
         "ui_language": i18n.resolve(cfg.app_language),
         "system_language": i18n.system_language(),
