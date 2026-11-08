@@ -1,3 +1,5 @@
+import sys
+
 import numpy as np
 import pytest
 
@@ -320,19 +322,19 @@ def test_migrate_carries_the_oldest_layout_all_the_way_to_todays_places(places):
     (old_audio / "Calculus").mkdir(parents=True)
     (old_audio / "Calculus" / "2026-10-15.opus").write_bytes(b"ogg")
     (old_audio / "Calculus" / "2026-10-15.segments.json").write_text(
-        json.dumps({"meta": {"lecture": {"audio": f"{old_audio}/Calculus/2026-10-15.opus"}}, "segments": []}))
+        json.dumps({"meta": {"lecture": {"audio": f"{old_audio}/Calculus/2026-10-15.opus"}}, "segments": []}), encoding="utf-8")
     (old_state / "queue").mkdir(parents=True)
-    (old_state / "queue" / "job.json").write_text(json.dumps({"file": f"{old_audio}/Calculus/x.pcm"}))
-    (old_state / "live.log").write_text("log")
-    (old_state / "queue.lock").write_text("")
+    (old_state / "queue" / "job.json").write_text(json.dumps({"file": f"{old_audio}/Calculus/x.pcm"}), encoding="utf-8")
+    (old_state / "live.log").write_text("log", encoding="utf-8")
+    (old_state / "queue.lock").write_text("", encoding="utf-8")
     lecture = vault / "L" / "Calculus" / "2026-10-15"
     lecture.mkdir(parents=True)
     (lecture / "Calculus 2026-10-15.md").write_text(
         f'---\naudio: "{old_audio}/Calculus/2026-10-15.opus"\nstatus: "final"\n---\n# T\n\n> Every segment, unfiltered, '
-        "is in [[Calculus 2026-10-15 (raw)]].\n")
-    (lecture / "Calculus 2026-10-15 (raw).md").write_text("raw")
+        "is in [[Calculus 2026-10-15 (raw)]].\n", encoding="utf-8")
+    (lecture / "Calculus 2026-10-15 (raw).md").write_text("raw", encoding="utf-8")
     (vault / "L" / "_Glossaries").mkdir()
-    (vault / "L" / "_Glossaries" / "Calculus.md").write_text("## Terms\n- Riemann\n")
+    (vault / "L" / "_Glossaries" / "Calculus.md").write_text("## Terms\n- Riemann\n", encoding="utf-8")
 
     assert mig.migrate(dry_run=True, log=lambda m: None) > 0
     assert (old_audio / "Calculus" / "2026-10-15.opus").exists() and not places.legacy_home.exists()  # dry run
@@ -340,19 +342,19 @@ def test_migrate_carries_the_oldest_layout_all_the_way_to_todays_places(places):
     mig.migrate(log=lambda m: None)
     assert not old_cfg.exists() and not old_state.exists() and not old_audio.exists()
     assert not places.legacy_home.exists()                         # passed through, and gone once empty
-    config = places.config_path.read_text()
+    config = places.config_path.read_text(encoding="utf-8")
     import re
     assert not re.search(r"(?m)^(audio_dir|vault|lectures_dir) *=", config)
     assert config.startswith('folder = "~/vault/L"')
     assert (rec / "Calculus" / "2026-10-15.opus").read_bytes() == b"ogg"
     raw = rec / "Calculus" / "Calculus 2026-10-15 (raw).md"
-    assert raw.read_text() == "raw" and not (lecture / "Calculus 2026-10-15 (raw).md").exists()
-    t = (lecture / "Calculus 2026-10-15.md").read_text()
+    assert raw.read_text(encoding="utf-8") == "raw" and not (lecture / "Calculus 2026-10-15 (raw).md").exists()
+    t = (lecture / "Calculus 2026-10-15.md").read_text(encoding="utf-8")
     assert "(outside the vault)" in t and "[[Calculus 2026-10-15 (raw)]]" not in t and str(old_audio) not in t
     assert f"{rec}/Calculus/2026-10-15.opus" in t and "~/Library" not in t
-    meta = json.loads((rec / "Calculus" / "2026-10-15.segments.json").read_text())["meta"]["lecture"]
+    meta = json.loads((rec / "Calculus" / "2026-10-15.segments.json").read_text(encoding="utf-8"))["meta"]["lecture"]
     assert meta["audio"] == f"{rec}/Calculus/2026-10-15.opus" and meta["raw_file"].endswith("(raw).md")
-    assert json.loads((places.queue_dir / "job.json").read_text())["file"] == f"{rec}/Calculus/x.pcm"
+    assert json.loads((places.queue_dir / "job.json").read_text(encoding="utf-8"))["file"] == f"{rec}/Calculus/x.pcm"
     assert (places.logs_dir / "live.log").exists()
     assert (vault / "L" / "_Glossaries" / "Calculus (glossary).md").exists()
     assert Vault(vault / "L").violations() == []

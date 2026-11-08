@@ -9,7 +9,7 @@ dependencies = [
     "anthropic>=1.14.0",
     "keyring>=25 ; sys_platform != 'darwin'",
     "mcp>=2.3",
-    "mlx-whisper>=0.4.3",
+    "mlx-whisper>=0.4.3 ; sys_platform == 'darwin'",  # Apple Silicon (Metal); Windows gets its own engine (#2)
     "numpy>=2",
     "pypdf>=6.21.1",
 ]

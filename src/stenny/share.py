@@ -251,7 +251,7 @@ def _docx(page: str, path: Path) -> None:
         source = Path(tmp) / "copy.html"
         source.write_text(page, encoding="utf-8")
         done = subprocess.run(["textutil", "-convert", "docx", "-format", "html", "-inputencoding", "UTF-8",
-                               "-output", str(path), str(source)], capture_output=True, text=True)
+                               "-output", str(path), str(source)], capture_output=True, text=True, encoding="utf-8", errors="replace")
     if done.returncode or not path.exists():
         raise ShareError(tr("The Word file couldn't be made: {error}", error=done.stderr.strip() or "textutil failed"))
 

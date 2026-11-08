@@ -22,7 +22,7 @@ def free_disk(path: Path) -> int:
 
 def memory_pressure() -> int:
     """macOS's own verdict: 1 normal, 2 warning, 4 critical."""
-    p = subprocess.run(["sysctl", "-n", "kern.memorystatus_vm_pressure_level"], capture_output=True, text=True)
+    p = subprocess.run(["sysctl", "-n", "kern.memorystatus_vm_pressure_level"], capture_output=True, text=True, encoding="utf-8", errors="replace")
     try:
         return int(p.stdout)
     except ValueError:
@@ -31,7 +31,7 @@ def memory_pressure() -> int:
 
 def available_memory() -> int:
     """Memory macOS can hand out without swapping: free, plus what it only keeps as a cache."""
-    out = subprocess.run(["vm_stat"], capture_output=True, text=True).stdout
+    out = subprocess.run(["vm_stat"], capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
     page = re.search(r"page size of (\d+) bytes", out)
     pages = sum(int(m.group(1)) for m in re.finditer(r"Pages (?:free|inactive|speculative|purgeable):\s+(\d+)", out))
     return pages * int(page.group(1)) if page else MEMORY_FOR_FINAL_PASS

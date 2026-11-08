@@ -92,7 +92,7 @@ def test_language_setting(tmp_path, monkeypatch):
     from stenny import config as config_mod
     monkeypatch.setenv("STENNY_SYSTEM_LANGUAGE", "en")
     path = tmp_path / "config.toml"
-    path.write_text(f'vault = "{tmp_path}"\n\n[app]\npause_shortcut = "cmd+shift+p"\n', encoding="utf-8")
+    path.write_text(f'vault = "{tmp_path.as_posix()}"\n\n[app]\npause_shortcut = "cmd+shift+p"\n', encoding="utf-8")
     cfg = config_mod.load(path)
     assert cfg.app_language == "system"
     shown = settings.get(cfg)
@@ -109,11 +109,11 @@ def test_language_setting(tmp_path, monkeypatch):
 
 def test_app_server_answers_in_the_setting(tmp_path, monkeypatch):
     path = tmp_path / "config.toml"
-    path.write_text(f'vault = "{tmp_path}"\n\n[app]\nlanguage = "de"\n', encoding="utf-8")
+    path.write_text(f'vault = "{tmp_path.as_posix()}"\n\n[app]\nlanguage = "de"\n', encoding="utf-8")
     monkeypatch.setenv("STENNY_CONFIG", str(path))
     reply = app_server._answer(json.dumps({"id": 1, "method": "nope"}))
     assert reply["error"] == "Unbekannte Methode „nope“."
-    path.write_text(f'vault = "{tmp_path}"\n\n[app]\nlanguage = "en"\n', encoding="utf-8")
+    path.write_text(f'vault = "{tmp_path.as_posix()}"\n\n[app]\nlanguage = "en"\n', encoding="utf-8")
     reply = app_server._answer(json.dumps({"id": 2, "method": "nope"}))
     assert reply["error"] == "Unknown method 'nope'."
     i18n.set_language("en")

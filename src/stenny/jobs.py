@@ -1,6 +1,5 @@
 """Deferred processing: a file-based job queue, AC-power / night checks, low-priority execution."""
 
-import fcntl
 import json
 import os
 import plistlib
@@ -42,7 +41,7 @@ def lower_own_priority(mode: str) -> None:
 
 
 def on_ac_power() -> bool:
-    out = subprocess.run(["pmset", "-g", "ps"], capture_output=True, text=True).stdout
+    out = subprocess.run(["pmset", "-g", "ps"], capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
     return "AC Power" in out.splitlines()[0] if out else True
 
 
@@ -81,6 +80,25 @@ def pending() -> list[Path]:
     return sorted(QUEUE_DIR.glob("*.json")) if QUEUE_DIR.exists() else []
 
 
+if sys.platform == "win32":
+    import msvcrt
+
+    def _lock(f) -> None:
+        msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)  # OSError while another process holds it
+
+    def _unlock(f) -> None:
+        f.seek(0)
+        msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+else:
+    import fcntl
+
+    def _lock(f) -> None:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)  # BlockingIOError (an OSError) while another holds it
+
+    def _unlock(f) -> None:
+        fcntl.flock(f, fcntl.LOCK_UN)
+
+
 class QueueLock:
     """Only one queue run at a time (launchd fires every 10 min, runs can take longer). The final pass right after
     a live recording takes it too, or the next scheduled run would start a second pass on the same job."""
@@ -89,15 +107,15 @@ class QueueLock:
         QUEUE_DIR.mkdir(parents=True, exist_ok=True)
         self.f = open(QUEUE_DIR / "queue.lock", "w")
         try:
-            fcntl.flock(self.f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
+            _lock(self.f)
+        except OSError:
             self.f.close()
             return None
         return self
 
     def __exit__(self, *exc):
         if not self.f.closed:
-            fcntl.flock(self.f, fcntl.LOCK_UN)
+            _unlock(self.f)
             self.f.close()
 
 

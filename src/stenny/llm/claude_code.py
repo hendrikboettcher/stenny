@@ -57,7 +57,7 @@ class ClaudeCodeBackend:
         # No thinking: the task is mechanical, and thinking tokens were 95% of the output (and the time).
         env["MAX_THINKING_TOKENS"] = "0"
         with tempfile.TemporaryDirectory() as cwd:
-            p = subprocess.run(cmd, input=prompt, capture_output=True, text=True, timeout=timeout, cwd=cwd, env=env)
+            p = subprocess.run(cmd, input=prompt, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout, cwd=cwd, env=env)
         try:
             data = json.loads(p.stdout)
         except json.JSONDecodeError:

@@ -8,6 +8,7 @@ Text comes from poppler's `pdftotext` when installed, else from pypdf. Scanned P
 text layer give empty pages; they are still stored but not used.
 """
 
+import functools
 import re
 import shutil
 import subprocess
@@ -31,13 +32,29 @@ def clean(text: str) -> str:
     text = unicodedata.normalize("NFKC", text).replace("­", "")
     # "Weier-\nstrass" → "Weierstrass", but "Bolzano-\nWeierstrass" keeps its hyphen
     text = re.sub(r"(\w)-\n\s*(\w)", lambda m: m[1] + ("-" if m[2].isupper() else "") + m[2], text)
-    return "\n".join(" ".join(line.split()) for line in text.splitlines())
+    return "\n".join(" ".join(line.split()) for line in text.splitlines()).strip()  # Windows' pdftotext ends pages with a blank line
+
+
+def poppler_pdftotext() -> str | None:
+    """Poppler's pdftotext, if it's on the PATH. Another one (xpdf's, which comes with Git for Windows) lays the
+    lines out differently, and the slide terms then differ from a Mac's: pypdf reads those PDFs instead."""
+    exe = shutil.which("pdftotext")
+    return exe if exe and _is_poppler(exe) else None
+
+
+@functools.cache
+def _is_poppler(exe: str) -> bool:
+    try:
+        p = subprocess.run([exe, "-v"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return "poppler" in (p.stdout + p.stderr).lower()
 
 
 def extract_pages(path: Path) -> list[str]:
     """Text of each page, in order."""
-    if exe := shutil.which("pdftotext"):
-        p = subprocess.run([exe, "-enc", "UTF-8", str(path), "-"], capture_output=True, text=True)
+    if exe := poppler_pdftotext():
+        p = subprocess.run([exe, "-enc", "UTF-8", str(path), "-"], capture_output=True, text=True, encoding="utf-8", errors="replace")
         if p.returncode == 0:
             pages = p.stdout.split("\f")
             return [clean(t) for t in (pages[:-1] if pages and not pages[-1].strip() else pages)]

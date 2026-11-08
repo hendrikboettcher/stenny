@@ -155,8 +155,8 @@ def send_feedback(cfg, params: dict) -> dict:
         raise LiveError(tr("Write a few words first."))
     body = {"source": "app", "message": message, "contact": (params.get("contact") or "").strip()}
     if params.get("details"):
-        model = subprocess.run(["sysctl", "-n", "hw.model"], capture_output=True, text=True).stdout.strip()
-        memory = int(subprocess.run(["sysctl", "-n", "hw.memsize"], capture_output=True, text=True).stdout or 0) >> 30
+        model = subprocess.run(["sysctl", "-n", "hw.model"], capture_output=True, text=True, encoding="utf-8", errors="replace").stdout.strip()
+        memory = int(subprocess.run(["sysctl", "-n", "hw.memsize"], capture_output=True, text=True, encoding="utf-8", errors="replace").stdout or 0) >> 30
         try:
             log = (paths.LOGS_DIR / "stenny.log").read_text(encoding="utf-8").splitlines()[-40:]
         except OSError:
@@ -167,7 +167,7 @@ def send_feedback(cfg, params: dict) -> dict:
     try:
         done = subprocess.run(["/usr/bin/curl", "-sS", "--max-time", "20", "--fail-with-body", "-X", "POST",
                                "-H", "Content-Type: application/json", "--data-binary", "@-", FEEDBACK_URL],
-                              input=json.dumps(body), capture_output=True, text=True)
+                              input=json.dumps(body), capture_output=True, text=True, encoding="utf-8", errors="replace")
     except OSError:
         done = None
     if done is not None and done.returncode == 0:

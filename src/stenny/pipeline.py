@@ -373,7 +373,9 @@ def own_title(files) -> str | None:
 
 
 def home_relative(path: Path) -> str:
-    return str(path).replace(str(Path.home()), "~", 1)
+    """"~/Lectures Data/Calculus/…": with forward slashes on Windows too, so a stored path reads (and is renamed)
+    the same everywhere; Path() and expanduser() take it back as it is."""
+    return Path(path).as_posix().replace(Path.home().as_posix(), "~", 1)
 
 
 def write_file(path: Path, text: str) -> Path:
@@ -532,7 +534,7 @@ def process(path: Path, cfg: Config, course: Course, engine, *, lang: str | None
     audio_dest = cfg.data_for(course) / f"{folder.name}.opus"
     lec = Lecture(course=course.name, date=date, start_time=f"{when:%H:%M}", duration=duration,
                   languages=languages, language_note=lang_note, model=cfg.model, source=source, pauses=pauses,
-                  tags=course.tags, audio=str(audio_dest).replace(str(Path.home()), "~") if cfg.keep_audio else None,
+                  tags=course.tags, audio=home_relative(audio_dest) if cfg.keep_audio else None,
                   microphone=microphone, backup_microphone=backup_mic,
                   number=0 if course.is_event else vault.lecture_number(course.name, folder), kind=course.kind)
     files = vault.files(course.name, folder)
