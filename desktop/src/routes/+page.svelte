@@ -512,7 +512,7 @@
       </button>
       {#if !g.event}
         <button role="menuitem" onclick={() => open({ kind: "remove-course", group: g })}>
-          <span>{t("lib.menu.removeCourse")}</span><small>{t("lib.menu.removeCourse.hint")}</small>
+          <span>{t("lib.menu.removeCourse")}</span>
         </button>
       {/if}
       <div class="menu-line"></div>

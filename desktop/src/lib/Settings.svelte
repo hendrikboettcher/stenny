@@ -7,7 +7,7 @@
   import { onMount } from "svelte";
   import Figure from "$lib/Figure.svelte";
   import Dialog from "$lib/Dialog.svelte";
-  import { bringBack, deleteCourse, engine, library, reveal } from "$lib/engine";
+  import { addCourse, bringBack, deleteCourse, engine, library, removeCourse, reveal } from "$lib/engine";
   import { t, tn, setLanguage, languageName, trashName, revealLabel } from "$lib/i18n.svelte";
 
   interface Settings {
@@ -52,15 +52,59 @@
   // deleted with everything Stenny saved for them (manage.delete_course, to the Trash or Recycle Bin).
   let past = $state<{ name: string; lectures: number }[]>([]);
   let pastBusy = $state<string | null>(null);   // the course being brought back
-  let deleting = $state<{ name: string; lectures: number } | null>(null);
+  let deleting = $state<{ name: string; lectures: number; current?: boolean } | null>(null);
   let deleteBusy = $state(false);
   let deleteError = $state<string | null>(null);
+
+  // The current courses can be added, removed (→ Past courses) and deleted here too, like in the window's sidebar:
+  // "Add Course" under the list, and each course's ⋯ menu.
+  let lectureCount = $state(new Map<string, number>());
+  let courseMenu = $state<{ name: string; x: number; y: number } | null>(null);
+  let adding = $state(false);
+  let removing = $state<string | null>(null);
+  let newName = $state("");
+  let newLanguage = $state("en");
+  let newAlias = $state("");
+  let courseBusy = $state(false);
+  let courseError = $state<string | null>(null);
+
+  function openCourseMenu(ev: MouseEvent, name: string) {
+    ev.stopPropagation();
+    const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+    courseMenu = courseMenu?.name === name ? null : { name, x: Math.max(8, r.right - 200), y: r.bottom + 4 };
+  }
+
+  function ask(what: "add" | "remove" | "delete", name = "") {
+    courseMenu = null;
+    courseError = null;
+    deleteError = null;
+    if (what === "add") { newName = ""; newLanguage = "en"; newAlias = ""; adding = true; }
+    else if (what === "remove") removing = name;
+    else deleting = { name, lectures: lectureCount.get(name) ?? 0, current: true };
+  }
+
+  async function changeCourses(action: () => Promise<unknown>, close: () => void) {
+    courseBusy = true;
+    courseError = null;
+    try {
+      await action();
+      close();
+      s = await engine<Settings>("preferences");
+      await loadPast();
+      done();
+    } catch (e) {
+      courseError = String(e);
+    } finally {
+      courseBusy = false;
+    }
+  }
 
   async function loadPast() {
     const lib = await library();
     const shown = new Set(lib.courses.filter((c) => !c.hidden).map((c) => c.name));
     const lectures = new Map<string, number>();
     for (const e of lib.entries) if (e.kind !== "event") lectures.set(e.course, (lectures.get(e.course) ?? 0) + 1);
+    lectureCount = lectures;
     const names = new Set([...lib.courses.filter((c) => c.hidden).map((c) => c.name), ...lectures.keys()]);
     past = [...names].filter((n) => !shown.has(n)).sort((a, b) => a.localeCompare(b))
       .map((name) => ({ name, lectures: lectures.get(name) ?? 0 }));
@@ -87,6 +131,7 @@
     try {
       await deleteCourse(deleting.name, false);
       deleting = null;
+      s = await engine<Settings>("preferences");
       await loadPast();
       done();
     } catch (e) {
@@ -211,7 +256,8 @@
 
   async function capture(e: KeyboardEvent) {
     if (!recording) {
-      if (e.key === "Escape" && !e.defaultPrevented && !deleting) onclose();
+      if (e.key === "Escape" && courseMenu) { courseMenu = null; return; }
+      if (e.key === "Escape" && !e.defaultPrevented && !deleting && !adding && !removing) onclose();
       return;
     }
     e.preventDefault();
@@ -241,7 +287,7 @@
   }
 </script>
 
-<svelte:window onkeydown={capture} />
+<svelte:window onkeydown={capture} onclick={() => (courseMenu = null)} onblur={() => (courseMenu = null)} />
 
 <div class="window">
   <aside class="sidebar">
@@ -474,6 +520,10 @@
                     <option value="auto">{t("settings.courses.onePerLecture")}</option>
                     <option value="mixed">{t("lang.mixed")}</option>
                   </select>
+                  <button class="more" class:open={courseMenu?.name === c.name} aria-label={t("lib.optionsFor", { course: c.name })}
+                          title={t("lib.options")} onclick={(ev) => openCourseMenu(ev, c.name)}>
+                    <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.25" /><circle cx="8" cy="8" r="1.25" /><circle cx="12.5" cy="8" r="1.25" /></svg>
+                  </button>
                   {#if multi}
                     <div class="chips">
                       {#each LANGS as code}
@@ -486,6 +536,9 @@
               {/each}
             </div>
           {/if}
+          <button class="pill add-course" onclick={() => ask("add")}>
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" /></svg>{t("add.confirm")}
+          </button>
           {#if past.length}
             <h2>{t("settings.past")}</h2>
             <p class="lead small">{t("settings.past.lead")}</p>
@@ -513,12 +566,46 @@
   </main>
 </div>
 
+{#if courseMenu}
+  {@const name = courseMenu.name}
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+  <div class="menu" role="menu" tabindex="-1" style="left: {courseMenu.x}px; top: {courseMenu.y}px" onclick={(ev) => ev.stopPropagation()}>
+    <button role="menuitem" onclick={() => ask("remove", name)}>{t("lib.menu.removeCourse")}</button>
+    <div class="menu-line"></div>
+    <button role="menuitem" class="danger" onclick={() => ask("delete", name)}>{t("lib.menu.deleteCourse")}</button>
+  </div>
+{/if}
+
+{#if adding}
+  <Dialog title={t("add.title")} confirm={t("add.confirm")} busy={courseBusy} error={courseError} text={t("add.text")}
+          oncancel={() => (adding = false)}
+          onconfirm={() => changeCourses(() => addCourse(newName, newLanguage, newAlias), () => (adding = false))}>
+    <label for="settings-course-name">{t("add.name")}</label>
+    <input id="settings-course-name" bind:value={newName} placeholder={t("add.namePlaceholder")} autocomplete="off" spellcheck="false" />
+    <label for="settings-course-language">{t("common.language")}</label>
+    <select id="settings-course-language" bind:value={newLanguage}>
+      {#each [...LANGS, "mixed", "auto"] as code}<option value={code}>{languageName(code)}</option>{/each}
+    </select>
+    <label for="settings-course-alias">{t("add.alias")}</label>
+    <input id="settings-course-alias" bind:value={newAlias} placeholder={t("add.aliasPlaceholder")} autocomplete="off" spellcheck="false" />
+  </Dialog>
+{/if}
+
+{#if removing}
+  {@const name = removing}
+  {@const n = lectureCount.get(name) ?? 0}
+  <Dialog title={t("remove.title", { course: name })} confirm={t("remove.confirm")} busy={courseBusy} error={courseError}
+          text={t(n === 0 ? "settings.removeCourse.text.none" : n === 1 ? "settings.removeCourse.text.one" : "settings.removeCourse.text.other", { n })}
+          oncancel={() => (removing = null)}
+          onconfirm={() => changeCourses(() => removeCourse(name), () => (removing = null))} />
+{/if}
+
 {#if deleting}
   {@const n = deleting.lectures}
+  {@const which = n === 0 ? "none" : n === 1 ? "one" : "other"}
   <Dialog title={t("deleteGroup.title", { name: deleting.name })} confirm={t("deleteGroup.confirm.course")} danger
           busy={deleteBusy} error={deleteError}
-          text={t(n === 0 ? "settings.deleteCourse.text.none" : n === 1 ? "settings.deleteCourse.text.one" : "settings.deleteCourse.text.other",
-                  { n, trash: trashName() })}
+          text={t(deleting.current ? `deleteGroup.text.course.${which}` : `settings.deleteCourse.text.${which}`, { n, trash: trashName() })}
           oncancel={() => (deleting = null)} onconfirm={confirmDelete} />
 {/if}
 
@@ -607,6 +694,24 @@
   .segmented button { border: 0; background: none; padding: 4px 12px; border-radius: 7px; color: var(--ink-2); }
   .segmented button:hover { color: var(--ink); }
   .segmented button.on { background: var(--card); color: var(--ink); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); font-weight: 500; }
+
+  /* the courses: each one's ⋯ (Remove / Delete), and Add Course under the list */
+  .more {
+    flex: none; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--muted);
+    display: grid; place-items: center;
+  }
+  .more svg { width: 14px; height: 14px; fill: currentColor; display: block; }
+  .more:hover, .more.open { color: var(--ink); background: color-mix(in srgb, var(--ink) 8%, transparent); }
+  .add-course { display: inline-flex; align-items: center; gap: 6px; padding-left: 10px; }
+  .add-course svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+  .menu {
+    position: fixed; z-index: 40; min-width: 200px; padding: 5px; background: var(--card); border: 1px solid var(--line);
+    border-radius: 10px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 12px 32px rgba(0, 0, 0, 0.12);
+  }
+  .menu button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 7px 10px; border-radius: 6px; }
+  .menu button:hover { background: var(--mark); }
+  .menu .danger { color: var(--rec); }
+  .menu-line { height: 1px; background: var(--line); margin: 4px 6px; }
 
   .chips { display: flex; flex-wrap: wrap; gap: 6px; flex-basis: 100%; }
   .chip { border: 1px solid var(--line); background: none; border-radius: 999px; padding: 3px 11px; color: var(--ink-2); font-size: 12.5px; }
