@@ -247,7 +247,7 @@ DispatchQueue.main.async {  // once app.run() has launched: AppKit sets up its o
 
 guard let (code, modifiers, label) = parse(args[i + 1]) else {
     say("error " + localized("The key of the pause shortcut \(args[i + 1]) isn't on this keyboard.",
-                        "Die Taste des Tastenkürzels \(args[i + 1]) gibt es auf dieser Tastatur nicht."))
+                        "Die Taste für den Kurzbefehl \(args[i + 1]) gibt es auf dieser Tastatur nicht."))
     exit(1)
 }
 var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
@@ -260,5 +260,5 @@ let id = EventHotKeyID(signature: OSType(0x53544E59) /* "STNY" */, id: 1)
 let status = RegisterEventHotKey(UInt32(code), UInt32(modifiers), id, GetApplicationEventTarget(), 0, &ref)
 say(status == noErr ? "ready \(code) \(label)"
     : "error " + localized("\(label) is taken by another app (status \(status)).",
-                      "\(label) wird schon von einer anderen App verwendet (Status \(status))."))
+                      "\(label) wird bereits von einer anderen App verwendet (Status \(status))."))
 app.run()

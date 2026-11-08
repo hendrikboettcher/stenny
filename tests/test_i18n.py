@@ -121,7 +121,8 @@ def test_app_server_answers_in_the_setting(tmp_path, monkeypatch):
 
 def test_summary_note(german):
     text = "---\ncourse: X\n---\n# X\n\n> AI-generated summary (claude), see [[X]].\n\n## Gist\n\nText.\n"
-    assert "Von einer KI aus dem Transkript geschrieben." in app_server.summary_markdown(text)
+    note = DE["Written by AI from the transcript. It can leave things out or get them wrong; the transcript is the source."]
+    assert "> " + note in app_server.summary_markdown(text)
 
 
 # ---------------------------------------------------------------- the app's own texts (Svelte and Rust share them)
@@ -160,3 +161,23 @@ def test_german_uses_du_not_sie():
     formal = [t for t in texts if re.search(r"(?<![.;:!?]\s)(?<!^)\b(Sie|Ihnen|Ihr|Ihre|Ihren|Ihrem|Ihrer)\b", t)]
     assert not formal, formal
     assert any(re.search(r"\b(du|dein\w*|dich|dir)\b", t) for t in texts)
+
+
+# word-for-word renderings the German once had, and the established word for each (desktop/README.md, "Language")
+NOT_GERMAN = {
+    "Tastenkürzel": "Kurzbefehl (as in macOS)",
+    "Im Finder zeigen": "Im Finder anzeigen",
+    "Im Explorer zeigen": "Im Explorer anzeigen",
+    "am Strom": "am Netzteil",
+    "Damit löschst du": "say what is deleted: „Der Kurs … wird gelöscht“",
+    "Pausiert seit": "a duration, not a time of day: „Pausiert · 0:05:12“",
+    "Mikro aus": "Mikrofon aus",
+    "Zurückholen": "Wiederherstellen",
+    "Stoppen": "Beenden",
+}
+
+
+def test_german_uses_the_established_words():
+    texts = list(_locale("de").values()) + list(DE.values())
+    found = [(bad, better, t) for t in texts for bad, better in NOT_GERMAN.items() if bad in t]
+    assert not found, found
