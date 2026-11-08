@@ -30,7 +30,7 @@ def test_extract_pages_with_pypdf(pdf, monkeypatch):
     assert not s.contains("Riemannienne") and not s.contains("riemann") and s.contains("riemann", ignore_case=True)
 
 
-@pytest.mark.skipif(not slides_mod.shutil.which("pdftotext"), reason="poppler not installed")
+@pytest.mark.skipif(not slides_mod.poppler_pdftotext(), reason="poppler not installed")
 def test_extract_pages_with_pdftotext(pdf):
     assert Slides.load(pdf).pages[2] == "Séries de Fourier\nConvergence au sens de Dirichlet"
 

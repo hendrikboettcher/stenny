@@ -360,8 +360,9 @@ def _replace_json(text: str, old: str, new: str, moves: list[tuple[Path, Path]],
         if isinstance(v, str):
             if key in ("course", "event") and v == old:
                 return new
-            for a, b in moves:
-                v = v.replace(str(a) + "/", str(b) + "/")
+            for a, b in moves:  # a path as Path wrote it (backslashes on Windows) or with forward slashes
+                for old_dir, new_dir in {(str(a), str(b)), (Path(a).as_posix(), Path(b).as_posix())}:
+                    v = v.replace(old_dir + "/", new_dir + "/").replace(old_dir + "\\", new_dir + "\\")
             return swap(v)
         return v
 
