@@ -62,7 +62,7 @@ class StoppedSession:
         self.pcm_path.write_bytes(b"\0" * 32000)
         self.session_path.write_text(json.dumps({
             "course": "Calculus", "started_at": "2026-10-31T10:00:00", "folder": "2026-10-31", "spans": [[0, 0.0]],
-            "pauses": [], "recording": str(self.pcm_path), "state": "stopped", "recorded_samples": 16000}))
+            "pauses": [], "recording": str(self.pcm_path), "state": "stopped", "recorded_samples": 16000}), encoding="utf-8")
         self.transcript_path = cfg.vault / "Lectures/Calculus/2026-10-31/Calculus 2026-10-31.md"
         self.transcript_path.parent.mkdir(parents=True)
         self.transcript_path.write_text(draft(), encoding="utf-8")

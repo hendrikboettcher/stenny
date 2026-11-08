@@ -29,13 +29,13 @@ def test_a_git_checkout_is_left_alone(tmp_path):
 def test_failed_install_brings_the_old_folder_back(tmp_path, monkeypatch):
     folder = tmp_path / "stenny"
     folder.mkdir()
-    (folder / "pyproject.toml").write_text("old")
+    (folder / "pyproject.toml").write_text("old", encoding="utf-8")
 
     def fake_curl(*args):
         new = tmp_path / "zip" / "stenny.noindex"
         (new / "app/build.noindex/Stenny.app").mkdir(parents=True)
-        (new / "app/install.sh").write_text("")
-        (new / "pyproject.toml").write_text("new")
+        (new / "app/install.sh").write_text("", encoding="utf-8")
+        (new / "pyproject.toml").write_text("new", encoding="utf-8")
         import shutil
         shutil.make_archive(str(tmp_path / "made"), "zip", tmp_path / "zip")
         shutil.move(str(tmp_path / "made.zip"), args[1])
@@ -43,7 +43,7 @@ def test_failed_install_brings_the_old_folder_back(tmp_path, monkeypatch):
     attempts = []
 
     def fake_install(path):
-        attempts.append((path / "pyproject.toml").read_text())
+        attempts.append((path / "pyproject.toml").read_text(encoding="utf-8"))
         if len(attempts) == 1:
             raise update.UpdateError("no network")
 
@@ -53,7 +53,7 @@ def test_failed_install_brings_the_old_folder_back(tmp_path, monkeypatch):
     with pytest.raises(update.UpdateError, match="old one is back"):
         update.update(folder)
     assert attempts == ["new", "old"]
-    assert (folder / "pyproject.toml").read_text() == "old"
+    assert (folder / "pyproject.toml").read_text(encoding="utf-8") == "old"
     assert not (tmp_path / "stenny (before 0.4.0).noindex").exists()
 
 
@@ -62,6 +62,6 @@ def test_bundled_tools_win_over_the_path(tmp_path, monkeypatch):
     assert paths.tool("no-such-tool") == "no-such-tool"
     program = tmp_path / "Applications/Stenny.app/Contents/MacOS/no-such-tool"
     program.parent.mkdir(parents=True)
-    program.write_text("")
+    program.write_text("", encoding="utf-8")
     program.chmod(0o755)
     assert paths.tool("no-such-tool") == str(program)

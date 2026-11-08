@@ -46,7 +46,7 @@ def test_replaces_a_line_and_keeps_comments(path):
 def test_top_level_key_stays_above_the_tables(path):
     change(path, "keep_audio", False)
     assert config_mod.load(path).keep_audio is False
-    assert path.read_text(encoding="utf-8").index("keep_audio = false") < path.read_text().index("[llm]")
+    assert path.read_text(encoding="utf-8").index("keep_audio = false") < path.read_text(encoding="utf-8").index("[llm]")
 
 
 def test_adds_a_missing_key_and_a_missing_table(path):

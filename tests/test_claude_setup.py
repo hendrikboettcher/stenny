@@ -17,7 +17,7 @@ def cfg(backend):
 def fake_claude(tmp_path, monkeypatch):
     """A `claude` that answers `auth status` from a state file and records `mcp add`."""
     state = tmp_path / "state"
-    state.write_text("in")
+    state.write_text("in", encoding="utf-8")
     exe = tmp_path / "claude"
     exe.write_text(f"""#!/bin/sh
 case "$1 $2" in
@@ -27,7 +27,7 @@ case "$1 $2" in
   "mcp add") echo "$@" > {tmp_path}/added; echo '{{"mcpServers": {{"stenny": {{}}}}}}' > "$HOME/.claude.json" ;;
   "mcp remove") echo "$@" > {tmp_path}/removed; echo '{{"mcpServers": {{}}}}' > "$HOME/.claude.json" ;;
 esac
-""")
+""", encoding="utf-8")
     exe.chmod(0o755)
     monkeypatch.setattr(claude_setup, "find_claude", lambda: str(exe))
     return SimpleNamespace(exe=exe, state=state, dir=tmp_path)
@@ -46,13 +46,13 @@ def test_claude_code_missing(monkeypatch):
 def test_claude_code_signed_in_and_out(fake_claude):
     status = claude_setup.ai_status(cfg("claude-code"))
     assert status == {"backend": "claude-code", "state": "ready", "account": "student@example.edu", "plan": "pro"}
-    fake_claude.state.write_text("out")
+    fake_claude.state.write_text("out", encoding="utf-8")
     assert claude_setup.ai_status(cfg("claude-code"))["state"] == "signed_out"
 
 
 @posix
 def test_claude_code_that_says_nothing_useful_is_unknown(fake_claude):
-    fake_claude.exe.write_text("#!/bin/sh\necho not json\n")
+    fake_claude.exe.write_text("#!/bin/sh\necho not json\n", encoding="utf-8")
     assert claude_setup.ai_status(cfg("claude-code"))["state"] == "unknown"
 
 
@@ -102,10 +102,10 @@ def test_the_environment_wins_over_the_keychain(monkeypatch):
 
 def extension(data, folder, name, enabled=None):
     (data / "Claude Extensions" / folder).mkdir(parents=True)
-    (data / "Claude Extensions" / folder / "manifest.json").write_text(json.dumps({"name": name, "version": "0.4.0"}))
+    (data / "Claude Extensions" / folder / "manifest.json").write_text(json.dumps({"name": name, "version": "0.4.0"}), encoding="utf-8")
     if enabled is not None:
         (data / "Claude Extensions Settings").mkdir(exist_ok=True)
-        (data / "Claude Extensions Settings" / f"{folder}.json").write_text(json.dumps({"isEnabled": enabled}))
+        (data / "Claude Extensions Settings" / f"{folder}.json").write_text(json.dumps({"isEnabled": enabled}), encoding="utf-8")
 
 
 def test_finds_the_installed_extension(tmp_path):
@@ -128,8 +128,8 @@ def test_adds_the_connector_to_claude_code_once(fake_claude, monkeypatch):
     assert claude_setup.connector_status(None)["code"] == {"available": True, "added": False}
     status = claude_setup.add_to_claude_code(None)
     assert status["code"]["added"] is True
-    assert (fake_claude.dir / "added").read_text().startswith("mcp add --scope user stenny -- ")
-    assert (fake_claude.dir / "added").read_text().rstrip().endswith(" mcp")
+    assert (fake_claude.dir / "added").read_text(encoding="utf-8").startswith("mcp add --scope user stenny -- ")
+    assert (fake_claude.dir / "added").read_text(encoding="utf-8").rstrip().endswith(" mcp")
     (fake_claude.dir / "added").unlink()
     claude_setup.add_to_claude_code(None)
     assert not (fake_claude.dir / "added").exists()  # already there: not added twice
@@ -158,7 +158,7 @@ def test_removes_the_connector_from_claude_code(fake_claude, monkeypatch):
     claude_setup.add_to_claude_code(None)
     status = claude_setup.remove_from_claude_code(None)
     assert status["code"]["added"] is False
-    assert (fake_claude.dir / "removed").read_text().strip() == "mcp remove --scope user stenny"
+    assert (fake_claude.dir / "removed").read_text(encoding="utf-8").strip() == "mcp remove --scope user stenny"
 
 
 def test_the_connector_bundled_with_the_app_comes_first(tmp_path, monkeypatch):

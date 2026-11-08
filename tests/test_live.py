@@ -191,7 +191,7 @@ def test_pause_resume_timeline(tmp_path, monkeypatch):
     assert_final_pass_reuses(s)
 
     # the vault only has a placeholder: details and status, no text (that's in Stenny's window)
-    draft = s.transcript_path.read_text()
+    draft = s.transcript_path.read_text(encoding="utf-8")
     marker = f"*[Recording paused 0:00:{int(p_start):02d}–0:00:{int(p_end):02d}]*"
     assert 'status: "live"' in draft and marker in draft and "No transcript yet" in draft
     assert 'microphone: "Alex’s iPhone Microphone"' in draft
@@ -229,7 +229,7 @@ def test_microphone_dropout_keeps_session_and_marks_gap(tmp_path, monkeypatch):
     assert any(seg["start"] >= 13.9 for seg in s.segments)          # transcription continued afterwards
     assert not any(start + 0.05 < seg["start"] < end - 0.05 for seg in s.segments)
     assert_final_pass_reuses(s)
-    draft = s.transcript_path.read_text()
+    draft = s.transcript_path.read_text(encoding="utf-8")
     assert "No audio from the microphone 0:00:08" in draft
 
 
@@ -259,7 +259,7 @@ def test_digital_silence_is_a_gap_not_recorded(tmp_path, monkeypatch):
     later = [seg for seg in s.segments if seg["start"] > 10]
     assert later and min(seg["start"] for seg in later) >= 12.9            # text after the gap keeps clock time
     assert_final_pass_reuses(s)                                            # no chunk reached into the zeros
-    assert "No audio from the microphone 0:00:08" in s.transcript_path.read_text()
+    assert "No audio from the microphone 0:00:08" in s.transcript_path.read_text(encoding="utf-8")
 
 
 def test_delivery_hiccup_keeps_timestamps_on_the_clock(tmp_path, monkeypatch):
@@ -308,7 +308,7 @@ def test_backup_microphone_records_through_main_gaps_but_not_pauses(tmp_path, mo
     assert abs(b.spans[1][1] - p1) < 0.3                               # off while paused, back on resume
     recorded = b.written / SAMPLE_RATE
     assert abs(recorded - (s.ended_at - (p1 - p0))) < 0.5              # ran through the main mic's gap
-    info = json.loads(s.session_path.read_text())["backup"]
+    info = json.loads(s.session_path.read_text(encoding="utf-8"))["backup"]
     assert info["microphone"] == "MacBook Air Microphone" and info["recorded_samples"] == b.written
     assert Path(info["recording"]).stat().st_size == b.written * 2
 

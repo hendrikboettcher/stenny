@@ -31,7 +31,7 @@ def clean(text: str) -> str:
     text = unicodedata.normalize("NFKC", text).replace("­", "")
     # "Weier-\nstrass" → "Weierstrass", but "Bolzano-\nWeierstrass" keeps its hyphen
     text = re.sub(r"(\w)-\n\s*(\w)", lambda m: m[1] + ("-" if m[2].isupper() else "") + m[2], text)
-    return "\n".join(" ".join(line.split()) for line in text.splitlines())
+    return "\n".join(" ".join(line.split()) for line in text.splitlines()).strip()  # Windows' pdftotext ends pages with a blank line
 
 
 def extract_pages(path: Path) -> list[str]:

@@ -55,8 +55,8 @@ def env(tmp_path, monkeypatch):
         f'---\ncourse: "{NAME}"\n---\n# Glossary: {NAME}\n\n## Terms\n- kNN\n', encoding="utf-8")
     jobs.QUEUE_DIR.mkdir()
     (jobs.QUEUE_DIR / "j.json").write_text(json.dumps(
-        {"file": str(course_data / "2026-10-27.live.pcm"), "course": NAME, "live": str(course_data / "2026-10-27.session.json")}))
-    (system / "consent.json").write_text(json.dumps([f"record/course/{NAME}", "share/course/Other"]))
+        {"file": str(course_data / "2026-10-27.live.pcm"), "course": NAME, "live": str(course_data / "2026-10-27.session.json")}), encoding="utf-8")
+    (system / "consent.json").write_text(json.dumps([f"record/course/{NAME}", "share/course/Other"]), encoding="utf-8")
     cfg = config_mod.load(system / "config.toml")
     from stenny import course_files
     from stenny.vault import Vault
@@ -101,7 +101,7 @@ def test_delete_lecture_trashes_everything_and_renumbers(env):
                                                    "2026-10-27.segments.json",
                                                    f"{NAME} 2026-10-27 (raw).md", "j.json"}
     assert (cfg.data_dir / NAME / "2026-10-20.opus").exists()
-    third = parse_frontmatter((cfg.lectures_root / NAME / "2026-10-29" / f"{NAME} 2026-10-29.md").read_text())
+    third = parse_frontmatter((cfg.lectures_root / NAME / "2026-10-29" / f"{NAME} 2026-10-29.md").read_text(encoding="utf-8"))
     assert third["lecture"] == 2 and third["previous"] == f"[[{NAME} 2026-10-20]]"
 
 
@@ -115,7 +115,7 @@ def test_deleting_the_last_lecture_removes_the_course_folder(env):
 def test_a_running_recording_is_neither_renamed_nor_deleted(env):
     cfg, _ = env
     path = cfg.lectures_root / NAME / "2026-10-29" / f"{NAME} 2026-10-29.md"
-    path.write_text(path.read_text().replace('status: "final"', 'status: "live"'))
+    path.write_text(path.read_text(encoding="utf-8").replace('status: "final"', 'status: "live"'), encoding="utf-8")
     for call in (lambda: manage.delete_lecture(cfg, NAME, "2026-10-29"),
                  lambda: manage.rename_lecture(cfg, NAME, "2026-10-29", "x")):
         with pytest.raises(manage.ManageError, match="still running"):
@@ -129,25 +129,25 @@ def test_rename_course_everywhere(env):
     root, data = cfg.lectures_root, cfg.data_dir
     assert not (root / NAME).exists() and not (data / NAME).exists()
     transcript = root / new / "2026-10-29" / f"{new} 2026-10-29.md"
-    text = transcript.read_text()
+    text = transcript.read_text(encoding="utf-8")
     fm = parse_frontmatter(text)
     assert fm["course"] == new and fm["previous"] == f"[[{new} 2026-10-27]]"
     assert f"# {new} – Lecture 3 (2026-10-29)" in text
     assert f"{home_relative(data / new)}/{new} 2026-10-29 (raw).md" in text and fm["audio"].startswith(home_relative(data / new))
     assert "Welcome to Data Analytics 2026 edition." in text  # the words of the lecture stay
     assert (root / new / "2026-10-29" / f"{new} 2026-10-29 (summary).md").exists()
-    assert (root / "_Glossaries" / f"{new} (glossary).md").read_text().count(new) == 2
+    assert (root / "_Glossaries" / f"{new} (glossary).md").read_text(encoding="utf-8").count(new) == 2
     assert not list((root / "_Course Files").glob(f"{NAME} (*"))
     assert (root / "_Course Files" / f"{new} (overview).md").exists()
     assert (data / new / f"{new} 2026-10-20 (raw).md").exists()
-    session = json.loads((data / new / "2026-10-20.session.json").read_text())
+    session = json.loads((data / new / "2026-10-20.session.json").read_text(encoding="utf-8"))
     assert session["course"] == new and session["recording"] == str(data / new / "2026-10-20.live.pcm")
-    meta = json.loads((data / new / "2026-10-20.segments.json").read_text())["meta"]
+    meta = json.loads((data / new / "2026-10-20.segments.json").read_text(encoding="utf-8"))["meta"]
     assert meta == {"folder": str(root / new / "2026-10-20"), "lecture": {"course": new}}
-    job = json.loads((jobs.QUEUE_DIR / "j.json").read_text())
+    job = json.loads((jobs.QUEUE_DIR / "j.json").read_text(encoding="utf-8"))
     assert job["course"] == new and job["live"] == str(data / new / "2026-10-27.session.json")
-    assert json.loads((paths.SYSTEM_DIR / "consent.json").read_text()) == ["record/course/" + new, "share/course/Other"]
-    text = cfg.path.read_text()
+    assert json.loads((paths.SYSTEM_DIR / "consent.json").read_text(encoding="utf-8")) == ["record/course/" + new, "share/course/Other"]
+    text = cfg.path.read_text(encoding="utf-8")
     assert "# mine" in text
     course = config_mod.load(cfg.path).course(new)
     assert course.aliases == ["da"] and course.calendar == [NAME] and course.language == "en"
@@ -191,8 +191,8 @@ def test_delete_course_trashes_it_all_and_leaves_the_config(env):
     assert not (root / NAME).exists() and not (cfg.data_dir / NAME).exists()
     assert {p.name for p in trashed.iterdir()} >= {NAME, f"{NAME} (glossary).md", f"{NAME} (overview).md", "j.json"}
     left = config_mod.load(cfg.path)
-    assert list(left.courses) == ["Other"] and "# mine" not in cfg.path.read_text()
-    assert json.loads((paths.SYSTEM_DIR / "consent.json").read_text()) == ["share/course/Other"]
+    assert list(left.courses) == ["Other"] and "# mine" not in cfg.path.read_text(encoding="utf-8")
+    assert json.loads((paths.SYSTEM_DIR / "consent.json").read_text(encoding="utf-8")) == ["share/course/Other"]
     assert share.library(left) == []
 
 
@@ -200,7 +200,7 @@ def test_delete_a_talk(env, tmp_path):
     cfg, trashed = env
     talk = cfg.events_root / "Guest Talk" / "2026-10-22"
     talk.mkdir(parents=True)
-    (talk / "Guest Talk 2026-10-22.md").write_text('---\nevent: "Guest Talk"\n---\n# Guest Talk – 2026-10-22\n')
+    (talk / "Guest Talk 2026-10-22.md").write_text('---\nevent: "Guest Talk"\n---\n# Guest Talk – 2026-10-22\n', encoding="utf-8")
     (cfg.data_dir / "_Recordings" / "Guest Talk").mkdir(parents=True)
     manage.delete_course(cfg, "Guest Talk", event=True)
     assert not (cfg.events_root / "Guest Talk").exists() and not (cfg.data_dir / "_Recordings" / "Guest Talk").exists()
@@ -220,7 +220,7 @@ def test_trash_on_windows_uses_the_recycle_bin(tmp_path, monkeypatch):
     import sys
     a, b = tmp_path / "Lectures" / "Kurs", tmp_path / "Ä ü's file.md"
     a.mkdir(parents=True)
-    b.write_text("x")
+    b.write_text("x", encoding="utf-8")
     calls = []
 
     def run(cmd, **kw):
