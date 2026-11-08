@@ -4,6 +4,8 @@
   // saved at once: config.toml through the engine (src/stenny/settings.py), the microphone and opening at login
   // through the app (src-tauri/src/menubar.rs), like the menu bar's choices.
   import { invoke } from "@tauri-apps/api/core";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { openUrl } from "@tauri-apps/plugin-opener";
   import { onMount } from "svelte";
   import Figure from "$lib/Figure.svelte";
   import Dialog from "$lib/Dialog.svelte";
@@ -24,8 +26,33 @@
     courses: { name: string; language: string; languages: string[] }[];
   }
 
+  // Whether the chosen option of the AI step works right now (src/stenny/claude_setup.py, no tokens spent)
+  interface AiStatus {
+    backend: "claude-code" | "api" | "none";
+    state: "ready" | "missing" | "signed_out" | "unknown" | "no_key" | "bad_key" | "unchecked" | "off";
+    account?: string | null;
+    source?: "keychain" | "environment";
+    hint?: string;
+    detail?: string;
+  }
+  // The Stenny connector in Claude Desktop (and Claude Code)
+  interface ConnectorStatus {
+    desktop: boolean;
+    installed: boolean;
+    enabled: boolean;
+    version: string | null;
+    file: string | null;
+    code: { available: boolean; added: boolean };
+  }
+
   const inApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-  const SECTIONS = ["general", "recording", "transcripts", "background", "courses"] as const;
+  const SECTIONS = ["general", "recording", "transcripts", "claude", "background", "courses"] as const;
+  const BACKENDS = ["claude-code", "api", "none"] as const;
+  const URLS = {
+    claudeCode: "https://claude.com/claude-code",
+    console: "https://platform.claude.com/settings/keys",
+    desktop: "https://claude.ai/download",
+  };
   type Section = (typeof SECTIONS)[number];
   const sectionName = (id: Section) => t(`settings.section.${id}`);
   // only the languages Stenny is built and tested for (settings.py checks the same)
@@ -141,12 +168,147 @@
     }
   }
 
-  onMount(async () => {
+  // ---- the AI step and the connector: checked when their section opens and whenever the window gets the focus
+  // back (the user signed in in a terminal, or clicked Install in Claude, and came back)
+  let ai = $state<AiStatus | null>(null);
+  let aiCheck = 0;                          // only the latest check counts
+  let aiChecking = $state(false);
+  let signingIn = $state(false);            // the sign-in terminal was opened
+  let keyInput = $state("");
+  let keyEditing = $state(false);           // "Change" on a working key
+  let keyBusy = $state(false);
+  let keyError = $state<string | null>(null);
+
+  let conn = $state<ConnectorStatus | null>(null);
+  let connOpened = $state(false);           // Claude's Install window was opened
+  let connBusy = $state<"install" | "code" | null>(null);
+  let connError = $state<string | null>(null);
+
+  async function checkAi() {
+    const mine = ++aiCheck;
+    aiChecking = true;
     try {
-      s = await engine<Settings>("preferences");
+      const status = await engine<AiStatus>("ai_status");
+      if (mine === aiCheck) {
+        if (status.state !== ai?.state) { keyError = null; keyInput = ""; } // an old message would mislead now
+        ai = status;
+      }
     } catch (e) {
-      loadError = String(e);
+      if (mine === aiCheck) ai = { backend: s?.llm.backend ?? "none", state: "unknown", detail: String(e) };
+    } finally {
+      if (mine === aiCheck) aiChecking = false;
     }
+    if (ai?.state === "ready") signingIn = false;
+  }
+
+  async function checkConnector() {
+    try {
+      conn = await engine<ConnectorStatus>("connector_status");
+      if (conn.installed) connOpened = false;
+    } catch (e) {
+      connError = String(e);
+    }
+  }
+
+  function recheck() {
+    if (section === "transcripts" && !aiChecking && !keyBusy) checkAi();
+    if (section === "claude" && !connBusy) checkConnector();
+  }
+
+  async function chooseBackend(v: (typeof BACKENDS)[number]) {
+    if (!s || s.llm.backend === v) return;
+    ai = null;
+    keyError = null;
+    keyEditing = false;
+    if (await set("llm.backend", v)) checkAi();
+  }
+
+  async function saveKey() {
+    keyBusy = true;
+    keyError = null;
+    try {
+      ai = await engine<AiStatus>("set_api_key", { key: keyInput });
+      keyInput = "";
+      keyEditing = false;
+      done();
+    } catch (e) {
+      keyError = String(e);
+    } finally {
+      keyBusy = false;
+    }
+  }
+
+  async function removeKey() {
+    keyBusy = true;
+    keyError = null;
+    try {
+      ai = await engine<AiStatus>("remove_api_key");
+      keyEditing = false;
+      done();
+    } catch (e) {
+      keyError = String(e);
+    } finally {
+      keyBusy = false;
+    }
+  }
+
+  async function signIn() {
+    try {
+      await engine("claude_sign_in");
+      signingIn = true;
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  async function installConnector() {
+    connBusy = "install";
+    connError = null;
+    try {
+      await engine("install_connector");
+      connOpened = true;
+    } catch (e) {
+      connError = String(e);
+    } finally {
+      connBusy = null;
+    }
+  }
+
+  async function addToClaudeCode() {
+    connBusy = "code";
+    connError = null;
+    try {
+      conn = await engine<ConnectorStatus>("add_to_claude_code");
+      done();
+    } catch (e) {
+      connError = String(e);
+    } finally {
+      connBusy = null;
+    }
+  }
+
+  function openLink(url: string) {
+    if (inApp) openUrl(url).catch((e) => (error = String(e)));
+    else window.open(url, "_blank", "noopener");
+  }
+
+  $effect(() => {
+    // a section's status, the first time it's shown
+    if (!s) return;
+    if (section === "transcripts" && !ai && !aiChecking) checkAi();
+    if (section === "claude" && !conn) checkConnector();
+  });
+
+  onMount(() => {
+    let unlisten: (() => void) | undefined;
+    let gone = false;
+    if (inApp) {
+      getCurrentWindow().onFocusChanged(({ payload: focused }) => { if (focused) recheck(); })
+        .then((u) => (gone ? u() : (unlisten = u))).catch(() => {});
+    } else {
+      window.addEventListener("focus", recheck);
+    }
+    engine<Settings>("preferences").then((v) => (s = v)).catch((e) => (loadError = String(e)));
     loadPast().catch(() => {});
     engine<{ devices: string[]; default: string | null }>("devices")
       .then((d) => { devices = d.devices; defaultDevice = d.default; })
@@ -155,6 +317,11 @@
       invoke<string | null>("microphone_pref").then((m) => (microphone = m ?? "")).catch(() => {});
       invoke<string | null>("login_item", { on: null }).then((l) => (login = l)).catch(() => {});
     }
+    return () => {
+      gone = true;
+      unlisten?.();
+      window.removeEventListener("focus", recheck);
+    };
   });
 
   function done() {
@@ -289,6 +456,83 @@
 
 <svelte:window onkeydown={capture} onclick={() => (courseMenu = null)} onblur={() => (courseMenu = null)} />
 
+<!-- The slim bar under the chosen option of the AI step: only when something needs doing, else one quiet line -->
+{#snippet aiBar(v: (typeof BACKENDS)[number])}
+  {@const st = ai && ai.backend === v ? ai : null}
+  {#if v === "none"}
+    <div class="status calm">{t("settings.ai.off.note")}</div>
+  {:else if !st}
+    <div class="status quiet">{t("settings.ai.checking")}</div>
+  {:else if st.state === "ready" && !keyEditing}
+    <div class="status quiet">
+      <span class="dot"></span>
+      {#if v === "claude-code"}
+        {st.account ? t("settings.ai.cc.ready", { account: st.account }) : t("settings.ai.cc.readyPlain")}
+      {:else}
+        {st.source === "environment" ? t("settings.ai.api.readyEnv", { hint: st.hint ?? "" }) : t("settings.ai.api.ready", { hint: st.hint ?? "" })}
+        {#if st.source !== "environment"}
+          <span class="links">
+            <button class="link" onclick={() => { keyEditing = true; keyError = null; }}>{t("settings.ai.api.change")}</button>
+            <button class="link" disabled={keyBusy} onclick={removeKey}>{t("settings.ai.api.remove")}</button>
+          </span>
+        {/if}
+      {/if}
+    </div>
+  {:else if v === "claude-code"}
+    <div class="status warn">
+      {#if st.state === "missing"}
+        <p>{t("settings.ai.cc.missing")} {t("settings.ai.cc.missing.after")}</p>
+        <div class="do">
+          <button class="pill" onclick={() => openLink(URLS.claudeCode)}>{t("settings.ai.cc.get")}</button>
+          <button class="link" disabled={aiChecking} onclick={checkAi}>{aiChecking ? t("settings.ai.checking") : t("settings.ai.checkAgain")}</button>
+        </div>
+      {:else if st.state === "signed_out"}
+        <p>{signingIn ? t("settings.ai.cc.signingIn") : t("settings.ai.cc.signedOut")}</p>
+        <div class="do">
+          <button class="pill primary" onclick={signIn}>{t("settings.ai.cc.signIn")}</button>
+          <button class="link" disabled={aiChecking} onclick={checkAi}>{aiChecking ? t("settings.ai.checking") : t("settings.ai.checkAgain")}</button>
+        </div>
+      {:else}
+        <p>{t("settings.ai.cc.unknown")}{#if st.detail}<span class="detail selectable"> {st.detail}</span>{/if}</p>
+        <div class="do">
+          <button class="link" disabled={aiChecking} onclick={checkAi}>{aiChecking ? t("settings.ai.checking") : t("settings.ai.checkAgain")}</button>
+        </div>
+      {/if}
+    </div>
+  {:else}
+    {@const env = st.source === "environment"}
+    <div class="status" class:warn={st.state !== "ready"}>
+      <p>
+        {#if st.state === "bad_key"}{env ? t("settings.ai.api.badEnv", { hint: st.hint ?? "" }) : t("settings.ai.api.badKey", { hint: st.hint ?? "" })}
+        {:else if st.state === "unchecked"}{t("settings.ai.api.unchecked", { hint: st.hint ?? "", detail: st.detail ?? "" })}
+        {:else}{t("settings.ai.api.noKey")}{/if}
+      </p>
+      {#if !env || st.state === "ready"}
+        <form class="key" onsubmit={(e) => { e.preventDefault(); saveKey(); }}>
+          <input type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false" bind:value={keyInput}
+                 aria-label="Anthropic API key" disabled={keyBusy} />
+          <button class="pill primary" type="submit" disabled={keyBusy || !keyInput.trim()}>
+            {keyBusy ? t("settings.ai.checking") : t("settings.ai.api.save")}
+          </button>
+        </form>
+      {/if}
+      {#if keyError}<p class="error selectable">{keyError}</p>{/if}
+      <div class="do">
+        <button class="link" onclick={() => openLink(URLS.console)}>{t("settings.ai.api.create")}</button>
+        {#if st.state === "unchecked"}
+          <button class="link" disabled={aiChecking} onclick={checkAi}>{aiChecking ? t("settings.ai.checking") : t("settings.ai.checkAgain")}</button>
+        {/if}
+        {#if keyEditing}
+          <button class="link" onclick={() => { keyEditing = false; keyInput = ""; keyError = null; }}>{t("common.cancel")}</button>
+        {/if}
+        {#if st.state === "bad_key" && !env}
+          <button class="link" disabled={keyBusy} onclick={removeKey}>{t("settings.ai.api.remove")}</button>
+        {/if}
+      </div>
+    </div>
+  {/if}
+{/snippet}
+
 <div class="window">
   <aside class="sidebar">
     <div class="titlebar" data-tauri-drag-region></div>
@@ -415,18 +659,23 @@
             </div>
           </div>
         {:else if section === "transcripts"}
+          <p class="lead">{t("settings.ai.lead")}</p>
+          <div class="group" role="radiogroup" aria-label={t("settings.ai.options")}>
+            {#each BACKENDS as v}
+              {@const chosen = s.llm.backend === v}
+              <button class="row option" role="radio" aria-checked={chosen} class:chosen onclick={() => chooseBackend(v)}>
+                <span class="radio" aria-hidden="true"></span>
+                <span class="what">
+                  <span class="name">{v === "claude-code" ? "Claude Code" : v === "api" ? "Anthropic API" : t("common.off")}</span>
+                  <span class="hint">{t(v === "claude-code" ? "settings.ai.claudeCode.line" : v === "api" ? "settings.ai.api.line" : "settings.ai.off.line")}</span>
+                </span>
+              </button>
+              {#if chosen}
+                {@render aiBar(v)}
+              {/if}
+            {/each}
+          </div>
           <div class="group">
-            <div class="row stack">
-              <div class="what">
-                <div class="name">{t("settings.llm")}</div>
-                <div class="hint">{t("settings.llm.hint")}</div>
-              </div>
-              <div class="segmented">
-                {#each [["claude-code", "Claude Code"], ["api", "Anthropic API"], ["none", t("common.off")]] as [v, label]}
-                  <button class:on={s.llm.backend === v} onclick={() => set("llm.backend", v)}>{label}</button>
-                {/each}
-              </div>
-            </div>
             <div class="row" class:disabled={s.llm.backend === "none"}>
               <div class="what">
                 <div class="name">{t("settings.summary")}</div>
@@ -451,6 +700,51 @@
             </div>
           </div>
           <p class="foot">{t("settings.model", { model: s.model.split("/").pop() ?? s.model })}</p>
+        {:else if section === "claude"}
+          <p class="lead">{t("settings.claude.lead")}</p>
+          <p class="lead small example">{t("settings.claude.example")}</p>
+          {#if connError}<p class="error selectable">{connError}</p>{/if}
+          <div class="group">
+            <div class="row">
+              <div class="what">
+                <div class="name">{t("settings.claude.desktop")}</div>
+                {#if !conn}
+                  <div class="hint">{t("settings.ai.checking")}</div>
+                {:else if conn.installed}
+                  <div class="hint state"><span class="dot" class:off={!conn.enabled}></span>{conn.enabled ? t("settings.claude.installed") : t("settings.claude.disabled")}</div>
+                {:else if !conn.desktop}
+                  <div class="hint">{t("settings.claude.noDesktop")}</div>
+                {:else if !conn.file}
+                  <div class="hint">{t("settings.claude.noFile")}</div>
+                {:else}
+                  <div class="hint">{connOpened ? t("settings.claude.opened") : t("settings.claude.notInstalled")}</div>
+                {/if}
+              </div>
+              {#if conn && !conn.installed}
+                {#if !conn.desktop}
+                  <button class="pill" onclick={() => openLink(URLS.desktop)}>{t("settings.claude.getDesktop")}</button>
+                {:else if conn.file}
+                  <button class="pill primary" disabled={connBusy !== null} onclick={installConnector}>
+                    {connBusy === "install" ? t("common.oneMoment") : t("settings.claude.install")}
+                  </button>
+                {/if}
+              {/if}
+            </div>
+            {#if conn?.code.available}
+              <div class="row">
+                <div class="what">
+                  <div class="name">{t("settings.claude.code")}</div>
+                  <div class="hint">{conn.code.added ? t("settings.claude.code.added") : t("settings.claude.code.hint")}</div>
+                </div>
+                {#if !conn.code.added}
+                  <button class="pill" disabled={connBusy !== null} onclick={addToClaudeCode}>
+                    {connBusy === "code" ? t("common.oneMoment") : t("settings.claude.code.add")}
+                  </button>
+                {/if}
+              </div>
+            {/if}
+          </div>
+          <p class="foot">{t("settings.claude.where")}</p>
         {:else if section === "background"}
           <p class="lead">{t("settings.background.lead")}</p>
           <div class="group">
@@ -712,6 +1006,48 @@
   .menu button:hover { background: var(--mark); }
   .menu .danger { color: var(--rec); }
   .menu-line { height: 1px; background: var(--line); margin: 4px 6px; }
+
+  /* the AI step's options: one row each, like a radio group in System Settings */
+  .option { width: 100%; border: 0; background: none; text-align: left; font: inherit; color: inherit; align-items: flex-start; }
+  .option:first-child { border-radius: 12px 12px 0 0; }
+  .option:hover .radio { border-color: color-mix(in srgb, var(--ink) 45%, var(--line)); }
+  .option .name, .option .hint { display: block; }
+  .radio {
+    flex: none; width: 16px; height: 16px; margin-top: 1px; border-radius: 50%; border: 1.5px solid var(--line);
+    background: var(--bg); position: relative; transition: border-color 0.15s ease;
+  }
+  .option.chosen .radio { border-color: var(--ink); }
+  .option.chosen .radio::after {
+    content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--ink);
+  }
+  .status + .row, .row + .status { border-top: 1px solid var(--line); }
+  .row + .status { border-top-style: dashed; }
+  .status { padding: 10px 16px 12px 48px; font-size: 12.5px; line-height: 1.45; color: var(--ink-2); }
+  .status p { margin: 0; }
+  .status.quiet { color: var(--muted); display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+  .status.calm { background: var(--bar); color: var(--ink-2); }
+  .status.warn { background: color-mix(in srgb, var(--warn) 9%, var(--card)); }
+  .status:last-child { border-radius: 0 0 12px 12px; }
+  .status .error { margin: 8px 0 0; }
+  .status .detail { color: var(--muted); }
+  .do { display: flex; align-items: center; gap: 14px; margin-top: 9px; flex-wrap: wrap; }
+  .links { display: inline-flex; gap: 12px; margin-left: 6px; }
+  .link { border: 0; background: none; padding: 0; color: var(--ink); text-decoration: underline; text-underline-offset: 2px;
+          text-decoration-color: color-mix(in srgb, var(--ink) 30%, transparent); font-size: 12.5px; }
+  .link:hover:not(:disabled) { text-decoration-color: currentColor; }
+  .link:disabled { opacity: 0.5; }
+  .dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--good); display: inline-block; }
+  .dot.off { background: var(--muted); }
+  .hint.state { display: flex; align-items: center; gap: 7px; }
+  .key { display: flex; gap: 8px; margin-top: 9px; }
+  .key input {
+    flex: 1; min-width: 0; font: inherit; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12.5px;
+    color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 5px 9px;
+  }
+  .key input:focus { outline: 2px solid color-mix(in srgb, var(--ink) 25%, transparent); outline-offset: 0; }
+  .pill.primary { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+  .pill.primary:hover:not(:disabled) { border-color: var(--ink); opacity: 0.9; }
+  .lead.example { font-style: italic; margin-top: -8px; }
 
   .chips { display: flex; flex-wrap: wrap; gap: 6px; flex-basis: 100%; }
   .chip { border: 1px solid var(--line); background: none; border-radius: 999px; padding: 3px 11px; color: var(--ink-2); font-size: 12.5px; }

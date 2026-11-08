@@ -56,7 +56,10 @@ src/stenny/
                   microphone, devices, match_courses, recover) and the consent answers (_System/consent.json)
   pipeline.py     audio → segments → paragraphs → files; `postprocess` (text + AI step) and `refresh` (AI step
                   again from segments.json, no re-transcription)
-  llm/            backends (claude_code, anthropic_api) + guard (no invented content)
+  llm/            backends (claude_code, anthropic_api, its key from keychain.py) + guard (no invented content) + guard (no invented content)
+  keychain.py     the Anthropic API key in the system keychain (macOS: /usr/bin/security, Windows: keyring), never config.toml
+  claude_setup.py what Settings checks and sets up for Claude, no tokens spent: is the AI step's option ready (Claude Code
+                  installed + signed in, an API key Anthropic accepts), the connector in Claude Desktop / Claude Code
   render.py       Markdown + YAML frontmatter
   vault.py        safe writes into the vault, folder rule enforcement
   jobs.py         queue, AC-power check, priority wrappers

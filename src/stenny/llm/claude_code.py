@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -17,10 +18,25 @@ def find_claude() -> str | None:
     if found := shutil.which("claude"):
         return found
     home = Path.home()
-    candidates = [home / ".claude/local/claude", home / ".local/bin/claude",
-                  Path("/opt/homebrew/bin/claude"), Path("/usr/local/bin/claude"),
-                  *sorted(home.glob(".nvm/versions/node/*/bin/claude"), reverse=True)]
+    if sys.platform == "win32":  # the native installer, then npm's global folder
+        appdata = Path(os.environ.get("APPDATA") or home / "AppData/Roaming")
+        candidates = [home / ".local/bin/claude.exe", home / ".claude/local/claude.exe", appdata / "npm/claude.cmd"]
+    else:
+        candidates = [home / ".claude/local/claude", home / ".local/bin/claude",
+                      Path("/opt/homebrew/bin/claude"), Path("/usr/local/bin/claude"),
+                      *sorted(home.glob(".nvm/versions/node/*/bin/claude"), reverse=True)]
     return next((str(c) for c in candidates if c.exists()), None)
+
+
+def claude_env(exe: str) -> dict[str, str]:
+    """The environment to run `claude` in: without the session variables of a parent Claude Code (e.g. the desktop
+    app), so the user's own login is used, and without an API key either: with ANTHROPIC_API_KEY set, `claude`
+    would bill the API instead of the subscription (the "api" backend is the way to use API credits)."""
+    env = {k: v for k, v in os.environ.items()
+           if not (k.startswith("CLAUDE") or k in ("ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY"))}
+    # npm-installed claude is a node script: make sure its node is on the PATH too
+    env["PATH"] = os.pathsep.join([str(Path(exe).parent), env.get("PATH", "/usr/bin:/bin")])
+    return env
 
 
 class ClaudeCodeBackend:
@@ -29,22 +45,17 @@ class ClaudeCodeBackend:
         self.name = f"Claude Code ({model})"
         self.exe = find_claude()
         if not self.exe:
-            raise LLMError("`claude` CLI not found. Install Claude Code or set llm.backend = \"none\".")
+            raise LLMError("`claude` CLI not found. Install Claude Code, or pick another option in Settings ▸ "
+                           "Transcripts & AI (llm.backend in config.toml).")
 
     def complete(self, system: str, prompt: str, timeout: int = 600) -> tuple[str, Usage]:
         cmd = [self.exe, "-p", "--model", self.model, "--effort", "low", "--output-format", "json",
                "--tools", "", "--strict-mcp-config", "--no-session-persistence",
                "--system-prompt", system]
-        # Run from an empty temp dir so no project CLAUDE.md or settings leak into the prompt, and without
-        # the session variables of a parent Claude Code (e.g. the desktop app), so the user's own login is used.
-        # Without an API key either: with ANTHROPIC_API_KEY set, `claude` would bill the API instead of the
-        # subscription. The "api" backend is the way to use API credits.
-        env = {k: v for k, v in os.environ.items()
-               if not (k.startswith("CLAUDE") or k in ("ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY"))}
+        # Run from an empty temp dir so no project CLAUDE.md or settings leak into the prompt
+        env = claude_env(self.exe)
         # No thinking: the task is mechanical, and thinking tokens were 95% of the output (and the time).
         env["MAX_THINKING_TOKENS"] = "0"
-        # npm-installed claude is a node script: make sure its node is on the PATH too
-        env["PATH"] = f"{Path(self.exe).parent}:{env.get('PATH', '/usr/bin:/bin')}"
         with tempfile.TemporaryDirectory() as cwd:
             p = subprocess.run(cmd, input=prompt, capture_output=True, text=True, timeout=timeout, cwd=cwd, env=env)
         try:
