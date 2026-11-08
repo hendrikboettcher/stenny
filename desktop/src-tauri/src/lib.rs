@@ -18,7 +18,7 @@ use i18n::tr;
 use menubar::MenuBar;
 use serde_json::Value;
 use std::sync::Arc;
-use tauri::menu::{Menu, PredefinedMenuItem, Submenu, HELP_SUBMENU_ID, WINDOW_SUBMENU_ID};
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu, HELP_SUBMENU_ID, WINDOW_SUBMENU_ID};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent, Wry};
 
 /// One request to the engine, e.g. `engine("library")`. Runs off the main thread: a request can take a moment.
@@ -251,6 +251,8 @@ fn app_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         &Submenu::with_items(app, "Stenny", true, &[
             &PredefinedMenuItem::about(app, Some(&t("app.about")), Some(about))?,
             &PredefinedMenuItem::separator(app)?,
+            &MenuItem::with_id(app, "settings", t("lib.settings"), true, Some("CmdOrCtrl+,"))?,
+            &PredefinedMenuItem::separator(app)?,
             &PredefinedMenuItem::services(app, Some(&t("app.services")))?,
             &PredefinedMenuItem::separator(app)?,
             &PredefinedMenuItem::hide(app, Some(&t("app.hide")))?,
@@ -278,6 +280,12 @@ fn app_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         ])?,
         &Submenu::with_id_and_items(app, HELP_SUBMENU_ID, t("app.help"), true, &[])?,
     ])
+}
+
+/// ⌘, or Stenny ▸ Settings…: the library window comes up showing Settings (routes/+page.svelte listens).
+fn open_settings(app: &AppHandle) {
+    show_window(app, "library");
+    let _ = app.emit_to("library", "open-settings", ());
 }
 
 /// Shows a window, creating it the first time: "library" or "talk".
@@ -332,6 +340,11 @@ pub fn run() {
     i18n::set_language(i18n::system_language());
     let app = tauri::Builder::default()
         .menu(app_menu)
+        .on_menu_event(|app, event| {
+            if event.id() == "settings" {
+                open_settings(app);
+            }
+        })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())

@@ -2,6 +2,7 @@
   // The library window: courses and talks on the left, their recordings in the middle, one recording on the right.
   import { onMount, untrack } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
   import Figure from "$lib/Figure.svelte";
   import Dialog from "$lib/Dialog.svelte";
   import Settings from "$lib/Settings.svelte";
@@ -112,11 +113,29 @@
     return () => clearInterval(timer);
   });
 
+  // ⌘, (Ctrl+, on Windows) opens Settings, like in every app: the app menu's Settings… sends "open-settings"
+  // (src-tauri/src/lib.rs); the key itself is caught here too, for Windows and a browser during development.
+  const onWindows = typeof navigator !== "undefined" && /Windows/.test(navigator.userAgent);
+  const settingsKey = onWindows ? "Ctrl+," : "⌘,";
+  function settingsShortcut(e: KeyboardEvent) {
+    if (e.key === "," && (onWindows ? e.ctrlKey : e.metaKey) && !e.altKey && !e.shiftKey) {
+      e.preventDefault();
+      settingsOpen = true;
+    }
+  }
+
   onMount(() => {
     reload();
     const onFocus = () => reload();
     window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
+    window.addEventListener("keydown", settingsShortcut);
+    let unlisten: (() => void) | undefined;
+    if ("__TAURI_INTERNALS__" in window) listen("open-settings", () => (settingsOpen = true)).then((u) => (unlisten = u));
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("keydown", settingsShortcut);
+      unlisten?.();
+    };
   });
 
   function showMenu(ev: MouseEvent, target: { group?: Group; entry?: Entry }) {
@@ -347,7 +366,9 @@
       {@render section(t("common.talksEvents"), groups.talks)}
     </nav>
     <footer>
-      <button onclick={() => (settingsOpen = true)}>{t("lib.settings")}</button>
+      <button class="with-key" onclick={() => (settingsOpen = true)}>
+        <span>{t("lib.settings")}</span><kbd aria-label={onWindows ? "Control comma" : "Command comma"}>{settingsKey}</kbd>
+      </button>
       <button onclick={() => invoke("show_feedback")}>{t("lib.feedback")}</button>
       <button onclick={() => invoke("check_updates")}>{t("lib.updates")}</button>
       <!-- copies stenny.eu, where friends get it; says so for a moment -->
@@ -601,6 +622,9 @@
   footer { padding: 10px 10px 14px; border-top: 1px solid var(--line); display: flex; flex-direction: column; }
   footer button { border: 0; background: none; text-align: left; padding: 4px 10px; color: var(--muted); border-radius: 6px; }
   footer button:hover { color: var(--ink); }
+  /* Settings… with its shortcut on the right, like in a menu */
+  footer .with-key { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  footer kbd { font-family: var(--sans); font-size: 11.5px; color: var(--muted); opacity: 0.8; letter-spacing: 0.02em; }
   /* Share Stenny: the share symbol and label turn into a check and "Link copied", crossfading in place */
   footer .share-stenny { display: flex; align-items: center; gap: 6px; }
   .share-stenny .icon, .share-stenny .labels { display: grid; }

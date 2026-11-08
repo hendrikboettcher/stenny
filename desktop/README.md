@@ -22,7 +22,7 @@ Without `--library` it is the menu bar app (src-tauri/src/menubar.rs): the class
 the calendar's lecture with its "Record this lecture?" notification, and the pause shortcut, the last two through
 `stenny-agent` (app/Sources/stenny-agent), which runs inside the bundle so the permissions are Stenny's.
 `STENNY_TEST_FILE=<audio>` records that file instead of the microphone (with `STENNY_HOME` on a test copy).
-The library window's footer opens Settings… in the same window (src/lib/Settings.svelte, Escape goes back): general (language, open at login, the pause shortcut,
+The library window's footer opens Settings… in the same window (also ⌘, or Stenny ▸ Settings…; Ctrl+, on Windows) (src/lib/Settings.svelte, Escape goes back): general (language, open at login, the pause shortcut,
 where the files are), recording (microphone, backup microphone, live draft, keeping audio), the AI step (Claude Code,
 Anthropic API or Off, each with what it does and costs, and a bar under the chosen one when it isn't ready: install
 or sign in to Claude Code, paste an API key, or what Off leaves out) and talk languages, Use with Claude (the
