@@ -1,6 +1,7 @@
 <script lang="ts">
   // The library window: courses and talks on the left, their recordings in the middle, one recording on the right.
   import { onMount, untrack } from "svelte";
+  import { cubicInOut } from "svelte/easing";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import Figure from "$lib/Figure.svelte";
@@ -26,6 +27,16 @@
   let withSummary = $state(localStorage.getItem("withSummary") !== "false");
   let shareOpen = $state(false);
   let shareButton = $state<HTMLButtonElement | null>(null); // the share menu opens below it
+  // Going into and out of Settings: the view coming in dissolves in on top of the one going away, which stays
+  // put underneath (so the background never shows through halfway) and no longer takes clicks.
+  const SWAP_MS = 240;
+  const still = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function comeIn(_: Element) {
+    return { duration: still() ? 0 : SWAP_MS, easing: cubicInOut, css: (t: number) => `opacity: ${t}; z-index: 1;` };
+  }
+  function goAway(_: Element) {
+    return { duration: still() ? 0 : SWAP_MS, css: () => "z-index: 0; pointer-events: none;" };
+  }
   let settingsOpen = $state(false); // the footer's Settings…: the window shows Settings instead (lib/Settings.svelte)
   let settingsSection = $state<"general" | "transcripts" | "claude">("general"); // where Settings opens
   let linkCopied = $state(false); // the footer's Share Stenny: "Link copied" for a moment
@@ -334,8 +345,11 @@
                onblur={() => (menu = null)} />
 
 {#if settingsOpen}
-  <Settings start={settingsSection} onclose={() => { settingsOpen = false; reload(); }} />
+  <div class="view" in:comeIn out:goAway>
+    <Settings start={settingsSection} onclose={() => { settingsOpen = false; reload(); }} />
+  </div>
 {:else}
+<div class="view" in:comeIn out:goAway>
 <div class="window">
   <aside class="sidebar">
     <div class="titlebar" data-tauri-drag-region></div>
@@ -531,6 +545,7 @@
     <div class="bottombar" aria-hidden="true"></div>
   </main>
 </div>
+</div>
 {/if}
 
 {#if menu}
@@ -615,6 +630,8 @@
 {/if}
 
 <style>
+  /* the library and Settings fill the window; both are there for a moment while one dissolves into the other */
+  .view { position: fixed; inset: 0; background: var(--bg); }
   .window { display: grid; grid-template-columns: 220px 290px minmax(0, 1fr); height: 100vh; }
   .titlebar { height: var(--titlebar); flex: none; }
   /* the scrolling columns keep a solid band under the window's title bar, like the sidebar's */
