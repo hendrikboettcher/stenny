@@ -220,8 +220,6 @@
   "settings.claude.remove.code.text": "Claude Code can't read your lectures any more, in any project. You can add it again here anytime.",
   "settings.summary": "Write a summary",
   "settings.summary.hint": "An AI summary next to each transcript, clearly labelled as one.",
-  "settings.talkLanguages": "Languages in talks",
-  "settings.talkLanguages.hint": "A talk's language is recognised among these, every half minute or so.",
   "settings.model": "Transcription runs on this Mac with {model}.",
   "settings.background.lead": "Transcribing a lecture takes a while. These keep the Mac usable meanwhile.",
   "settings.priority": "Priority",

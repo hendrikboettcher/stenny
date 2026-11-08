@@ -689,20 +689,6 @@
                      onchange={(e) => set("llm.summary", e.currentTarget.checked)} />
             </div>
           </div>
-          <div class="group">
-            <div class="row stack">
-              <div class="what">
-                <div class="name">{t("settings.talkLanguages")}</div>
-                <div class="hint">{t("settings.talkLanguages.hint")}</div>
-              </div>
-              <div class="chips">
-                {#each LANGS as code}
-                  <button class="chip" class:on={s.recordings.languages.includes(code)}
-                          onclick={() => { const next = toggleIn(s!.recordings.languages, code); if (next.length) set("recordings.languages", next); }}>{langName(code)}</button>
-                {/each}
-              </div>
-            </div>
-          </div>
           <p class="foot">{t("settings.model", { model: s.model.split("/").pop() ?? s.model })}</p>
         {:else if section === "claude"}
           <p class="lead">{t("settings.claude.lead")}</p>

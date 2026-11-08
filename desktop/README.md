@@ -25,7 +25,7 @@ the calendar's lecture with its "Record this lecture?" notification, and the pau
 The library window's footer opens Settings… in the same window (also ⌘, or Stenny ▸ Settings…; Ctrl+, on Windows) (src/lib/Settings.svelte, Escape goes back): general (language, open at login, the pause shortcut,
 where the files are), recording (microphone, backup microphone, live draft, keeping audio), the AI step (Claude Code,
 Anthropic API or Off, each with what it does and costs, and a bar under the chosen one when it isn't ready: install
-or sign in to Claude Code, paste an API key, or what Off leaves out) and talk languages, Use with Claude (the
+or sign in to Claude Code, paste an API key, or what Off leaves out), Use with Claude (the
 connector: installed in Claude Desktop or not, Install…, Add to Claude Code), background work (priority, power, night hours) and each course's language. Changes are saved at once:
 config.toml through the engine (src/stenny/settings.py; the AI step's and the connector's status through
 src/stenny/claude_setup.py, checked again whenever the window gets the focus back), the microphone and login item through the app (menubar.rs,

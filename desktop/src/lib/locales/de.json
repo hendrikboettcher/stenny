@@ -220,8 +220,6 @@
   "settings.claude.remove.code.text": "Claude Code kann deine Vorlesungen dann in keinem Projekt mehr lesen. Du kannst den Connector hier jederzeit wieder hinzufügen.",
   "settings.summary": "Zusammenfassung erstellen",
   "settings.summary.hint": "Eine KI-Zusammenfassung zu jedem Transkript, klar als solche gekennzeichnet.",
-  "settings.talkLanguages": "Sprachen in Vorträgen",
-  "settings.talkLanguages.hint": "Stenny erkennt etwa alle 30 Sekunden, welche dieser Sprachen gerade gesprochen wird.",
   "settings.model": "Die Transkription läuft lokal auf diesem Mac, mit {model}.",
   "settings.background.lead": "Eine Vorlesung zu transkribieren dauert eine Weile. Mit diesen Einstellungen bleibt dein Mac dabei flüssig nutzbar.",
   "settings.priority": "Priorität",
