@@ -142,7 +142,7 @@ def tilde(path: Path | str) -> str:
     try:
         return "~/" + path.relative_to(Path.home()).as_posix()
     except ValueError:
-        return path.as_posix() if _windows() else str(path)
+        return path.as_posix()
 
 
 CONFIG_DIR = config_dir()
