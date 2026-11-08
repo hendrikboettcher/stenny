@@ -212,7 +212,7 @@ def cmd_add(args) -> None:
     from .engines import get_engine
     from .pipeline import LectureError, process
 
-    engine = get_engine(cfg.model)
+    engine = get_engine(cfg.model, cfg.engine)
     for f in args.files:
         try:
             process(f, cfg, course, engine, lang=args.lang, when=parse_when(args.date) if len(args.files) == 1 else None,
@@ -386,7 +386,7 @@ def cmd_queue(args) -> None:
         from .engines import get_engine
         from .pipeline import Interrupted, log
 
-        engine = get_engine(cfg.model)
+        engine = get_engine(cfg.model, cfg.engine)
         unplugged = jobs.unplugged_check() if args.scheduled and cfg.require_ac_for_queue else None
         for p in items if lecture else jobs.pending():
             if unplugged and unplugged():
@@ -493,7 +493,7 @@ def cmd_live(args) -> None:
     if (free := resources.free_disk(cfg.data_dir)) < resources.DISK_TO_START:
         sys.exit(f"Only {free / resources.GB:.1f} GB free on this Mac. A lecture needs about "
                  f"{resources.DISK_TO_START / resources.GB:.1f} GB, so free some space first.")
-    engine = get_engine(cfg.model)
+    engine = get_engine(cfg.model, cfg.engine)
     session = LiveSession(cfg, course, source, engine, lang=args.lang, draft=cfg.live_draft and not args.no_draft,
                           backup=backup)
     server = ControlServer(session)

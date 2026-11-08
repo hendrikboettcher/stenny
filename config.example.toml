@@ -10,7 +10,9 @@ folder = "~/Documents/Stenny"                # everything you or Claude read: co
 keep_audio = true                            # false = don't archive audio (the original file is never deleted)
 
 [transcription]
-model = "mlx-community/whisper-large-v3-turbo"
+model = "mlx-community/whisper-large-v3-turbo"   # on Windows the same model through faster-whisper ("large-v3-turbo")
+# engine = "auto"   # auto: mlx-whisper on a Mac (Metal), faster-whisper on Windows (an NVIDIA GPU, else the CPU);
+                    # "mlx" or "faster-whisper" to pick one, e.g. to compare them on a Mac
 
 [llm]
 backend = "claude-code"      # claude-code (subscription, `claude -p`) | api (Anthropic API key) | none

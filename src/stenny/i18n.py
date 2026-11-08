@@ -173,6 +173,8 @@ DE = {
     "Missing required key {key} in {path}": "In {path} fehlt der Pflichteintrag {key}",
     "[app] language '{value}': use system, en or de.":
         "[app] language „{value}“: Möglich sind system, en und de.",
+    "[transcription] engine '{value}': use auto, mlx or faster-whisper.":
+        "[transcription] engine „{value}“: Möglich sind auto, mlx und faster-whisper.",
 
     # recording
     "A recording is already running.": "Es läuft bereits eine Aufnahme.",

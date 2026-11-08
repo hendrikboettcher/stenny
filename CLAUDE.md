@@ -9,7 +9,7 @@ The new app (`desktop/`, Tauri) is the way there: **everything new must work on 
 feature gets its Windows counterpart in the same change (e.g. Share…: macOS's share menu in `macos.rs`, Windows'
 Share panel in `windows_share.rs`), file paths and labels handle both ("Show in Finder" / "Show in Explorer"), and
 whatever couldn't be tested on Windows is said so. Still Mac-only, each needing a Windows version: transcription
-(mlx-whisper, Metal), the Swift helpers `stenny-rec` (microphone) and `stenny-agent` (pause shortcut, calendar,
+(mlx-whisper, Metal; faster-whisper is there for Windows but not yet tried on a PC), the Swift helpers `stenny-rec` (microphone) and `stenny-agent` (pause shortcut, calendar,
 lecture notifications, open at login, PDF for Share…), and the old Swift app in `app/`.
 
 ## Goals (in priority order)
@@ -21,7 +21,7 @@ lecture notifications, open at login, PDF for Share…), and the old Swift app i
 
 ## Stack
 - Python 3.12, uv, packaged as the `stenny` CLI (`uv tool install -e .`)
-- mlx-whisper (Metal) for transcription; ffmpeg for audio decoding/encoding
+- mlx-whisper (Metal) for transcription on a Mac, faster-whisper (CTranslate2) on Windows; ffmpeg for audio decoding/encoding
 - pypdf for slide text (poppler's `pdftotext` is preferred when installed)
 - Optional: `claude` CLI or the `anthropic` SDK for structuring and summaries
 - `mcp` (the official MCP SDK) for the connector, `stenny mcp`
@@ -35,7 +35,7 @@ src/stenny/
                   Windows; everyone else asks the engine (`stenny where --json`, `app-settings`)
   config.py       config.toml in the config place (or $STENNY_CONFIG): the Stenny folder, model, courses, shortcut
   audio.py        load/convert/archive audio via ffmpeg
-  engines/        Whisper engines behind one interface (mlx first)
+  engines/        Whisper engines behind one interface: mlx (Mac), faster-whisper (Windows); `[transcription] engine`
   textproc.py     segment cleanup: hallucination filter, gap filling, paragraphs
   language.py     fixed or per-chunk language handling
   glossary.py     per-course glossary: Whisper prompt (token budget, glossary first) + deterministic replacements;

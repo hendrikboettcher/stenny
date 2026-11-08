@@ -2,16 +2,7 @@
 
 import numpy as np
 
-SEGMENT_KEYS = ("start", "end", "text", "no_speech_prob", "avg_logprob", "compression_ratio")
-MAX_GAIN_DB = 30.0
-
-
-def normalize(audio: np.ndarray) -> np.ndarray:
-    """Bring quiet audio (a distant phone microphone) up to normal speech level. Whisper's input
-    features depend on absolute loudness; at -50 dB it invents text in random languages."""
-    peak = float(np.percentile(np.abs(audio), 99.9)) if len(audio) else 0.0
-    gain = min(0.5 / max(peak, 1e-6), 10 ** (MAX_GAIN_DB / 20))
-    return (audio * gain).astype(np.float32) if gain > 1.0 else audio
+from .base import SEGMENT_KEYS, normalize, restrict
 
 
 class MlxEngine:
@@ -56,6 +47,4 @@ class MlxEngine:
         mel = log_mel_spectrogram(normalize(clip), n_mels=model.dims.n_mels)
         mel = pad_or_trim(mel, N_FRAMES, axis=-2).astype(mx.float16)
         _, probs = detect_language(model, mel)
-        scores = {lang: float(probs.get(lang, 0.0)) for lang in allowed}
-        total = sum(scores.values()) or 1.0
-        return {k: v / total for k, v in scores.items()}
+        return restrict(probs, allowed)

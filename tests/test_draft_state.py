@@ -120,7 +120,7 @@ def test_the_window_can_start_one_waiting_final_pass_now_also_on_battery(cfg, mo
     monkeypatch.setattr(jobs, "keep_awake", lambda: None)
     monkeypatch.setattr(cli, "load_config", lambda: cfg)
     monkeypatch.setattr(cli, "recover_sessions", lambda cfg: [])
-    monkeypatch.setattr("stenny.engines.get_engine", lambda model: object())
+    monkeypatch.setattr("stenny.engines.get_engine", lambda model, engine="auto": object())
     session = StoppedSession(cfg)
     cli.finalize(session, cfg, "auto", True, object())
     [job] = jobs.pending()
