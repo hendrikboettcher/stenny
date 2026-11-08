@@ -25,12 +25,13 @@ night_end = "07:00"
 [app]
 # Stenny's pause/resume shortcut, from anywhere. Modifiers: cmd, shift, ctrl, opt; then one key as printed
 # on your keyboard (or space, f1–f20). The default suits German keyboards (Ü is right of P); on other
-# keyboards pick something else, e.g. "cmd+shift+p" or "ctrl+opt+space". Restart Stenny after changing it.
+# keyboards pick something else, e.g. "cmd+shift+p" or "ctrl+opt+space". Stenny's Settings window sets it too.
 pause_shortcut = "cmd+shift+ü"
 
 [live]
 # device = "MacBook Air Microphone"   # microphone for `stenny live` (see `stenny devices`);
                                        # unset = the system's input device. Stenny has its own picker.
+# draft = true        # false: record only, no live draft; the transcript is made after the lecture
 # provisional = false  # true: the live draft also shows the sentence being spoken (italics), replaced seconds later; costs battery
 # backup = "auto"   # second microphone recorded alongside, used only where the main one sent nothing
                     # (e.g. while you use the iPhone): "auto" = the Mac's own microphone, "off", or a name

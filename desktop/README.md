@@ -22,6 +22,11 @@ Without `--library` it is the menu bar app (src-tauri/src/menubar.rs): the class
 the calendar's lecture with its "Record this lecture?" notification, and the pause shortcut, the last two through
 `stenny-agent` (app/Sources/stenny-agent), which runs inside the bundle so the permissions are Stenny's.
 `STENNY_TEST_FILE=<audio>` records that file instead of the microphone (with `STENNY_HOME` on a test copy).
-Also in the menu and the library window's footer: Send Feedback… (to stenny.eu, like the website's form) and
+The library window's footer opens Settings… (src/routes/settings): general (open at login, the pause shortcut,
+where the files are), recording (microphone, backup microphone, live draft, keeping audio), the AI step and talk
+languages, background work (priority, power, night hours) and each course's language. Changes are saved at once:
+config.toml through the engine (src/stenny/settings.py), the microphone and login item through the app (menubar.rs,
+the same choices as the menu bar's; a new pause shortcut restarts stenny-agent). Also in the menu and the library
+window's footer: Send Feedback… (to stenny.eu, like the website's form) and
 Check for Updates… (installing comes with the app's own updater). An installed copy (in an Applications folder)
 adds itself to the login items once, through stenny-agent; after that it's the user's choice.

@@ -14,7 +14,8 @@ import UserNotifications
 //        "start <course>" when "Start Recording" is clicked in a lecture notification;
 //        "quit" when macOS asks Stenny to quit and reaches this helper (see QuitForwarder)
 //   in:  "notify {"id": …, "course": …, "range": …}" posts that notification ("Record this lecture?");
-//        "login" makes Stenny open at login (System Settings ▸ General ▸ Login Items) → "login ok" / "login error …"
+//        "login" makes Stenny open at login (System Settings ▸ General ▸ Login Items) → "login ok" / "login error …";
+//        "login off" stops that; "login status" → "login on", "login off" or "login approval" (still to be allowed)
 //
 // It runs inside Stenny.app (Contents/MacOS), so the calendar permission and the notifications are Stenny's.
 // The key is given as printed on the keyboard and looked up in the current layout, since Carbon hotkeys use
@@ -204,6 +205,14 @@ Thread.detachNewThread {
                 say("login ok")
             } catch {
                 say("login error \(error.localizedDescription)")
+            }
+        } else if line == "login off" {
+            try? SMAppService.mainApp.unregister()
+        } else if line == "login status" {
+            switch SMAppService.mainApp.status {
+            case .enabled: say("login on")
+            case .requiresApproval: say("login approval")
+            default: say("login off")
             }
         } else if line.hasPrefix("notify ") {
             let json = String(line.dropFirst("notify ".count))

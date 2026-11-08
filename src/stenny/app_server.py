@@ -14,7 +14,7 @@ import threading
 from importlib.metadata import version as package_version
 from pathlib import Path
 
-from . import app_live, share
+from . import app_live, settings, share
 from . import config as config_mod
 from .config import ConfigError
 
@@ -157,13 +157,28 @@ def remove_course(cfg, params: dict) -> dict:
     return {"message": _managed(courses.hide, cfg, params["course"])}
 
 
+def preferences(cfg, params: dict) -> dict:
+    """The Settings window: everything it shows (settings.py)."""
+    return settings.get(cfg)
+
+
+def set_preference(cfg, params: dict) -> dict:
+    """One setting changed in the Settings window, e.g. {"key": "llm.summary", "value": false}; all of them again."""
+    return _managed(settings.change, cfg, params["key"], params.get("value"))
+
+
+def set_course_language(cfg, params: dict) -> dict:
+    return _managed(settings.course_language, cfg, params["course"], params["language"], params.get("languages"))
+
+
 def ping(cfg, params: dict) -> dict:
     return {"version": package_version("stenny")}
 
 
 METHODS = {"ping": ping, "library": library, "lecture": lecture, "make_copy": make_copy, "finish_now": finish_now,
            "rename_lecture": rename_lecture, "delete_lecture": delete_lecture, "rename_course": rename_course, "delete_course": delete_course,
-           "add_course": add_course, "remove_course": remove_course, **app_live.METHODS}
+           "add_course": add_course, "remove_course": remove_course, "preferences": preferences,
+           "set_preference": set_preference, "set_course_language": set_course_language, **app_live.METHODS}
 
 
 def handle(cfg, request: dict) -> dict:

@@ -51,6 +51,8 @@ struct State {
     status_item: Option<MenuItem<Wry>>,      // the menu's first line, updated in place
     icon: String,                            // the icon shown, so it is only set when it changes (no flicker)
     pause_accel: Option<String>,             // the pause shortcut as a physical accelerator ("Cmd+F1"), if not a character
+    login: Option<String>,                   // the agent's last "login on|off|approval" (Settings asks for it)
+    shortcut_problem: Option<String>,        // the agent couldn't register the pause shortcut: why
 }
 
 /// The pause shortcut for the menu by physical key (the agent tells which: "ready 122 ⌘F1"), for keys that aren't a
@@ -677,6 +679,7 @@ fn start_agent(app: &AppHandle) {
         let Some(out) = child.stdout.take() else { return };
         for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
             if let Some(rest) = line.strip_prefix("ready ") {
+                app.state::<MenuBar>().0.lock().unwrap().shortcut_problem = None;
                 let code = rest.split(' ').next().and_then(|c| c.parse::<u32>().ok());
                 // a character key (Ü) is put on the menu item natively (macos.rs): Tauri's physical accelerator
                 // gets relabelled by macOS (⇧⌘Ö on a German keyboard)
@@ -704,7 +707,10 @@ fn start_agent(app: &AppHandle) {
                     st.prefs.clone()
                 };
                 save_prefs(&app, &prefs);
+            } else if let Some(state) = line.strip_prefix("login ").filter(|s| ["on", "off", "approval"].contains(s)) {
+                app.state::<MenuBar>().0.lock().unwrap().login = Some(state.to_string());
             } else if let Some(problem) = line.strip_prefix("error ") {
+                app.state::<MenuBar>().0.lock().unwrap().shortcut_problem = Some(problem.to_string());
                 notify(&app, &format!("The pause shortcut doesn't work: {problem}"));
             }
         }
@@ -778,4 +784,60 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
     start_polling(app.clone());
     start_agent(app);
     Ok(())
+}
+
+// The Settings window (src/routes/settings): the microphone for the next recording (the same choice as the menu's),
+// opening at login and a new pause shortcut, which the agent registers when it starts.
+
+/// The microphone the next recording uses (None: the system's input device).
+pub fn microphone_pref(app: &AppHandle) -> Option<String> {
+    load_prefs(app).microphone
+}
+
+/// Also switches a running recording to it, like the menu.
+pub fn set_microphone_pref(app: &AppHandle, device: Option<String>) {
+    let prefs = {
+        let bar = app.state::<MenuBar>();
+        let mut st = bar.0.lock().unwrap();
+        st.prefs = Prefs { microphone: device.clone(), ..load_prefs(app) };
+        st.prefs.clone()
+    };
+    save_prefs(app, &prefs);
+    choose_microphone(app, device);
+}
+
+/// Sends the agent a line and waits a moment for its answer about opening at login: "on", "off" or "approval"
+/// (the user still has to allow it in System Settings). None: no agent (a --library window) or no answer.
+pub fn login_item(app: &AppHandle, command: &str) -> Option<String> {
+    {
+        let bar = app.state::<MenuBar>();
+        let mut st = bar.0.lock().unwrap();
+        st.login = None;
+        let stdin = st.agent_in.as_mut()?;
+        writeln!(stdin, "{command}").ok()?;
+        writeln!(stdin, "login status").ok()?;
+    }
+    for _ in 0..40 {
+        std::thread::sleep(Duration::from_millis(50));
+        if let Some(state) = app.state::<MenuBar>().0.lock().unwrap().login.clone() {
+            return Some(state);
+        }
+    }
+    None
+}
+
+/// After the pause shortcut changed: the agent again, which reads it from the config. Returns its problem, if the
+/// new shortcut couldn't be registered (another app has it). Nothing to do without an agent (a --library window).
+pub fn restart_agent(app: &AppHandle) -> Option<String> {
+    {
+        let bar = app.state::<MenuBar>();
+        let mut st = bar.0.lock().unwrap();
+        st.agent_in.as_ref()?;
+        st.agent_in = None; // its stdin closes: the old agent quits
+        st.shortcut_problem = None;
+    }
+    std::thread::sleep(Duration::from_millis(400));
+    start_agent(app);
+    std::thread::sleep(Duration::from_millis(800));
+    app.state::<MenuBar>().0.lock().unwrap().shortcut_problem.clone()
 }

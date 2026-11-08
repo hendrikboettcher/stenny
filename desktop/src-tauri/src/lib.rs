@@ -91,10 +91,38 @@ fn copy_text(text: String) -> Result<(), String> {
     }
 }
 
-/// The library window's footer: Settings… (for now a page saying they're still being built).
+/// The library window's footer and the menu: Settings….
 #[tauri::command]
 fn show_settings(app: AppHandle) {
     show_window(&app, "settings");
+}
+
+/// The Settings window's microphone: the one the next recording uses (null: the system's input device).
+#[tauri::command]
+fn microphone_pref(app: AppHandle) -> Option<String> {
+    menubar::microphone_pref(&app)
+}
+
+#[tauri::command]
+async fn set_microphone_pref(app: AppHandle, device: Option<String>) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || menubar::set_microphone_pref(&app, device)).await.map_err(|e| e.to_string())
+}
+
+/// Opening at login: `on` true/false changes it, null only asks. "on", "off", "approval" or null (can't tell).
+#[tauri::command]
+async fn login_item(app: AppHandle, on: Option<bool>) -> Result<Option<String>, String> {
+    let command = match on {
+        Some(true) => "login",
+        Some(false) => "login off",
+        None => "login check",
+    };
+    tauri::async_runtime::spawn_blocking(move || menubar::login_item(&app, command)).await.map_err(|e| e.to_string())
+}
+
+/// After the pause shortcut changed in the config: registers the new one. Its problem, if it couldn't.
+#[tauri::command]
+async fn apply_shortcut(app: AppHandle) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || menubar::restart_agent(&app)).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -144,8 +172,10 @@ pub fn show_window(app: &AppHandle, label: &str) {
                 .build(),
             "settings" => WebviewWindowBuilder::new(&app2, "settings", WebviewUrl::App("settings".into()))
                 .title("Settings")
-                .inner_size(440.0, 240.0)
-                .resizable(false)
+                .inner_size(760.0, 560.0)
+                .min_inner_size(640.0, 440.0)
+                .title_bar_style(tauri::TitleBarStyle::Overlay)
+                .hidden_title(true)
                 .minimizable(false)
                 .center()
                 .build(),
@@ -184,7 +214,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(Arc::new(Engine::default()))
         .manage(MenuBar::default())
-        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, show_settings, copy_text, check_updates])
+        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, show_settings, copy_text, check_updates, microphone_pref, set_microphone_pref, login_item, apply_shortcut])
         .setup(move |app| {
             if !library_only {
                 // A Dock app with the menu bar icon next to it. Info.plist keeps LSUIElement for the helpers in the
