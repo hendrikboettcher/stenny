@@ -50,6 +50,8 @@ export const reveal = (path: string) => (inApp ? invoke("reveal", { path }) : co
 // Stenny runs on macOS and Windows: what the file manager is called there
 export const onWindows = typeof navigator !== "undefined" && /Windows/.test(navigator.userAgent);
 export const revealLabel = onWindows ? "Show in Explorer" : "Show in Finder";
+// where deleted things go (src/stenny/manage.py: trash)
+export const trashName = onWindows ? "Recycle Bin" : "Trash";
 // the system's share menu for these files: on macOS below `anchor` (the Share button), on Windows the Share panel
 export const shareFiles = (paths: string[], anchor: DOMRect) =>
   inApp
@@ -59,7 +61,7 @@ export const shareFiles = (paths: string[], anchor: DOMRect) =>
 export const lecturerAgreed = (e: Entry, use: "share" | "record") =>
   inApp ? invoke<boolean>("lecturer_agreed", { purpose: use, course: e.course, event: e.kind === "event" }) : Promise.resolve(true);
 
-// Renaming, deleting (to the Trash) and the course list (src/stenny/manage.py, courses.py)
+// Renaming, deleting (to the Trash or Recycle Bin) and the course list (src/stenny/manage.py, courses.py)
 export const renameLecture = (e: Entry, title: string) =>
   engine<{ title: string | null }>("rename_lecture", { ...where(e), title });
 export const deleteLecture = (e: Entry) => engine<{ message: string }>("delete_lecture", where(e));
@@ -69,7 +71,7 @@ export const addCourse = (name: string, language: string, alias: string) =>
   engine<{ message: string }>("add_course", { name, language, alias });
 // to the clipboard (in a browser during development: the browser's)
 export const copyText = (text: string) => (inApp ? invoke<void>("copy_text", { text }) : navigator.clipboard.writeText(text));
-// a whole course or talk and all its recordings to the Trash
+// a whole course or talk and all its recordings to the Trash (Recycle Bin on Windows)
 export const deleteCourse = (course: string, event: boolean) =>
   engine<{ message: string }>("delete_course", { course, event });
 export const removeCourse = (course: string) => engine<{ message: string }>("remove_course", { course });

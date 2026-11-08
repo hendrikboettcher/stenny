@@ -8,7 +8,7 @@
   import { renderMarkdown } from "$lib/markdown";
   import {
     library, lecture, makeCopy, makePdf, finishNow, openTranscript, reveal, revealLabel, shareFiles, lecturerAgreed,
-    renameLecture, deleteLecture, renameCourse, addCourse, removeCourse, deleteCourse, bringBack, copyText,
+    renameLecture, deleteLecture, renameCourse, addCourse, removeCourse, deleteCourse, copyText, trashName,
     type Entry, type Library,
   } from "$lib/engine";
 
@@ -48,18 +48,14 @@
   const same = (a: Group | null, b: Group | null) => !!a && !!b && a.course === b.course && a.event === b.event;
   const isDraft = (e: Entry) => e.status !== "final";
   const isBusy = (e: Entry) => e.status === "live" || e.status === "finalizing"; // can't be renamed or deleted now
-  const configured = (g: Group) => !g.event && !!data?.courses.some((c) => c.name === g.course && !c.hidden);
-
-  // Courses from the config first (in its order), then past courses that only have recordings, then talks.
+  // The courses in the config (in its order), then talks. Past courses (removed ones, and courses that only have
+  // recordings) live in Settings ▸ Courses, where they can be brought back or deleted.
   let groups = $derived.by(() => {
-    if (!data) return { courses: [] as Group[], past: [] as Group[], talks: [] as Group[] };
-    const shown = data.courses.filter((c) => !c.hidden).map((c) => c.name);
-    const recorded = (event: boolean) =>
-      [...new Set(data!.entries.filter((e) => (e.kind === "event") === event).map((e) => e.course))];
+    if (!data) return { courses: [] as Group[], talks: [] as Group[] };
+    const talks = [...new Set(data.entries.filter((e) => e.kind === "event").map((e) => e.course))];
     return {
-      courses: shown.map((course) => ({ course, event: false })),
-      past: recorded(false).filter((c) => !shown.includes(c)).sort().map((course) => ({ course, event: false })),
-      talks: recorded(true).sort().map((course) => ({ course, event: true })),
+      courses: data.courses.filter((c) => !c.hidden).map((c) => ({ course: c.name, event: false })),
+      talks: talks.sort().map((course) => ({ course, event: true })),
     };
   });
 
@@ -80,7 +76,7 @@
       failed = String(e);
       return;
     }
-    const all = [...groups.courses, ...groups.past, ...groups.talks];
+    const all = [...groups.courses, ...groups.talks];
     if (!group || !all.some((g) => same(g, group))) group = all[0] ?? null;
     if (!selected) selectedId = entries[0] ? id(entries[0]) : null;
   }
@@ -179,16 +175,6 @@
       askError = String(e);
     } finally {
       askBusy = false;
-    }
-  }
-
-  async function bring(g: Group) {
-    menu = null;
-    try {
-      await bringBack(g.course);
-      await reload();
-    } catch (e) {
-      notice = { text: String(e), error: true };
     }
   }
 
@@ -322,7 +308,6 @@
       {#if data && !groups.courses.length}
         <button class="group quiet-add" onclick={() => open({ kind: "add" })}>Add your first course</button>
       {/if}
-      {@render section("Past courses", groups.past)}
       {@render section("Talks & events", groups.talks)}
     </nav>
     <footer>
@@ -384,7 +369,7 @@
               </button>
             {/if}
             {#if !isBusy(selected)}
-              <button class="pill small" aria-label="More" title="Rename or move to the Trash"
+              <button class="pill small" aria-label="More" title="Rename or move to the {trashName}"
                       onclick={(ev) => showMenu(ev, { entry: selected! })}>⋯</button>
             {/if}
           </div>
@@ -409,7 +394,7 @@
           </div>
           <button class="pill" onclick={() => openTranscript(selected!.transcript)}>Open transcript</button>
           <button class="pill" onclick={() => reveal(selected!.transcript)}>{revealLabel}</button>
-          <button class="pill" aria-label="More" title="Rename or move to the Trash"
+          <button class="pill" aria-label="More" title="Rename or move to the {trashName}"
                   onclick={(ev) => showMenu(ev, { entry: selected! })}>⋯</button>
         </div>
         {/if}
@@ -471,13 +456,9 @@
       <button role="menuitem" onclick={() => open({ kind: "rename-group", group: g })}>
         <span>Rename…</span>
       </button>
-      {#if configured(g)}
+      {#if !g.event}
         <button role="menuitem" onclick={() => open({ kind: "remove-course", group: g })}>
-          <span>Remove Course…</span><small>Its recordings stay, under Past courses</small>
-        </button>
-      {:else if !g.event}
-        <button role="menuitem" onclick={() => bring(g)}>
-          <span>Bring Back to the Menu</span>
+          <span>Remove Course…</span><small>Its recordings stay, under Settings ▸ Courses</small>
         </button>
       {/if}
       <div class="menu-line"></div>
@@ -495,7 +476,7 @@
           <span>Rename…</span>
         </button>
         <button role="menuitem" class="danger" onclick={() => open({ kind: "delete-lecture", entry: e })}>
-          <span>Move to Trash…</span>
+          <span>Move to {trashName}…</span>
         </button>
       {/if}
     {/if}
@@ -527,10 +508,10 @@
   {:else if ask.kind === "remove-course"}
     {@const n = count(ask.group)}
     <Dialog title="Remove {ask.group.course}?" confirm="Remove Course" busy={askBusy} error={askError}
-            text="It leaves the menu and calendar matching. {n === 0
-              ? 'Nothing was recorded for it yet. Its glossary, if it has one, stays.'
-              : n === 1 ? 'Its transcript and glossary stay, under Past courses in this window.'
-              : `Its ${n} transcripts and glossary stay, under Past courses in this window.`} You can bring it back from there."
+            text="It leaves this list and calendar matching. {n === 0
+              ? 'Nothing was recorded for it yet; its glossary, if it has one, stays.'
+              : n === 1 ? 'Its transcript and glossary stay.'
+              : `Its ${n} transcripts and glossary stay.`} You'll find it under Past courses in Settings ▸ Courses, where you can bring it back or delete it."
             oncancel={() => (ask = null)} onconfirm={answer} />
   {:else if ask.kind === "delete-group"}
     {@const n = count(ask.group)}
@@ -538,7 +519,7 @@
     <Dialog title="Delete {ask.group.course}?" confirm="Delete {ask.group.event ? 'Talk' : 'Course'}" danger
             busy={askBusy} error={askError}
             text="This deletes the {what} and also {n === 0 ? 'everything Stenny saved for it' : n === 1
-              ? 'its recording' : `all ${n} of its ${ask.group.event ? 'recordings' : 'lectures'}`}: transcripts, summaries, audio and everything else in Stenny's folders{ask.group.event ? '' : ', its glossary included'}. {ask.group.event ? '' : 'It also leaves the menu. '}Everything goes to the Trash; once the Trash is emptied, it's gone for good."
+              ? 'its recording' : `all ${n} of its ${ask.group.event ? 'recordings' : 'lectures'}`}: transcripts, summaries, audio and everything else in Stenny's folders{ask.group.event ? '' : ', its glossary included'}. {ask.group.event ? '' : 'It also leaves the menu. '}Everything goes to the {trashName}; once it's emptied, it's gone for good."
             oncancel={() => (ask = null)} onconfirm={answer} />
   {:else if ask.kind === "rename-lecture"}
     <Dialog title="Rename {ask.entry.number > 0 ? `Lecture ${ask.entry.number}` : 'this recording'}" confirm="Rename"
@@ -550,8 +531,8 @@
       <input bind:value={field} aria-label="Title" placeholder="e.g. Decision trees" autocomplete="off" />
     </Dialog>
   {:else if ask.kind === "delete-lecture"}
-    <Dialog title="Move {lectureName(ask.entry)} to the Trash?" confirm="Move to Trash" danger busy={askBusy} error={askError}
-            text="Its transcript, summary and audio go to the Trash, where you can put them back.{ask.entry.kind === 'lecture'
+    <Dialog title="Move {lectureName(ask.entry)} to the {trashName}?" confirm="Move to {trashName}" danger busy={askBusy} error={askError}
+            text="Its transcript, summary and audio go to the {trashName}, where you can put them back.{ask.entry.kind === 'lecture'
               ? ' Later lectures of the course move up a number.' : ''}"
             oncancel={() => (ask = null)} onconfirm={answer} />
   {/if}

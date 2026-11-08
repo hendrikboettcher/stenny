@@ -482,7 +482,7 @@ pub fn start_with(app: &AppHandle, course: &str, event: bool, lang: Option<&str>
     Ok(())
 }
 
-/// "Cancel Recording…": the recording ends without a transcript and its files go to the Trash. Asked first, with
+/// "Cancel Recording…": the recording ends without a transcript and its files go to the Trash (Recycle Bin). Asked first, with
 /// Keep Recording as the default button, so Return or a hasty click keeps it.
 fn cancel_recording(app: &AppHandle) {
     let course = {
@@ -496,7 +496,7 @@ fn cancel_recording(app: &AppHandle) {
     let answer = app
         .dialog()
         .message(format!("The recording of {course} stops without a transcript. Its audio and the text so far \
-                          go to the Trash."))
+                          go to the {}.", if cfg!(windows) { "Recycle Bin" } else { "Trash" }))
         .title("Delete this recording?")
         .kind(MessageDialogKind::Warning)
         .buttons(MessageDialogButtons::OkCancelCustom("Keep Recording".into(), "Delete Recording".into()))

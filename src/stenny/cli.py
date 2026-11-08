@@ -523,14 +523,14 @@ def cmd_recover(args) -> None:
 
 def discard(session, cfg) -> None:
     """A cancelled recording: its audio, session files and placeholder go to the Trash."""
-    from .manage import ManageError, discard_recording
+    from .manage import TRASH_NAME, ManageError, discard_recording
     from .pipeline import log
 
     try:
         discard_recording(cfg, session.course, session.folder.name)
-        log(f"Recording cancelled: {session.course.name} {session.folder.name} moved to the Trash")
+        log(f"Recording cancelled: {session.course.name} {session.folder.name} moved to the {TRASH_NAME}")
     except (ManageError, OSError) as e:
-        log(f"Recording cancelled, but its files couldn't go to the Trash: {e}")
+        log(f"Recording cancelled, but its files couldn't go to the {TRASH_NAME}: {e}")
 
 
 def finalize(session, cfg, policy: str, use_llm: bool, engine) -> None:

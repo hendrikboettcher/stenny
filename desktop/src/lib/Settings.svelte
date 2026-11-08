@@ -6,7 +6,8 @@
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
   import Figure from "$lib/Figure.svelte";
-  import { engine, reveal, revealLabel } from "$lib/engine";
+  import Dialog from "$lib/Dialog.svelte";
+  import { bringBack, deleteCourse, engine, library, reveal, revealLabel, trashName } from "$lib/engine";
 
   interface Settings {
     keep_audio: boolean;
@@ -46,12 +47,61 @@
   let recording = $state(false);         // the shortcut field is listening
   let shortcutNote = $state<string | null>(null);
 
+  // Past courses: removed from the list (hidden in the config) or only left as recordings. Brought back, or
+  // deleted with everything Stenny saved for them (manage.delete_course, to the Trash or Recycle Bin).
+  let past = $state<{ name: string; lectures: number }[]>([]);
+  let pastBusy = $state<string | null>(null);   // the course being brought back
+  let deleting = $state<{ name: string; lectures: number } | null>(null);
+  let deleteBusy = $state(false);
+  let deleteError = $state<string | null>(null);
+
+  async function loadPast() {
+    const lib = await library();
+    const shown = new Set(lib.courses.filter((c) => !c.hidden).map((c) => c.name));
+    const lectures = new Map<string, number>();
+    for (const e of lib.entries) if (e.kind !== "event") lectures.set(e.course, (lectures.get(e.course) ?? 0) + 1);
+    const names = new Set([...lib.courses.filter((c) => c.hidden).map((c) => c.name), ...lectures.keys()]);
+    past = [...names].filter((n) => !shown.has(n)).sort((a, b) => a.localeCompare(b))
+      .map((name) => ({ name, lectures: lectures.get(name) ?? 0 }));
+  }
+
+  async function restore(name: string) {
+    pastBusy = name;
+    try {
+      await bringBack(name);
+      s = await engine<Settings>("preferences");
+      await loadPast();
+      done();
+    } catch (e) {
+      error = String(e);
+    } finally {
+      pastBusy = null;
+    }
+  }
+
+  async function confirmDelete() {
+    if (!deleting) return;
+    deleteBusy = true;
+    deleteError = null;
+    try {
+      await deleteCourse(deleting.name, false);
+      deleting = null;
+      await loadPast();
+      done();
+    } catch (e) {
+      deleteError = String(e);
+    } finally {
+      deleteBusy = false;
+    }
+  }
+
   onMount(async () => {
     try {
       s = await engine<Settings>("preferences");
     } catch (e) {
       loadError = String(e);
     }
+    loadPast().catch(() => {});
     engine<{ devices: string[]; default: string | null }>("devices")
       .then((d) => { devices = d.devices; defaultDevice = d.default; })
       .catch(() => {});
@@ -153,7 +203,7 @@
 
   async function capture(e: KeyboardEvent) {
     if (!recording) {
-      if (e.key === "Escape" && !e.defaultPrevented) onclose();
+      if (e.key === "Escape" && !e.defaultPrevented && !deleting) onclose();
       return;
     }
     e.preventDefault();
@@ -388,7 +438,7 @@
         {:else if section === "courses"}
           <p class="lead">The language each course is taught in. Add, rename and remove courses in Stenny's window.</p>
           {#if !s.courses.length}
-            <p class="muted">No courses yet.</p>
+            <p class="muted">No courses at the moment.</p>
           {:else}
             <div class="group">
               {#each s.courses as c (c.name)}
@@ -424,11 +474,41 @@
               {/each}
             </div>
           {/if}
+          {#if past.length}
+            <h2>Past courses</h2>
+            <p class="lead small">Courses you removed from the list. Their transcripts and glossaries are kept until you delete them.</p>
+            <div class="group">
+              {#each past as c (c.name)}
+                <div class="row">
+                  <div class="what">
+                    <div class="name serif course">{c.name}</div>
+                    <div class="hint">{c.lectures === 0 ? "Nothing recorded" : c.lectures === 1 ? "1 lecture" : `${c.lectures} lectures`}</div>
+                  </div>
+                  <div class="actions">
+                    <button class="pill" disabled={pastBusy !== null} onclick={() => restore(c.name)}>
+                      {pastBusy === c.name ? "One moment…" : "Bring Back"}
+                    </button>
+                    <button class="pill danger" disabled={pastBusy !== null}
+                            onclick={() => { deleting = c; deleteError = null; }}>Delete…</button>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          {/if}
         {/if}
       {/if}
     </div>
   </main>
 </div>
+
+{#if deleting}
+  {@const n = deleting.lectures}
+  <Dialog title="Delete {deleting.name}?" confirm="Delete Course" danger busy={deleteBusy} error={deleteError}
+          text={n === 0
+            ? `Nothing was recorded for it. Its settings are removed, and its glossary, if it has one, goes to the ${trashName}.`
+            : `This deletes the course and ${n === 1 ? "its lecture" : `all ${n} of its lectures`}: transcripts, summaries, audio and its glossary. Everything goes to the ${trashName}; once it's emptied, it's gone for good.`}
+          oncancel={() => (deleting = null)} onconfirm={confirmDelete} />
+{/if}
 
 <style>
   .window { display: grid; grid-template-columns: 220px minmax(0, 1fr); height: 100vh; }
@@ -461,6 +541,7 @@
   h1 { font-size: 28px; line-height: 1.1; font-weight: 440; letter-spacing: -0.02em; margin: 4px 0 18px; }
   h2 { font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin: 26px 0 8px; }
   .lead { color: var(--ink-2); margin: -6px 0 16px; line-height: 1.5; }
+  .lead.small { color: var(--muted); font-size: 12.5px; margin: 0 0 10px; }
   .muted { color: var(--muted); }
   .error { color: var(--rec); margin: 0 0 14px; }
   .foot { color: var(--muted); font-size: 12px; margin: 14px 2px 0; }
@@ -486,7 +567,11 @@
   .times { display: flex; align-items: center; gap: 8px; color: var(--muted); }
 
   .pill { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 5px 13px; font-weight: 500; flex: none; white-space: nowrap; }
-  .pill:hover { border-color: color-mix(in srgb, var(--ink) 35%, var(--line)); }
+  .pill:hover:not(:disabled) { border-color: color-mix(in srgb, var(--ink) 35%, var(--line)); }
+  .pill:disabled { opacity: 0.5; }
+  .pill.danger { color: var(--rec); }
+  .pill.danger:hover:not(:disabled) { border-color: color-mix(in srgb, var(--rec) 45%, var(--line)); }
+  .actions { display: flex; gap: 8px; flex: none; }
 
   .shortcut {
     min-width: 120px; border: 1px solid var(--line); background: var(--bg); border-radius: 8px; padding: 5px 12px;

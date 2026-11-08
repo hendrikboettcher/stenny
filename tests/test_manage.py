@@ -211,3 +211,30 @@ def test_deleting_what_isnt_there_says_so(env):
     cfg, _ = env
     with pytest.raises(manage.ManageError, match="no talk called"):
         manage.delete_course(cfg, "Nope", event=True)
+
+
+def test_trash_on_windows_uses_the_recycle_bin(tmp_path, monkeypatch):
+    """On Windows the files go to the Recycle Bin through PowerShell, the paths as JSON in an environment variable
+    (never in the command line, so no quoting can break); an error it reports becomes a ManageError."""
+    import subprocess
+    import sys
+    a, b = tmp_path / "Lectures" / "Kurs", tmp_path / "Ä ü's file.md"
+    a.mkdir(parents=True)
+    b.write_text("x")
+    calls = []
+
+    def run(cmd, **kw):
+        calls.append((cmd, kw))
+        return subprocess.CompletedProcess(cmd, 0, stdout=calls[0][1].get("stdout_reply", ""), stderr="")
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(subprocess, "run", run)
+    manage.trash([a, b, tmp_path / "gone"])
+    cmd, kw = calls[0]
+    assert cmd[0] == "powershell.exe" and cmd[-1] == manage.RECYCLE_PS and "SendToRecycleBin" in cmd[-1]
+    assert json.loads(kw["env"]["STENNY_TRASH"]) == [str(a), str(b)]  # what doesn't exist is left out
+    assert all(str(a) not in part for part in cmd)
+
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, stdout="x: in use\n", stderr=""))
+    with pytest.raises(manage.ManageError, match="in use"):
+        manage.trash([a])

@@ -152,7 +152,7 @@ def add_course(cfg, params: dict) -> dict:
 
 
 def remove_course(cfg, params: dict) -> dict:
-    """A course out of the menu and calendar matching; its recordings stay, under Past Courses."""
+    """A course out of the menu and calendar matching; its recordings stay, under Past courses in Settings."""
     from . import courses
     return {"message": _managed(courses.hide, cfg, params["course"])}
 

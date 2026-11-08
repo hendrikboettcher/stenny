@@ -1,6 +1,7 @@
 """Renaming and deleting from Stenny's window: a lecture's own title, a course's (or talk's) name, a lecture.
 
-Nothing is deleted for good: deleted files go to the macOS Trash (with Finder's Put Back). A course rename moves
+Nothing is deleted for good: deleted files go to the Trash on macOS (with Finder's Put Back) and the Recycle Bin
+on Windows (with Restore). A course rename moves
 everything that carries its name, so Obsidian, Claude and the window keep agreeing:
 - the vault: the course folder, each lecture's files ("<Course> <date>.md" …), the names and links inside them
   (frontmatter, titles, [[links]], the path of the raw output), the glossary; the course files are made again;
@@ -11,8 +12,10 @@ Both hold the queue lock, so no final pass starts halfway through; while one run
 """
 
 import json
+import os
 import re
 import subprocess
+import sys
 import tomllib
 import unicodedata
 from pathlib import Path
@@ -45,15 +48,43 @@ function run(argv) {
 """
 
 
+# Windows: the Recycle Bin, as Explorer's Delete does (so Restore works). The paths come in an environment variable
+# as JSON, so no quoting can go wrong; errors come back one per line, in UTF-8.
+RECYCLE_PS = r"""
+[Console]::OutputEncoding = [Text.Encoding]::UTF8
+Add-Type -AssemblyName Microsoft.VisualBasic
+$failed = @()
+foreach ($p in @($env:STENNY_TRASH | ConvertFrom-Json)) {
+  try {
+    if (Test-Path -LiteralPath $p -PathType Container) {
+      [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($p, 'OnlyErrorDialogs', 'SendToRecycleBin')
+    } else {
+      [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($p, 'OnlyErrorDialogs', 'SendToRecycleBin')
+    }
+  } catch { $failed += "${p}: $($_.Exception.Message)" }
+}
+$failed -join "`n"
+"""
+
+TRASH_NAME = "Recycle Bin" if sys.platform == "win32" else "Trash"
+
+
 def trash(items: list[Path]) -> None:
-    """Moves files and folders to the Trash (as Finder does, so Put Back works)."""
+    """Moves files and folders to the Trash on macOS (as Finder does, so Put Back works) or the Recycle Bin on
+    Windows (as Explorer does, so Restore works)."""
     items = [p for p in items if p.exists()]
     if not items:
         return
-    out = subprocess.run(["osascript", "-l", "JavaScript", "-e", TRASH_JS, *map(str, items)],
-                         capture_output=True, text=True)
+    if sys.platform == "win32":
+        out = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                              "-Command", RECYCLE_PS], capture_output=True, text=True, encoding="utf-8",
+                             errors="replace", env={**os.environ, "STENNY_TRASH": json.dumps([str(p) for p in items])},
+                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    else:
+        out = subprocess.run(["osascript", "-l", "JavaScript", "-e", TRASH_JS, *map(str, items)],
+                             capture_output=True, text=True)
     if out.returncode or out.stdout.strip():
-        raise ManageError(f"Couldn't move to the Trash: {(out.stdout or out.stderr).strip()}")
+        raise ManageError(f"Couldn't move to the {TRASH_NAME}: {(out.stdout or out.stderr).strip()}")
 
 
 # --------------------------------------------------------------------------- shared checks
@@ -177,7 +208,7 @@ def delete_lecture(cfg: Config, course: str, folder: str, event: bool = False) -
         if not target.is_event:
             course_files.rebuild(vault, target.name, log=lambda *_: None)
             course_files.rebuild_topics(vault, log=lambda *_: None)
-    return f"Moved to the Trash: {target.name}, {folder}."
+    return f"Moved to the {TRASH_NAME}: {target.name}, {folder}."
 
 
 def discard_recording(cfg: Config, course, folder: str) -> None:
@@ -394,7 +425,7 @@ def delete_course(cfg: Config, name: str, event: bool = False) -> str:
             app_live._save_consent(kept)
         if not event:
             course_files.rebuild_topics(vault, log=lambda *_: None)
-    return f"Moved {name} to the Trash."
+    return f"Moved {name} to the {TRASH_NAME}."
 
 
 def _remove_from_config(cfg: Config, name: str) -> None:
