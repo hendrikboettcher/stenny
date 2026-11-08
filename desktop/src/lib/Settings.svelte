@@ -287,6 +287,26 @@
     }
   }
 
+  // Removing the connector again, after an "are you sure" (Claude Desktop: Claude closes for a moment on macOS)
+  let connRemove = $state<"desktop" | "code" | null>(null);
+  let connRemoveBusy = $state(false);
+  let connRemoveError = $state<string | null>(null);
+
+  async function removeConnector() {
+    if (!connRemove) return;
+    connRemoveBusy = true;
+    connRemoveError = null;
+    try {
+      conn = await engine<ConnectorStatus>(connRemove === "desktop" ? "remove_connector" : "remove_from_claude_code");
+      connRemove = null;
+      done();
+    } catch (e) {
+      connRemoveError = String(e);
+    } finally {
+      connRemoveBusy = false;
+    }
+  }
+
   function openLink(url: string) {
     if (inApp) openUrl(url).catch((e) => (error = String(e)));
     else window.open(url, "_blank", "noopener");
@@ -424,7 +444,7 @@
   async function capture(e: KeyboardEvent) {
     if (!recording) {
       if (e.key === "Escape" && courseMenu) { courseMenu = null; return; }
-      if (e.key === "Escape" && !e.defaultPrevented && !deleting && !adding && !removing) onclose();
+      if (e.key === "Escape" && !e.defaultPrevented && !deleting && !adding && !removing && !connRemove) onclose();
       return;
     }
     e.preventDefault();
@@ -728,6 +748,9 @@
                     {connBusy === "install" ? t("common.oneMoment") : t("settings.claude.install")}
                   </button>
                 {/if}
+              {:else if conn?.installed}
+                <button class="pill" disabled={connBusy !== null}
+                        onclick={() => { connRemove = "desktop"; connRemoveError = null; }}>{t("settings.claude.remove")}</button>
               {/if}
             </div>
             {#if conn?.code.available}
@@ -740,6 +763,9 @@
                   <button class="pill" disabled={connBusy !== null} onclick={addToClaudeCode}>
                     {connBusy === "code" ? t("common.oneMoment") : t("settings.claude.code.add")}
                   </button>
+                {:else}
+                  <button class="pill" disabled={connBusy !== null}
+                          onclick={() => { connRemove = "code"; connRemoveError = null; }}>{t("settings.claude.remove")}</button>
                 {/if}
               </div>
             {/if}
@@ -868,6 +894,12 @@
     <div class="menu-line"></div>
     <button role="menuitem" class="danger" onclick={() => ask("delete", name)}>{t("lib.menu.deleteCourse")}</button>
   </div>
+{/if}
+
+{#if connRemove}
+  <Dialog title={t(`settings.claude.remove.${connRemove}.title`)} confirm={t("settings.claude.remove.confirm")} danger
+          busy={connRemoveBusy} error={connRemoveError} text={t(`settings.claude.remove.${connRemove}.text`)}
+          oncancel={() => (connRemove = null)} onconfirm={removeConnector} />
 {/if}
 
 {#if adding}

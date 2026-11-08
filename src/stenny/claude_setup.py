@@ -5,7 +5,7 @@
   `claude auth status`, a key is checked by listing the models (free).
 - the API key: saved to the system keychain once Anthropic accepts it (keychain.py), never to config.toml.
 - the connector: whether Claude Desktop has the Stenny extension, opening Stenny.mcpb with Claude (which shows
-  its own Install dialog), and adding it to Claude Code (`claude mcp add`).
+  its own Install dialog), and adding it to Claude Code (`claude mcp add`); removing it from both again.
 
 The app shows the states; the words for them are the app's (desktop/src/lib/locales)."""
 
@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -240,5 +241,85 @@ def add_to_claude_code(cfg) -> dict:
                            stdin=subprocess.DEVNULL)
     if p.returncode != 0:
         raise SetupError(tr("Claude Code couldn't add the connector: {error}",
+                            error=(p.stderr or p.stdout).strip()[-300:]))
+    return connector_status(cfg)
+
+
+def claude_running() -> bool:
+    """Whether the Claude desktop app is open."""
+    try:
+        if sys.platform == "win32":
+            p = subprocess.run(["tasklist", "/FI", "IMAGENAME eq Claude.exe", "/NH"], capture_output=True, text=True,
+                               timeout=10)
+            return "claude.exe" in p.stdout.lower()
+        return subprocess.run(["pgrep", "-x", "Claude"], capture_output=True, timeout=10).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def _quit_claude() -> bool:
+    """Asks Claude to quit like ⌘Q (macOS) and waits for it; True once it's closed. On Windows it's never closed
+    for the user, who closes it themselves."""
+    if sys.platform == "win32":
+        return not claude_running()
+    try:
+        subprocess.run(["osascript", "-e", 'tell application "Claude" to quit'], capture_output=True, timeout=20)
+    except subprocess.SubprocessError:
+        pass
+    for _ in range(40):
+        if not claude_running():
+            return True
+        time.sleep(0.25)
+    return False
+
+
+def remove_extension_files(data: Path) -> bool:
+    """Takes the Stenny extension out of Claude Desktop's folder, the way Claude's own Uninstall leaves it: its
+    folder, its settings, and its line in extensions-installations.json. Only while Claude is closed: it keeps
+    the list in memory and would write the extension back. False if there was none."""
+    ext = installed_extension(data)
+    if not ext:
+        return False
+    shutil.rmtree(data / "Claude Extensions" / ext["id"])
+    (data / "Claude Extensions Settings" / f"{ext['id']}.json").unlink(missing_ok=True)
+    listing = data / "extensions-installations.json"
+    try:
+        installs = json.loads(listing.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return True
+    if isinstance(installs, dict) and isinstance(installs.get("extensions"), dict) and ext["id"] in installs["extensions"]:
+        del installs["extensions"][ext["id"]]
+        tmp = listing.with_name(listing.name + ".stenny-tmp")
+        tmp.write_text(json.dumps(installs, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(listing)
+    return True
+
+
+def remove_connector(cfg) -> dict:
+    """Removes Stenny from Claude Desktop. If Claude is open it's asked to quit first and opened again afterwards
+    (macOS); on Windows the user closes it."""
+    if not installed_extension():
+        return connector_status(cfg)
+    was_open = claude_running()
+    if was_open and not _quit_claude():
+        raise SetupError(tr("Close Claude first, then try again."))
+    remove_extension_files(claude_data_dir())
+    if was_open and sys.platform != "win32":
+        subprocess.run(["open", "-a", "Claude"], capture_output=True, timeout=15)
+    return connector_status(cfg)
+
+
+def remove_from_claude_code(cfg) -> dict:
+    """`claude mcp remove --scope user stenny`: no Claude Code session gets the connector any more."""
+    exe = find_claude()
+    if not exe:
+        raise SetupError(tr("Claude Code isn't installed yet."))
+    if not _claude_code_has_it():
+        return connector_status(cfg)
+    with tempfile.TemporaryDirectory() as cwd:
+        p = subprocess.run([exe, "mcp", "remove", "--scope", "user", "stenny"], capture_output=True, text=True,
+                           timeout=30, cwd=cwd, env=claude_env(exe), stdin=subprocess.DEVNULL)
+    if p.returncode != 0:
+        raise SetupError(tr("Claude Code couldn't remove the connector: {error}",
                             error=(p.stderr or p.stdout).strip()[-300:]))
     return connector_status(cfg)
