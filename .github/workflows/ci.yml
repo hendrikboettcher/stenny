@@ -1,0 +1,74 @@
+# Stenny on macOS and Windows: the engine's tests, and the app type-checked and compiled, on every pull request
+# and push to dev/main. The Windows runners are how Windows gets tested at all (see #2); what they can't cover
+# (microphone, GPU, the installer) is said in each PR.
+name: CI
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  engine:
+    name: Engine tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: uv sync --locked --group dev
+      - name: Tests
+        run: uv run pytest -q
+
+  app:
+    name: App (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+      - name: Install
+        run: npm ci
+      - name: Type check
+        run: npm run check
+      - name: Build the interface
+        run: npm run build
+      # The bundle's helpers (stenny-agent, stenny-rec, ffmpeg) and the connector are built by their own scripts
+      # (scripts/helpers.sh, connector/build.sh), on a Mac. Compiling only needs the files to exist.
+      - name: Placeholders for the bundled helpers
+        shell: bash
+        run: |
+          triple=$(rustc -vV | sed -n 's/^host: //p')
+          ext=""; [[ "$triple" == *windows* ]] && ext=".exe"
+          mkdir -p src-tauri/binaries src-tauri/resources
+          for b in stenny-agent stenny-rec ffmpeg ffprobe; do touch "src-tauri/binaries/$b-$triple$ext"; done
+          touch src-tauri/resources/Stenny.mcpb
+      - name: Compile
+        working-directory: desktop/src-tauri
+        run: cargo check --locked --all-targets
