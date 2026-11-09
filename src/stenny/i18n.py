@@ -82,6 +82,9 @@ DE = {
     "Trash": "Papierkorb",
     "Recycle Bin": "Papierkorb",
     "Missing '{name}'.": "„{name}“ fehlt.",
+    "Talks have no glossary.": "Vorträge haben kein Glossar.",
+    "Stenny can only remember the spelling of a name or term, a few words long.":
+        "Stenny kann sich nur die Schreibweise eines Namens oder Begriffs merken, ein paar Wörter lang.",
     "Unknown method '{name}'.": "Unbekannte Methode „{name}“.",
     "Not JSON.": "Kein JSON.",
     "Something went wrong ({error}).": "Da ist etwas schiefgelaufen ({error}).",

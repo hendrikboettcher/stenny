@@ -141,3 +141,32 @@ def test_setup_status_checks_nothing_once_the_card_is_gone(cfg, monkeypatch):
     monkeypatch.setattr(claude_setup, "ai_status", lambda c: pytest.fail("checked"))
     cfg.setup_checklist = False
     assert app_server.handle(cfg, {"id": 1, "method": "setup_status"})["result"] == {"show": False}
+
+
+def test_a_fixed_name_can_become_the_courses_spelling(tmp_path, monkeypatch):
+    """"Always write it like this?" after the student fixed a word in a transcript (#20): which changes are offered,
+    and Yes puts the correction and the term into the course glossary's own sections."""
+    from stenny.glossary import Glossary
+    toml = tmp_path / "config" / "config.toml"
+    toml.parent.mkdir()
+    toml.write_text(f'folder = "{(tmp_path / "Stenny").as_posix()}"\n\n[courses."Data Analytics"]\nlanguage = "en"\n'
+                    'aliases = ["DA"]\n', encoding="utf-8")
+    monkeypatch.setenv("STENNY_CONFIG", str(toml))
+    cfg = config_mod.load()
+    edit = {"course": "DA", "before": "the bolt sano Weierstrass theorem, says bayes. the mean.",
+            "after": "the Bolzano-Weierstrass theorem, says Bayes. the median."}
+    asked = app_server.handle(cfg, {"id": 1, "method": "spelling_suggestions", "params": edit})["result"]
+    assert asked["suggestions"] == [{"wrong": "bolt sano Weierstrass", "right": "Bolzano-Weierstrass"},
+                                    {"wrong": "bayes", "right": "Bayes"}]
+    yes = app_server.handle(cfg, {"id": 2, "method": "always_spell",
+                                  "params": {"course": "DA", "wrong": "bolt sano Weierstrass", "right": "Bolzano-Weierstrass"}})
+    assert yes["result"]["course"] == "Data Analytics"
+    g = Glossary.load(tmp_path / "Stenny" / "_Glossaries" / "Data Analytics (glossary).md")  # made from the template
+    assert g.own_corrections == [("bolt sano Weierstrass", "Bolzano-Weierstrass")] and g.own_terms == ["Bolzano-Weierstrass"]
+    again = app_server.handle(cfg, {"id": 3, "method": "spelling_suggestions", "params": edit})["result"]
+    assert again["suggestions"] == [{"wrong": "bayes", "right": "Bayes"}]  # already the course's spelling
+    # talks have no glossary; a rewrite isn't a spelling
+    talk = app_server.handle(cfg, {"id": 4, "method": "spelling_suggestions", "params": {**edit, "event": True}})
+    assert talk["result"] == {"suggestions": []}
+    assert app_server.handle(cfg, {"id": 5, "method": "always_spell", "params": {
+        "course": "DA", "wrong": "the", "right": "a"}})["error"].startswith("Stenny can only remember")

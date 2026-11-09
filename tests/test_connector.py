@@ -91,7 +91,7 @@ def test_list_courses_and_lectures(cfg):
     text = connector.list_lectures(cfg, "calc")  # an alias, any case
     assert "## Lecture 1 (2026-10-20)" in text and "Topics: Limits" in text
     assert "Sections: [0:00:04] Intro; [0:11:40] Bounded sequences" in text
-    assert "Has: transcript, summary\n" in text and "Has: transcript, slides" in text
+    assert "Has: transcript, summary\n" in text and "slide" not in text.casefold()  # slides aren't part of Stenny
     assert "## Lecture 3 (2026-11-03) [not transcribed yet" in text
     assert_clean(text, cfg)
 
@@ -182,8 +182,9 @@ def test_search_falls_back_to_the_transcribed_spelling(cfg):
 
 def test_glossary(cfg):
     text = connector.get_glossary(cfg, "Calculus")
-    assert "## Terms (kept by the student)\n- epsilon-delta" in text
-    assert "- Koshi → Cauchy" in text and "(none)" in text
+    assert "## Terms (the student's)\n- epsilon-delta" in text
+    assert "## Corrections (the student's)\n- Koshi → Cauchy" in text and "(none)" in text
+    assert "slide" not in text.casefold()
     assert connector.get_glossary(cfg, "Some Talk") == "Some Talk has no glossary yet."
 
 
@@ -196,21 +197,52 @@ def test_slides_text(cfg):
     assert "has no slides" in connector.get_slides_text(cfg, "Calculus", "1")
 
 
-def test_suggested_terms_need_evidence_and_touch_only_the_automatic_section(cfg):
+def test_suggested_terms_are_taken_as_given_into_the_automatic_section(cfg):
     path = cfg.folder / "_Glossaries" / "Calculus (glossary).md"
     text = connector.suggest_glossary_terms(
-        cfg, "Calculus", ["Bolzano-Weierstrass", "Intermediate Value Theorem", "Hilbert", "epsilon-delta", "Koshi"])
-    assert "Added to Calculus's glossary (Terms added automatically): Bolzano-Weierstrass, Intermediate Value Theorem" in text
-    assert "Already in the glossary: epsilon-delta, Koshi." in text
-    assert "Not added (not on the slides, and not transcribed this way at least twice): Hilbert." in text
+        cfg, "Calculus", ["Bolzano-Weierstrass", "Hilbert", "epsilon-delta", "Koshi", "mean", "[[Link]]"])
+    assert "Added to Calculus's glossary (Terms added automatically): Bolzano-Weierstrass, Hilbert" in text
+    assert "Already in the glossary (or corrected away by a correction): epsilon-delta, Koshi." in text
+    assert "Not added: mean (a common word" in text and "[[Link]] (not a name or term" in text
     after = path.read_text(encoding="utf-8")
-    assert after.startswith(GLOSSARY.split("## Corrections")[0])  # the person's part is untouched
+    assert after.startswith(GLOSSARY.split("## Corrections")[0])  # the student's part is untouched
     assert after.rstrip().endswith("## Corrections\n- Koshi → Cauchy")
-    assert "## Terms (added automatically)" in after and "- Bolzano-Weierstrass" in after and "Hilbert" not in after
+    assert "## Terms (added automatically)" in after and "- Hilbert" in after  # no evidence needed any more
     again = connector.suggest_glossary_terms(cfg, "Calculus", ["Bolzano-Weierstrass"])
-    assert "Already in the glossary: Bolzano-Weierstrass." in again and path.read_text(encoding="utf-8") == after
+    assert "Already in the glossary" in again and path.read_text(encoding="utf-8") == after
     with pytest.raises(ConnectorError, match="talk"):
         connector.suggest_glossary_terms(cfg, "Some Talk", ["Something"])
+
+
+def test_suggested_corrections_are_taken_as_given_and_never_beat_the_students(cfg):
+    from stenny.glossary import Glossary
+
+    path = cfg.folder / "_Glossaries" / "Calculus (glossary).md"
+    text = connector.suggest_glossary_corrections(cfg, "Calculus", [
+        "Bolzano Weierstrass → Bolzano-Weierstrass", "Hilbird -> Hilbert", "Koshi → Kauchy", "Cauchy → Cauchie",
+        "the → a", "no arrow here", "one two three four five six → seven"])
+    assert "Added to Calculus's glossary: Bolzano Weierstrass → Bolzano-Weierstrass; Hilbird → Hilbert." in text
+    assert "Koshi → Kauchy (the student corrects 'Koshi' to 'Cauchy' themselves)" in text
+    assert "Cauchy → Cauchie (the student lists 'Cauchy' as a correct spelling)" in text
+    assert "the → a ('the' is too common a word" in text and "no arrow here (write it as" in text
+    assert "(too long for a spelling fix" in text
+    after = path.read_text(encoding="utf-8")
+    assert after.startswith(GLOSSARY.split("## Corrections")[0])  # the student's part is untouched
+    assert "## Corrections\n- Koshi → Cauchy\n\n## Corrections (added automatically)" in after
+    g = Glossary.load(path)
+    assert g.own_corrections == [("Koshi", "Cauchy")]
+    assert g.auto_corrections == [("Bolzano Weierstrass", "Bolzano-Weierstrass"), ("Hilbird", "Hilbert")]
+    assert {"Bolzano-Weierstrass", "Hilbert"} <= set(g.auto_terms)  # the right spellings go into Whisper's prompt
+    # applied word for word, the student's first
+    assert g.apply_corrections("Koshi and Hilbird, Bolzano Weierstrass.")[0] == \
+        "Cauchy and Hilbert, Bolzano-Weierstrass."
+    # Claude may change its own correction, and says when nothing changed
+    assert "Replaced an earlier automatic correction: Hilbird → Hilbertt." in \
+        connector.suggest_glossary_corrections(cfg, "Calculus", ["Hilbird → Hilbertt"])
+    assert "Already in the glossary: Hilbird → Hilbertt." in \
+        connector.suggest_glossary_corrections(cfg, "Calculus", ["Hilbird → Hilbertt"])
+    with pytest.raises(ConnectorError, match="talk"):
+        connector.suggest_glossary_corrections(cfg, "Some Talk", ["a b → c"])
 
 
 def test_mcp_server_serves_the_tools(cfg):
@@ -219,6 +251,8 @@ def test_mcp_server_serves_the_tools(cfg):
     from stenny.mcp_server import build
 
     server = build()
+    assert "slide" not in server.instructions.casefold()
+    assert "suggest_glossary_corrections" in server.instructions
     assert "search_lectures" in server.instructions and "name the lecture once" in server.instructions \
         and "at most once per point" in server.instructions and "[1:58:41]" in server.instructions
 
@@ -232,9 +266,11 @@ def test_mcp_server_serves_the_tools(cfg):
 
     tools, hit, bad, prompt = asyncio.run(session())
     assert set(tools) == {"list_courses", "list_lectures", "get_transcript", "get_summary", "search_lectures",
-                          "get_glossary", "get_slides_text", "suggest_glossary_terms"}
-    assert all(t.annotations.read_only_hint for name, t in tools.items() if name != "suggest_glossary_terms")
-    assert not tools["suggest_glossary_terms"].annotations.read_only_hint
+                          "get_glossary", "suggest_glossary_terms", "suggest_glossary_corrections"}
+    writes = {"suggest_glossary_terms", "suggest_glossary_corrections"}
+    assert all(t.annotations.read_only_hint for name, t in tools.items() if name not in writes)
+    assert not any(tools[name].annotations.read_only_hint for name in writes)
+    assert not any("slide" in (t.description or "").casefold() for t in tools.values())
     assert not hit.is_error and "Calculus, Lecture 1 (2026-10-20) [0:25:00]" in hit.content[0].text
     assert bad.is_error and "Known: Calculus" in bad.content[0].text
     assert "study Calculus" in prompt.messages[0].content.text
