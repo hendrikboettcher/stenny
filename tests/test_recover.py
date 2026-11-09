@@ -100,7 +100,25 @@ def test_memory_check_needs_normal_pressure_and_room(monkeypatch):
     assert not resources.enough_memory_for_final_pass()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="reads vm_stat and sysctl, macOS only for now (#2)")
+def test_windows_memory_load_reads_as_pressure(monkeypatch):
+    from types import SimpleNamespace
+    monkeypatch.setattr(resources, "sys", SimpleNamespace(platform="win32"))
+    status = SimpleNamespace(dwMemoryLoad=50, ullAvailPhys=6 * resources.GB)
+    monkeypatch.setattr(resources, "_windows_memory_status", lambda: status)
+    assert resources.memory_pressure() == resources.PRESSURE_NORMAL
+    assert resources.available_memory() == 6 * resources.GB
+    assert resources.enough_memory_for_final_pass()
+    status.dwMemoryLoad = resources.WINDOWS_LOAD_WARNING
+    assert resources.memory_pressure() == resources.PRESSURE_WARNING
+    assert not resources.enough_memory_for_final_pass()
+    status.dwMemoryLoad = resources.WINDOWS_LOAD_CRITICAL
+    assert resources.memory_pressure() == resources.PRESSURE_CRITICAL
+    monkeypatch.setattr(resources, "_windows_memory_status", lambda: None)  # unreadable: don't hold anything up
+    assert resources.memory_pressure() == resources.PRESSURE_NORMAL
+    assert resources.available_memory() == resources.MEMORY_FOR_FINAL_PASS
+
+
+@pytest.mark.skipif(sys.platform not in ("darwin", "win32"), reason="memory readings exist for macOS and Windows")
 def test_the_real_readings_make_sense():
     assert resources.memory_pressure() in (1, 2, 4)
     assert 0 < resources.available_memory() < 1024 * resources.GB

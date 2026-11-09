@@ -25,7 +25,9 @@ TICK_S = 0.002  # real seconds per simulated block (0.1 s): slow enough that a b
 class FakeMic:
     """Writes speech-like noise to the recording file like ffmpeg does, with a 0.5 s pause every 4 s.
     A background clock advances simulated time (0.1 s per ~2 ms) whether or not it is recording. It counts whole
-    blocks, so 33 blocks are exactly 3.3 s (adding 0.1 up gives 3.3000000000000016)."""
+    blocks, so 33 blocks are exactly 3.3 s (adding 0.1 up gives 3.3000000000000016). The clock starts when the
+    session first starts the microphone: 0 s is the start of the recording, however long setting up the session
+    took (Windows' file system is slower at it, which used to put the start at 0.3–0.9 s)."""
 
     name, clock_rate, restartable = "fake mic", 1.0, True
     microphone = "Alex’s iPhone Microphone"
@@ -39,7 +41,7 @@ class FakeMic:
         self.finished = False
         self.twins = []         # FakeBackup microphones hearing the same room on the same clock
         self.lock = threading.Lock()
-        threading.Thread(target=self._clock, daemon=True).start()
+        self.clock = threading.Thread(target=self._clock, daemon=True)
 
     @property
     def t(self) -> float:
@@ -97,6 +99,8 @@ class FakeMic:
         with self.lock:
             self.out = open(path, "ab")
             self.running, self.warming = True, self.startup_blocks
+        if not self.clock.is_alive():  # once: it goes on through stops and restarts
+            self.clock.start()
 
     def stop(self):
         with self.lock:
