@@ -11,8 +11,9 @@ Share panel in `windows_share.rs`), file paths and labels handle both ("Show in 
 whatever couldn't be tested on Windows is said so. Still Mac-only, each needing a Windows version: transcription
 (mlx-whisper, Metal; faster-whisper is there for Windows but not yet tried on a PC), the microphone recorder
 (`stenny-rec`; its WASAPI twin `stenny-rec.exe` in `desktop/stenny-rec` is there but not yet tried with a real
-microphone), the Swift helper `stenny-agent` (pause shortcut, calendar,
-lecture notifications, open at login, PDF for Share…), and the old Swift app in `app/`.
+microphone), the calendar and its lecture notifications (`stenny-agent`; on Windows the app does the agent's other
+work itself: pause shortcut, open at login, PDF for Share… in `windows_agent.rs` / `windows_pdf.rs`, not yet tried
+on a PC), and the old Swift app in `app/`.
 
 ## Goals (in priority order)
 1. **Nothing from the lecture is lost.** The raw Whisper output is always kept as its own file. Post-processing may structure the text but must never invent, drop or paraphrase content.
