@@ -369,6 +369,20 @@ def cmd_queue(args) -> None:
         return
     if not items:
         return
+    if not lecture:
+        return run_queue(cfg, args, items)
+    # "being made" at once, also when started from a terminal (the app's finish_now marks it before starting this);
+    # anything that stops the pass before it begins (another one running, the model not loading) makes it wait again
+    mark_job_draft(cfg, items[0], "finalizing")
+    try:
+        run_queue(cfg, args, items, lecture=True)
+    except BaseException:
+        mark_job_draft(cfg, items[0], "queued")  # no-op once the job is done or failed (its file is gone then)
+        raise
+
+
+def run_queue(cfg, args, items: list[Path], lecture: bool = False) -> None:
+    """cmd_queue's work: `items` (just the one lecture's job), or with `lecture` False every pending job."""
     if args.scheduled:
         if cfg.require_ac_for_queue and not jobs.on_ac_power():
             return
