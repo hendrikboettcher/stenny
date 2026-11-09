@@ -18,6 +18,7 @@ export interface Entry {
   transcript: string;
   summary: string | null;
   live?: Live;              // only the recording that is running now (app_server._with_live)
+  final_pass?: FinalPass | null; // "finalizing": how far it is (null before it reports anything)
 }
 
 // The running recording, as the menu bar sees it: its length (pauses left out) and whether it is counting up now,
@@ -28,6 +29,15 @@ export interface Live {
   draft: boolean;
   transcribing: boolean;
   warning: string;
+}
+
+// How far a final pass is (src/stenny/progress.py): the banner, the list's row and the activity bar read the same
+export interface FinalPass {
+  step: "transcribing" | "tidying" | "saving";
+  fraction: number;       // 0…1 of the whole pass
+  at: number;             // lecture seconds transcribed so far
+  of: number;             // the lecture's length in seconds
+  left_s: number | null;  // seconds of transcribing left, once the speed is known
 }
 
 export interface Library {

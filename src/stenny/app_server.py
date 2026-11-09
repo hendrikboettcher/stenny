@@ -66,9 +66,27 @@ def _entry(cfg, params: dict) -> dict:
 
 
 def library(cfg, params: dict) -> dict:
-    """Every lecture and talk (oldest first within a course) and the courses in the config."""
-    return {"entries": _with_live(share.library(cfg)),
+    """Every lecture and talk (oldest first within a course) and the courses in the config. A lecture whose final
+    pass runs has `final_pass`: how far it is (progress.read), or None before it reports anything; the recording
+    that runs now has `live` (_with_live)."""
+    entries = _with_live(share.library(cfg))
+    for entry in entries:
+        if entry["status"] == "finalizing":
+            entry["final_pass"] = final_pass(cfg, entry)
+    return {"entries": entries,
             "courses": [{"name": c.name, "hidden": c.hidden} for c in cfg.courses.values()]}
+
+
+def _data_base(cfg, entry: dict) -> Path | None:
+    """Where a lecture's files in the data place start (`<data>/<Course>/<folder>`), None for an unknown course."""
+    course = cfg.event(entry["course"]) if entry["kind"] == "event" else cfg.courses.get(entry["course"])
+    return cfg.data_for(course) / entry["folder"] if course is not None else None
+
+
+def final_pass(cfg, entry: dict) -> dict | None:
+    from .progress import progress_path, read
+    base = _data_base(cfg, entry)
+    return read(progress_path(base.parent, base.name)) if base else None
 
 
 SUMMARY_NOTE = re.compile(r"^> AI-generated summary .*?(?=\n\n|\Z)", re.S)
@@ -91,10 +109,9 @@ def progress(cfg, entry: dict) -> str | None:
     from .pipeline import ChunkCache
     from .textproc import fmt_hms, to_paragraphs
 
-    course = cfg.event(entry["course"]) if entry["kind"] == "event" else cfg.courses.get(entry["course"])
-    if course is None:
+    base = _data_base(cfg, entry)
+    if base is None:
         return None
-    base = cfg.data_for(course) / entry["folder"]
     cache = ChunkCache(Path(f"{base}.chunks.jsonl"))
     if not cache.chunks:
         return None
