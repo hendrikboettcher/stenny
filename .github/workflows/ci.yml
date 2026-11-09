@@ -93,7 +93,7 @@ jobs:
   installers:
     name: Installer (${{ matrix.os }})
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-    needs: [engine, app]
+    needs: app  # not engine: a failing engine test shouldn't hide whether the installers build
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
