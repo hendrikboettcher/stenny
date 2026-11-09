@@ -176,7 +176,14 @@ def places() -> dict[str, str | None]:
 
 
 def bundled(name: str) -> str | None:
-    """A helper program inside the installed Stenny.app (your own copy first, on a shared Mac)."""
+    """A helper program that came with the installed app: on a Mac inside Stenny.app (your own copy first, on a
+    shared Mac), on Windows next to Stenny.exe (`name`.exe; Tauri puts the bundle's helpers there)."""
+    if _windows():
+        for folder in app_dirs_windows():
+            program = folder / f"{name}.exe"
+            if program.is_file():
+                return str(program)
+        return None
     for apps in (Path.home() / "Applications", Path("/Applications")):
         program = apps / "Stenny.app/Contents/MacOS" / name
         if os.access(program, os.X_OK):
@@ -184,6 +191,33 @@ def bundled(name: str) -> str | None:
     return None
 
 
+def app_dirs_windows() -> list[Path]:
+    """Where Stenny's Windows app may be installed, most likely first: the folder its installer recorded (the user
+    may pick another one), the setup .exe's default for one user (%LOCALAPPDATA%\\Stenny, next to Stenny's own
+    data; its uninstaller removes only its own files), the .msi's for everyone (%ProgramFiles%\\Stenny)."""
+    out: list[Path] = []
+    try:
+        import winreg
+
+        # Software\<manufacturer>\<product name>: with no `bundle.publisher` in tauri.conf.json, Tauri's installers
+        # take the identifier's middle part (eu.stenny.Stenny) as the manufacturer
+        for root in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+            for value in ("", "InstallDir"):  # the setup .exe writes the default value, the .msi "InstallDir"
+                try:
+                    with winreg.OpenKey(root, r"Software\stenny\Stenny") as key:
+                        folder = winreg.QueryValueEx(key, value)[0]
+                except OSError:
+                    continue
+                if folder:
+                    out.append(Path(str(folder).strip('"')))
+    except ImportError:  # not on Windows (tests)
+        pass
+    out.append(_env_dir("LOCALAPPDATA", "AppData/Local") / APP)
+    out.append(Path(os.environ.get("ProgramFiles") or "C:/Program Files") / APP)
+    return list(dict.fromkeys(out))
+
+
 def tool(name: str) -> str:
-    """ffmpeg or ffprobe: the one shipped with Stenny.app, else whatever is on the PATH (a developer's Mac)."""
+    """ffmpeg or ffprobe: the one shipped with the app (Stenny.app, or Stenny's folder on Windows), else whatever is
+    on the PATH (a developer's computer)."""
     return bundled(name) or name
