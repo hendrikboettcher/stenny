@@ -73,7 +73,7 @@ src/stenny/
   winsys.py       Windows' own calls (ctypes, kernel32) behind jobs.py and resources.py: priority class and background
                   mode, AC power, SetThreadExecutionState, GlobalMemoryStatusEx
   live/           live mode: sources.py (mic/file via ffmpeg), session.py (record, chunk, draft,
-                  pause/resume, spans → lecture time), control.py (Unix socket JSON API)
+                  pause/resume, spans → lecture time), control.py (JSON lines: a Unix socket, on Windows a named pipe)
 app/              Swift menu bar app (SwiftPM + build.sh): starts `stenny live`, pause shortcut (`[app] pause_shortcut`,
                   read via `stenny app-settings`, default ⌘⇧Ü), status via socket; make-cert.sh: signing certificate;
                   also builds `stenny-rec`, the native microphone recorder bundled in Stenny.app;
