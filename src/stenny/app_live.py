@@ -116,8 +116,9 @@ def microphone(cfg, params: dict) -> dict:
 
 
 def devices(cfg, params: dict) -> dict:
-    from .live.sources import default_input_device, input_devices
-    return {"devices": input_devices(), "default": default_input_device()}
+    from .live.sources import audio_devices, input_devices
+    known = audio_devices()
+    return {"devices": input_devices(known), "default": known["default"]}
 
 
 def settings(cfg, params: dict) -> dict:

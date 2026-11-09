@@ -105,22 +105,48 @@
   // `cameBack`: the window has just come back (opened, reloaded with ⌘R, shown again from the Dock or the menu
   // bar). Then a running recording is what it shows, so its text is right there. Otherwise the selection stays
   // (the refresh every few seconds never takes it away while someone is clicking around).
-  async function reload(cameBack = false) {
+  // `show`: the entry to show once it's read (the menu bar's "recording" event), in the same step, so the list never
+  // shows it with the old selection.
+  // Several reloads can be under way at once (the window's focus, the timer, the menu bar's event), and the engine
+  // answers each in its own thread: only the latest one counts, or an older answer could take a recording that just
+  // appeared away again for a moment. What an older one was asked to show, the latest one shows.
+  let reloads = 0;
+  let wanted: { cameBack: boolean; show?: (all: Entry[]) => Entry | undefined } = { cameBack: false };
+  async function reload({ cameBack = false, show }: { cameBack?: boolean; show?: (all: Entry[]) => Entry | undefined } = {}) {
+    const mine = ++reloads;
+    wanted = { cameBack: wanted.cameBack || cameBack, show: show ?? wanted.show };
+    let next: Library;
     try {
-      data = await library();
-      failed = null;
+      next = await library();
     } catch (e) {
-      failed = String(e);
+      if (mine === reloads) failed = String(e);
       return;
     }
+    if (mine !== reloads) return;
+    const asked = wanted;
+    wanted = { cameBack: false };
+    data = next;
+    failed = null;
     const all = [...groups.courses, ...groups.talks];
-    const now = cameBack ? running(data.entries) : undefined;
+    const now = asked.show?.(next.entries) ?? (asked.cameBack ? running(next.entries) : undefined);
     if (now && all.some((g) => same(g, groupOf(now)))) {
       select(now);
       return;
     }
     if (!group || !all.some((g) => same(g, group))) group = all[0] ?? null;
     if (!selected) selectedId = entries[0] ? id(entries[0]) : null;
+  }
+
+  // From the menu bar (src-tauri/src/menubar.rs): the recording's state changed. The library is read again at once;
+  // a recording that just started is shown, in its course, without waiting for a click into the window.
+  type RecordingEvent = { state: string; course: string; kind: string; transcript: string; started: boolean };
+  async function recordingChanged(r: RecordingEvent) {
+    if (r.state === "starting") return; // its transcript file isn't there yet
+    await reload({ show: r.started && !editing ? (all) => {
+      const live = all.filter((e) => e.status === "live");
+      return live.find((e) => e.transcript === r.transcript)
+        ?? live.find((e) => e.course === r.course && (e.kind === "event") === (r.kind === "event"));
+    } : undefined });
   }
 
   // The selection outlives the window (⌘R, quitting): it opens where it was when nothing records.
@@ -185,8 +211,10 @@
     if (suggestion && groups.courses.some((g) => g.course === suggestion!.course)) return { kind: "suggestion", ...suggestion };
     return null;
   });
-  const barEntry = (g: Group, folder?: string) =>
-    folder ? data?.entries.find((e) => e.course === g.course && (e.kind === "event") === g.event && e.folder === folder) : undefined;
+  // a recording by its course or talk and folder, in a library list (for reload's `show`, too)
+  const inLibrary = (g: Group, folder?: string) => (all: Entry[]) =>
+    folder ? all.find((e) => same(groupOf(e), g) && e.folder === folder) : undefined;
+  const barEntry = (g: Group, folder?: string) => inLibrary(g, folder)(data?.entries ?? []);
   // "Data Engineering · Lecture 2" (its own title if it has one), a talk by its name
   function barName(g: Group, folder?: string, n?: number) {
     const e = barEntry(g, folder);
@@ -223,22 +251,20 @@
     const key = `${live.state}/${live.course ?? ""}/${live.folder ?? ""}`;
     if (key === seenLive) return;
     seenLive = key;
-    untrack(async () => {
-      await reload();
-      // started here: the new recording is selected as soon as the library has it
-      if (follow && liveGroup && live.folder && barEntry(liveGroup, live.folder)) {
-        follow = false;
-        showRecording(liveGroup, live.folder);
-      }
+    untrack(() => {
+      // started here: the new recording is selected as soon as the library has it (in the app the menu bar's
+      // "recording" event does that too, see recordingChanged; a browser during development only has this)
+      const find = follow && liveGroup ? inLibrary(liveGroup, live.folder) : undefined;
+      reload({ show: find && ((all) => { const e = find(all); if (e) follow = false; return e; }) });
     });
   });
 
   // "Show": that course and its recording, wherever the window is
   async function showRecording(g: Group, folder?: string) {
-    if (folder && !barEntry(g, folder)) await reload();
     const e = barEntry(g, folder);
-    if (e) select(e);
-    else pick(g);  // not in the library yet: the course, its newest recording
+    if (e) return select(e);
+    if (folder) await reload({ show: inLibrary(g, folder) }); // just started: read the library, select it in one step
+    if (!barEntry(g, folder)) pick(g);  // still not there: the course, its newest recording
   }
 
   function showBarError(e: unknown) {
@@ -280,21 +306,25 @@
   // The summary of the selected recording, or its text so far while it has no transcript yet (looked at again
   // every 10 s, as it grows during a recording); reloaded when the selection or its status changes. A draft that
   // only moves on (live → waiting → being made) keeps its text on screen meanwhile instead of blinking "Loading…".
+  // Otherwise "Loading…" shows only if it takes a moment: usually the text is there at once, and a word flashing up
+  // in between reads as a flicker.
   let shownDraft = ""; // id() of the draft whose text is on screen
+  let slow = $state(false);
   $effect(() => {
     const key = selectedKey;
     const entry = untrack(() => selected);
     const stillDraft = !!entry && isDraft(entry) && id(entry) === shownDraft;
     shownDraft = entry && isDraft(entry) ? id(entry) : "";
-    if (!stillDraft) untrack(() => { summary = undefined; progress = null; notice = null; shareOpen = false; });
+    if (!stillDraft) untrack(() => { summary = undefined; progress = null; notice = null; shareOpen = false; slow = false; });
     if (!key || !entry) return;
     let current = true;
     const load = () => lecture(entry)
       .then((r) => { if (current) { summary = r.summary; progress = r.progress; } })
       .catch(() => { if (current) summary = null; });
     load();
+    const wait = setTimeout(() => { if (current) slow = true; }, 400);
     const timer = isDraft(entry) ? setInterval(load, 10000) : undefined;
-    return () => { current = false; clearInterval(timer); };
+    return () => { current = false; clearTimeout(wait); clearInterval(timer); };
   });
 
   $effect(() => localStorage.setItem("withSummary", String(withSummary)));
@@ -302,7 +332,7 @@
   // While a draft waits or finishes, look again now and then, so "final" shows up by itself.
   $effect(() => {
     if (!data?.entries.some((e) => e.status === "queued" || e.status === "finalizing" || e.status === "live")) return;
-    const timer = setInterval(reload, 5000);
+    const timer = setInterval(() => reload(), 5000);
     return () => clearInterval(timer);
   });
 
@@ -324,7 +354,7 @@
 
   onMount(() => {
     lastSelection();
-    reload(true);
+    reload({ cameBack: true });
     // what's running: every second while something does (the clock), every three seconds otherwise
     let closed = false;
     let liveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -339,8 +369,9 @@
     const unlisten: (() => void)[] = [];
     if ("__TAURI_INTERNALS__" in window) {
       listen("open-settings", () => openSettings()).then((u) => unlisten.push(u));
+      listen<RecordingEvent>("recording", (e) => recordingChanged(e.payload)).then((u) => unlisten.push(u));
       // shown again from the Dock, Spotlight or the menu bar (src-tauri/src/lib.rs, `present`)
-      listen("library-shown", () => reload(true)).then((u) => unlisten.push(u));
+      listen("library-shown", () => reload({ cameBack: true })).then((u) => unlisten.push(u));
     }
     return () => {
       closed = true;
@@ -783,7 +814,7 @@
         <hr />
 
         {#if summary === undefined}
-          <p class="quiet serif">{t("common.loading")}</p>
+          <p class="quiet serif" class:hidden={!slow}>{t("common.loading")}</p>
         {:else if isDraft(selected)}
           {#if progress}
             <div class="kicker">{t("lib.soFar")}</div>
@@ -1105,6 +1136,7 @@
 
   hr { border: 0; border-top: 1px solid var(--line); margin: 30px 0 26px; }
   .quiet { color: var(--muted); }
+  .hidden { visibility: hidden; }  /* keeps its line, so nothing moves when it shows */
   .detail .kicker { margin-bottom: 4px; }
 
   .summary { font-size: 16px; line-height: 1.6; }
