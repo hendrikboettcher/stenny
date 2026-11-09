@@ -96,12 +96,21 @@ def cmd_where(args) -> None:
 def cmd_download_model(args) -> None:
     """Download the Whisper model now (with progress), instead of silently during the first transcription."""
     from .config import Config
+    from .engines import resolve
     try:
-        model = config_mod.load().model
+        cfg = config_mod.load()
+        model, engine = cfg.model, cfg.engine
     except ConfigError:
-        model = Config.model
+        model, engine = Config.model, Config.engine
     if Path(model).expanduser().exists():
         print(f"The model is a local folder, nothing to download: {model}")
+        return
+    if resolve(engine) == "faster-whisper":  # Windows: CTranslate2's version of the model, in Stenny's Models folder
+        from .engines import faster_engine
+        where = paths.models_dir() or Path("~/.cache/huggingface")
+        print(f"Downloading Whisper {faster_engine.model_name(model)} (about 1.6 GB for large-v3-turbo) to "
+              f"{where} …")
+        print(f"Done: {faster_engine.download(model)}")
         return
     from huggingface_hub import snapshot_download
     print(f"Downloading {model} (about 1.6 GB for large-v3-turbo) to ~/.cache/huggingface …")
@@ -498,13 +507,22 @@ def cmd_live(args) -> None:
     from .engines import get_engine
     from .live.control import ControlServer, is_running
     from .live.session import LiveSession
-    from .live.sources import FileSource, make_backup, make_mic
+    from .live.sources import FileSource, audio_devices, make_backup, make_mic
     from .pipeline import log
 
     if is_running():
         sys.exit("A live session is already running. Use `stenny status` / `stenny stop`.")
+    # The microphone comes first: nothing here asks the system about its devices (system_profiler takes a third
+    # of a second or more, each time). The system's input device records as "default" and is named afterwards,
+    # and the backup microphone joins a moment after the main one (after_start).
     source = FileSource(args.file, args.speed) if args.file else make_mic(args.device or cfg.live_device, cfg.live_recorder)
-    backup = None if args.file else make_backup(args.backup or cfg.live_backup, source)
+
+    def after_start(session) -> None:
+        devices = audio_devices()
+        session.name_microphone(devices["default"])
+        if backup := make_backup(args.backup or cfg.live_backup, source, devices):
+            session.attach_backup(backup)
+
     recover_sessions(cfg)
     cfg.data_dir.mkdir(parents=True, exist_ok=True)
     if (free := resources.free_disk(cfg.data_dir)) < resources.DISK_TO_START:
@@ -512,13 +530,12 @@ def cmd_live(args) -> None:
         sys.exit(f"Only {free / resources.GB:.1f} GB free on this {computer}. A lecture needs about "
                  f"{resources.DISK_TO_START / resources.GB:.1f} GB, so free some space first.")
     engine = get_engine(cfg.model, cfg.engine)
-    session = LiveSession(cfg, course, source, engine, lang=args.lang, draft=cfg.live_draft and not args.no_draft,
-                          backup=backup)
+    session = LiveSession(cfg, course, source, engine, lang=args.lang, draft=cfg.live_draft and not args.no_draft)
     server = ControlServer(session)
     jobs.keep_awake()  # on battery macOS idle-sleeps after a few minutes; closing the lid still sleeps
     try:
         log("Controls: `stenny pause` / `stenny resume` / `stenny toggle` / `stenny stop` (or Stenny, ⌘⇧Ü)")
-        session.run()
+        session.run(after_start=None if args.file else after_start)
         if session.cancelled:
             discard(session, cfg)
         else:
@@ -527,8 +544,48 @@ def cmd_live(args) -> None:
         server.close()
 
 
+def _windows_recorders() -> list[tuple[int, str]]:
+    """Windows: (process id, command line) of each process whose command line names stenny-rec, through CIM (what
+    Task Manager shows; wmic is gone from current Windows)."""
+    script = ("[Console]::OutputEncoding = [Text.Encoding]::UTF8; "
+              "@(Get-CimInstance Win32_Process -Filter \"CommandLine LIKE '%stenny-rec%'\" | "
+              "Select-Object ProcessId, CommandLine) | ConvertTo-Json -Compress")
+    try:
+        out = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script], capture_output=True,
+                             text=True, encoding="utf-8", errors="replace", timeout=60,
+                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
+        found = json.loads(out or "[]")
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return []
+    found = found if isinstance(found, list) else [found]
+    return [(int(p["ProcessId"]), p.get("CommandLine") or "") for p in found if isinstance(p, dict)]
+
+
+def _end_windows_process(pid: int) -> None:
+    """An orphaned recorder's stdin is closed, so it can't be asked to stop: end it (what it wrote is on disk)."""
+    import ctypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.restype = ctypes.c_void_p
+    handle = kernel32.OpenProcess(0x0001 | 0x00100000, False, pid)  # PROCESS_TERMINATE | SYNCHRONIZE
+    if not handle:
+        return
+    try:
+        kernel32.TerminateProcess(ctypes.c_void_p(handle), 1)
+        kernel32.WaitForSingleObject(ctypes.c_void_p(handle), 3000)
+    finally:
+        kernel32.CloseHandle(ctypes.c_void_p(handle))
+
+
 def stop_orphan_recorders(*recordings: Path) -> None:
     """Recorders still writing to these files although the session that started them is gone."""
+    if sys.platform == "win32":
+        # Python started them, so their command lines quote the path the way list2cmdline does
+        needles = [f"--out {subprocess.list2cmdline([str(r)])} " for r in recordings]
+        for pid, command in _windows_recorders():
+            if any(n in f"{command} " for n in needles):
+                _end_windows_process(pid)
+        return
     out = subprocess.run(["ps", "-axo", "pid=,command="], capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
     for line in out.splitlines():
         pid, _, command = line.strip().partition(" ")
@@ -701,9 +758,10 @@ def cmd_check(args) -> None:
 
 
 def cmd_devices(args) -> None:
-    from .live.sources import default_input_device, input_devices
+    from .live.sources import audio_devices, input_devices
 
-    devices, default = input_devices(), default_input_device()
+    known = audio_devices()
+    devices, default = input_devices(known), known["default"]
     if args.json:  # for Stenny
         print(json.dumps({"devices": devices, "default": default}, ensure_ascii=False))
         return
@@ -739,7 +797,7 @@ def cmd_schedule(args) -> None:
         return
     if args.action == "install":
         path = jobs.install_agent()
-        print(f"Installed {path}: checks the queue every 15 min (runs only on AC power"
+        print(f"Installed {path}: checks the queue every {jobs.QUEUE_INTERVAL_S // 60} min (runs only on AC power"
               f"{' and at night' if load_config().night_only else ''}). Log: {jobs.LOGS_DIR / 'queue.log'}")
     else:
         print("Removed." if jobs.uninstall_agent() else "No schedule installed.")
@@ -768,6 +826,7 @@ def cmd_update(args) -> None:
         if args.check:
             print(json.dumps(update.check()))
             return
+        update.supported()
         if is_running():
             sys.exit("A recording or its final transcript is running. Update when it's finished.")
         result = update.check()

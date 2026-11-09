@@ -1,6 +1,7 @@
 //! The menu bar: Stenny's icon with the recording's clock next to it, and a classic macOS menu to start, pause,
 //! resume and stop recordings, pick the microphone and open the library. Everything goes through the engine
-//! (`stenny app-server`): `status` every second while recording, every three seconds otherwise.
+//! (`stenny app-server`): `status` every second while recording, every 200 ms while one starts (and right after
+//! Start), every three seconds otherwise. A change of state is sent to the windows as the "recording" event.
 //!
 //! Like the Swift app it replaces (app/Sources/Stenny/LectureController.swift): it asks once per course whether
 //! the lecturer agreed to being recorded; a recording that vanishes without stopping (killed, crashed) is
@@ -12,12 +13,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 use tauri::image::Image;
 use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
-use tauri::{AppHandle, Manager, Wry};
+use tauri::{AppHandle, Emitter, Manager, Wry};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind, MessageDialogResult};
 use tauri_plugin_notification::NotificationExt;
 
@@ -33,6 +34,7 @@ struct Prefs {
 #[derive(Default)]
 struct State {
     status: Value,
+    answered: Option<Instant>, // when an action (start, pause, stop …) last brought a status: older polls don't count
     shape: String, // what the menu shows, so it's only rebuilt when that changes
     courses: Vec<String>,
     devices: Vec<String>,
@@ -54,10 +56,12 @@ struct State {
     pause_accel: Option<String>,             // the pause shortcut as a physical accelerator ("Cmd+F1"), if not a character
     login: Option<String>,                   // the agent's last "login on|off|approval" (Settings asks for it)
     shortcut_problem: Option<String>,        // the agent couldn't register the pause shortcut: why
+    pause_label: Option<String>,             // Windows: the pause shortcut as registered ("Strg+Umschalt+Ü")
 }
 
 /// The pause shortcut for the menu by physical key (the agent tells which: "ready 122 ⌘F1"), for keys that aren't a
 /// single character; those go through macos.rs. Carbon key codes → the W3C key names muda uses.
+#[cfg_attr(windows, allow(dead_code))]
 fn accelerator(shortcut: &str, key_code: u32) -> Option<String> {
     let code = match key_code {
         0 => "KeyA", 11 => "KeyB", 8 => "KeyC", 2 => "KeyD", 14 => "KeyE", 3 => "KeyF", 5 => "KeyG", 4 => "KeyH",
@@ -77,6 +81,49 @@ fn accelerator(shortcut: &str, key_code: u32) -> Option<String> {
     Some(format!("{}+{code}", mods.join("+")))
 }
 
+/// The pause shortcut from config.toml ("cmd+shift+ü") as Windows has it: ⌘ is Ctrl there, ⌥ is Alt. The key is
+/// as printed on the keyboard ("ü", "space", "f5"). None if it isn't one (config.py's parse_shortcut is the rule).
+#[cfg_attr(not(windows), allow(dead_code))]
+#[derive(Debug, PartialEq)]
+pub(crate) struct ShortcutParts {
+    pub ctrl: bool,
+    pub alt: bool,
+    pub shift: bool,
+    pub key: String,
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn shortcut_parts(shortcut: &str) -> Option<ShortcutParts> {
+    let lower = shortcut.trim().to_lowercase();
+    let (mods, key) = match lower.strip_suffix("++") {
+        Some(mods) => (mods, "+"), // "cmd+shift++": the key is "+" itself
+        None => lower.rsplit_once('+')?,
+    };
+    let mut parts = ShortcutParts { ctrl: false, alt: false, shift: false, key: key.to_string() };
+    for m in mods.split('+') {
+        match m {
+            "cmd" | "command" | "ctrl" | "control" => parts.ctrl = true,
+            "opt" | "option" | "alt" => parts.alt = true,
+            "shift" => parts.shift = true,
+            _ => return None,
+        }
+    }
+    (parts.ctrl || parts.alt).then_some(parts).filter(|p| !p.key.is_empty())
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+impl ShortcutParts {
+    /// As Windows writes it, in Stenny's language: "Ctrl+Shift+Ü", "Strg+Umschalt+Ü".
+    pub fn label(&self, key: &str) -> String {
+        let mut names = Vec::new();
+        if self.ctrl { names.push(tr!("key.ctrl")); }
+        if self.alt { names.push(tr!("key.alt")); }
+        if self.shift { names.push(tr!("key.shift")); }
+        names.push(key.to_string());
+        names.join("+")
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 struct Suggestion {
     course: String,
@@ -84,7 +131,14 @@ struct Suggestion {
 }
 
 #[derive(Default)]
-pub struct MenuBar(Mutex<State>);
+pub struct MenuBar(Mutex<State>, Wake);
+
+/// Wakes the polling thread before its interval is up: after Start, so "recording" shows as soon as it is true.
+#[derive(Default)]
+struct Wake {
+    asked: Mutex<bool>,
+    signal: Condvar,
+}
 
 fn engine(app: &AppHandle) -> Arc<Engine> {
     app.state::<Arc<Engine>>().inner().clone()
@@ -134,7 +188,33 @@ fn icon(name: &str) -> Image<'static> {
         "starting" => include_bytes!("../icons/tray-starting.png"),
         _ => include_bytes!("../icons/tray.png"),
     };
-    Image::from_bytes(bytes).expect("tray icon")
+    let image = Image::from_bytes(bytes).expect("tray icon");
+    #[cfg(windows)]
+    let image = notification_area_icon(&image, crate::windows_agent::dark_taskbar());
+    image
+}
+
+/// Windows: the menu bar's icon (black, macOS draws it as a template) for the notification area, which wants it
+/// square and has no templates: centred on a square, and white when the taskbar is dark.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn notification_area_icon(image: &Image<'_>, white: bool) -> Image<'static> {
+    let (width, height) = (image.width() as usize, image.height() as usize);
+    let side = width.max(height);
+    let (dx, dy) = ((side - width) / 2, (side - height) / 2);
+    let mut rgba = vec![0u8; side * side * 4];
+    for y in 0..height {
+        for x in 0..width {
+            let from = &image.rgba()[(y * width + x) * 4..][..4];
+            let to = &mut rgba[((y + dy) * side + x + dx) * 4..][..4];
+            to.copy_from_slice(from);
+            if white {
+                for c in &mut to[..3] {
+                    *c = 255 - *c;
+                }
+            }
+        }
+    }
+    Image::new_owned(rgba, side as u32, side as u32)
 }
 
 fn notify(app: &AppHandle, message: &str) {
@@ -188,7 +268,12 @@ fn build_menu(app: &AppHandle, st: &State) -> tauri::Result<(Menu<Wry>, MenuItem
 
     if active {
         let pause = if state == "paused" { tr!("menu.resume") } else { tr!("menu.pause") };
-        items.push(Box::new(MenuItem::with_id(app, "toggle", label(pause), true, st.pause_accel.as_deref())?));
+        // Windows: the shortcut after a tab, where menus show one (it's global, not the menu's own accelerator)
+        let pause = match &st.pause_label {
+            Some(shortcut) if cfg!(windows) => format!("{}\t{shortcut}", label(pause)),
+            _ => label(pause),
+        };
+        items.push(Box::new(MenuItem::with_id(app, "toggle", pause, true, st.pause_accel.as_deref())?));
         items.push(Box::new(MenuItem::with_id(app, "stop", label(tr!("menu.stop")), true, None::<&str>)?));
         items.push(Box::new(PredefinedMenuItem::separator(app)?));
     } else if state == "idle" || state.is_empty() {
@@ -281,7 +366,8 @@ pub(crate) fn redraw(app: &AppHandle, force: bool) {
         "recording" => ("recording", Some(clock(num(&s, "elapsed_s") - num(&s, "paused_s")))),
         "paused" => ("paused", Some(clock(num(&s, "elapsed_s") - num(&s, "paused_s")))),
         "stopping" | "cancelling" | "finalizing" | "done" => ("finishing", None),
-        "starting" => ("starting", None),
+        // the clock is there the moment Start is clicked, while the recorder comes up
+        "starting" => ("starting", Some(clock(0.0))),
         _ => ("idle", None),
     };
     if st.icon != name {
@@ -290,6 +376,15 @@ pub(crate) fn redraw(app: &AppHandle, force: bool) {
         let _ = tray.set_icon_as_template(true);
     }
     let _ = tray.set_title(title.as_deref());
+    // Windows shows no text next to the icon: the clock and the status line are its tooltip
+    #[cfg(windows)]
+    {
+        let tip = match &title {
+            Some(clock) => format!("Stenny · {clock} · {}", status_line(&st)),
+            None => format!("Stenny · {}", status_line(&st)),
+        };
+        let _ = tray.set_tooltip(Some(tip.chars().take(127).collect::<String>()));
+    }
     let new_shape = shape(&st);
     if force || new_shape != st.shape || st.status_item.is_none() {
         st.shape = new_shape;
@@ -333,14 +428,32 @@ fn load_lists(app: &AppHandle) {
     st.lists_loaded = Some(Instant::now());
 }
 
-/// One status answer: notes and warnings, the "vanished recording" check, then the menu bar.
-fn update(app: &AppHandle, status: Value) {
+/// One status answer: notes and warnings, the "vanished recording" check, then the menu bar and the windows.
+/// `asked`: when the polling thread asked for it; None for the answer to an action (start, pause, stop …). A poll
+/// asked before the last action's answer came is older than what the menu shows: it would show "idle" again for a
+/// moment right after Start.
+fn update(app: &AppHandle, status: Value, asked: Option<Instant>) {
     let bar = app.state::<MenuBar>();
     let mut vanished = None;
     let mut messages = Vec::new();
+    let changed;
     {
         let mut st = bar.0.lock().unwrap();
+        match asked {
+            Some(t) if st.answered.is_some_and(|a| a > t) => return,
+            Some(_) => {}
+            None => st.answered = Some(Instant::now()),
+        }
         let state = str_of(&status, "state").to_string();
+        let before = str_of(&st.status, "state").to_string();
+        // the library window (routes/+page.svelte) reads the library again: a new recording shows at once
+        changed = (state != before).then(|| json!({
+            "state": state,
+            "course": str_of(&status, "course"),
+            "kind": str_of(&status, "kind"),
+            "transcript": str_of(&status, "transcript"),
+            "started": state == "recording" && matches!(before.as_str(), "idle" | "" | "starting"),
+        }));
         if let Some(error) = status.get("error").and_then(Value::as_str) {
             messages.push((true, tr!("note.didntStart", error = error))); // a dialog, not a notification
         }
@@ -390,6 +503,16 @@ fn update(app: &AppHandle, status: Value) {
         std::thread::spawn(move || handle_vanished(&app, course, event, was_recording));
     }
     redraw(app, false);
+    if let Some(payload) = changed {
+        let _ = app.emit("recording", payload);
+    }
+}
+
+/// The polling thread asks again now instead of when its interval is up.
+fn wake(app: &AppHandle) {
+    let bar = app.state::<MenuBar>();
+    *bar.1.asked.lock().unwrap() = true;
+    bar.1.signal.notify_one();
 }
 
 /// Recording again without the live draft needs far less memory; `recover` decides whether it really was a crash.
@@ -439,10 +562,21 @@ pub fn start_polling(app: AppHandle) {
         if stale {
             load_lists(&app);
         }
+        let asked = Instant::now();
         let status = engine(&app).call("status", json!({})).unwrap_or_else(|_| json!({"state": "idle"}));
-        let fast = matches!(str_of(&status, "state"), "recording" | "paused" | "starting" | "stopping" | "cancelling");
-        update(&app, status);
-        std::thread::sleep(Duration::from_secs(if fast { 1 } else { 3 }));
+        update(&app, status, Some(asked));
+        let bar = app.state::<MenuBar>();
+        // while starting, every 200 ms: the clock starts as soon as the recording does
+        let interval = match str_of(&bar.0.lock().unwrap().status, "state") {
+            "starting" => Duration::from_millis(200),
+            "recording" | "paused" | "stopping" | "cancelling" => Duration::from_secs(1),
+            _ => Duration::from_secs(3),
+        };
+        let mut woken = bar.1.asked.lock().unwrap();
+        if !*woken {
+            woken = bar.1.signal.wait_timeout(woken, interval).unwrap().0;
+        }
+        *woken = false;
     });
 }
 
@@ -497,7 +631,8 @@ pub fn start_with(app: &AppHandle, course: &str, event: bool, lang: Option<&str>
         params["llm"] = json!(false);
     }
     let status = engine(app).call("start", params)?;
-    update(app, status);
+    update(app, status, None);
+    wake(app);
     Ok(())
 }
 
@@ -527,7 +662,10 @@ fn cancel_recording(app: &AppHandle) {
 
 fn send(app: &AppHandle, cmd: &str) {
     match engine(app).call("command", json!({"cmd": cmd})) {
-        Ok(status) => update(app, status),
+        Ok(status) => {
+            update(app, status, None);
+            wake(app);
+        }
         Err(e) => notify(app, &e),
     }
 }
@@ -647,13 +785,17 @@ pub fn toggle_pause(app: &AppHandle) {
         let app = app.clone();
         std::thread::spawn(move || send(&app, "toggle"));
     } else {
+        // nothing to pause
         #[cfg(target_os = "macos")]
-        let _ = std::process::Command::new("osascript").args(["-e", "beep"]).spawn(); // nothing to pause
+        let _ = std::process::Command::new("osascript").args(["-e", "beep"]).spawn();
+        #[cfg(windows)]
+        crate::windows_agent::beep();
     }
 }
 
 /// stenny-agent (app/Sources/stenny-agent): the global pause shortcut. Next to Stenny's own program in the app
 /// bundle; $STENNY_AGENT or the Swift build folder during development.
+#[cfg(not(windows))]
 pub(crate) fn agent_path() -> Option<std::path::PathBuf> {
     let candidates = [
         std::env::var("STENNY_AGENT").ok().map(std::path::PathBuf::from),
@@ -663,6 +805,7 @@ pub(crate) fn agent_path() -> Option<std::path::PathBuf> {
     candidates.into_iter().flatten().find(|p| p.exists())
 }
 
+#[cfg(not(windows))]
 fn start_agent(app: &AppHandle) {
     let Some(exe) = agent_path() else {
         eprintln!("stenny-agent not found: no pause shortcut");
@@ -739,8 +882,56 @@ fn start_agent(app: &AppHandle) {
     });
 }
 
+/// Windows: what stenny-agent does on a Mac happens in the app (windows_agent.rs): the pause shortcut, and opening
+/// at login by default, once, for an installed copy. No calendar there (see windows_agent.rs), so no suggestion in
+/// the menu and no "Record this lecture?" notification.
+#[cfg(windows)]
+fn start_agent(app: &AppHandle) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        register_shortcut(&app);
+        let first = !app.state::<MenuBar>().0.lock().unwrap().prefs.login_item;
+        if first && crate::windows_agent::installed() && crate::windows_agent::login_item("login").is_ok() {
+            remember_login_item(&app);
+        }
+    });
+}
+
+/// Windows: registers the pause shortcut from the config (again); its problem, if it couldn't.
+#[cfg(windows)]
+fn register_shortcut(app: &AppHandle) -> Option<String> {
+    let settings = engine(app).call("settings", json!({})).unwrap_or(Value::Null);
+    let shortcut = settings.get("pause_shortcut").and_then(Value::as_str).unwrap_or("cmd+shift+ü").to_string();
+    let registered = crate::windows_agent::register_shortcut(app, &shortcut);
+    let problem = registered.as_ref().err().cloned();
+    {
+        let bar = app.state::<MenuBar>();
+        let mut st = bar.0.lock().unwrap();
+        st.pause_label = registered.ok();
+        st.shortcut_problem = problem.clone();
+    }
+    if let Some(p) = &problem {
+        notify(app, &tr!("note.shortcutBroken", problem = p));
+    }
+    redraw(app, true);
+    problem
+}
+
+/// Opened at login once (by itself or by the user): after that it's the user's choice.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn remember_login_item(app: &AppHandle) {
+    let prefs = {
+        let bar = app.state::<MenuBar>();
+        let mut st = bar.0.lock().unwrap();
+        st.prefs.login_item = true;
+        st.prefs.clone()
+    };
+    save_prefs(app, &prefs);
+}
+
 /// The agent's calendar events (on now or within 10 minutes): the first that belongs to a course becomes the
 /// menu's suggestion, announced once by a notification with "Start Recording" unless a recording runs.
+#[cfg_attr(windows, allow(dead_code))]
 fn calendar(app: &AppHandle, events: &str) {
     let Ok(Value::Array(events)) = serde_json::from_str::<Value>(events) else { return };
     let bar = app.state::<MenuBar>();
@@ -830,6 +1021,7 @@ pub fn set_microphone_pref(app: &AppHandle, device: Option<String>) {
 
 /// Sends the agent a line and waits a moment for its answer about opening at login: "on", "off" or "approval"
 /// (the user still has to allow it in System Settings). None: no agent (a --library window) or no answer.
+#[cfg(not(windows))]
 pub fn login_item(app: &AppHandle, command: &str) -> Option<String> {
     {
         let bar = app.state::<MenuBar>();
@@ -848,8 +1040,42 @@ pub fn login_item(app: &AppHandle, command: &str) -> Option<String> {
     None
 }
 
+/// Windows: the Run value in the registry (windows_agent.rs), "on" or "off". None in a --library window: opening at
+/// login is the installed Stenny's business.
+#[cfg(windows)]
+pub fn login_item(app: &AppHandle, command: &str) -> Option<String> {
+    app.tray_by_id(TRAY)?;
+    match crate::windows_agent::login_item(command) {
+        Ok(state) => {
+            if command == "login" {
+                remember_login_item(app);
+            }
+            Some(state)
+        }
+        Err(e) => {
+            alert(app, "Stenny", &e);
+            crate::windows_agent::login_item("login status").ok()
+        }
+    }
+}
+
+/// The pause shortcut as registered, for Settings: on Windows "Strg+Umschalt+Ü" (or the key right of P on a keyboard
+/// without Ü); None on a Mac, where Settings writes it from the config itself.
+pub fn pause_label(app: &AppHandle) -> Option<String> {
+    app.state::<MenuBar>().0.lock().unwrap().pause_label.clone()
+}
+
+/// Windows: the pause shortcut registered again from the config (windows_agent.rs). Its problem, if it couldn't be
+/// (another app has it). Nothing to do in a --library window: the shortcut is the installed Stenny's.
+#[cfg(windows)]
+pub fn restart_agent(app: &AppHandle) -> Option<String> {
+    app.tray_by_id(TRAY)?;
+    register_shortcut(app)
+}
+
 /// After the pause shortcut changed: the agent again, which reads it from the config. Returns its problem, if the
 /// new shortcut couldn't be registered (another app has it). Nothing to do without an agent (a --library window).
+#[cfg(not(windows))]
 pub fn restart_agent(app: &AppHandle) -> Option<String> {
     {
         let bar = app.state::<MenuBar>();
@@ -862,4 +1088,36 @@ pub fn restart_agent(app: &AppHandle) -> Option<String> {
     start_agent(app);
     std::thread::sleep(Duration::from_millis(800));
     app.state::<MenuBar>().0.lock().unwrap().shortcut_problem.clone()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shortcut_as_windows_has_it() {
+        let parts = |ctrl, alt, shift, key: &str| Some(ShortcutParts { ctrl, alt, shift, key: key.into() });
+        assert_eq!(shortcut_parts("cmd+shift+ü"), parts(true, false, true, "ü"));
+        assert_eq!(shortcut_parts("Ctrl+Opt+F5"), parts(true, true, false, "f5"));
+        assert_eq!(shortcut_parts("cmd+shift++"), parts(true, false, true, "+"));
+        assert_eq!(shortcut_parts("opt+space"), parts(false, true, false, "space"));
+        assert_eq!(shortcut_parts("shift+p"), None); // needs Ctrl or Alt too, as config.py says
+        assert_eq!(shortcut_parts("hyper+p"), None);
+        assert_eq!(shortcut_parts("p"), None);
+    }
+
+    #[test]
+    fn notification_area_icon_is_square_and_white_on_dark() {
+        // 1×2: black and opaque at the top, clear below
+        let tall = Image::new_owned(vec![0, 0, 0, 255, 0, 0, 0, 0], 1, 2);
+        let white = notification_area_icon(&tall, true);
+        assert_eq!((white.width(), white.height()), (2, 2));
+        assert_eq!(&white.rgba()[..4], &[255, 255, 255, 255]);
+        assert_eq!(&notification_area_icon(&tall, false).rgba()[..4], &[0, 0, 0, 255]);
+        let wide = Image::new_owned(vec![0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255], 3, 1);
+        let square = notification_area_icon(&wide, false);
+        assert_eq!((square.width(), square.height()), (3, 3));
+        assert_eq!(square.rgba()[(3 + 1) * 4 + 3], 255); // the middle row
+        assert_eq!(square.rgba()[3], 0);
+    }
 }

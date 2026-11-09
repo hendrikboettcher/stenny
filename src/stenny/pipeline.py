@@ -19,6 +19,7 @@ from .glossary import TEMPLATE as GLOSSARY_TEMPLATE
 from .glossary import Glossary, rank_auto_terms, with_auto_terms
 from .llm import LLMError, Usage, get_backend
 from .llm import guard, tasks
+from .progress import Progress, progress_path
 from .render import (Lecture, paragraph_breaks, parse_frontmatter, parse_hms, raw_md, summary_md, time_sections,
                      transcript_md)
 from .slides import Slides, SlidesError
@@ -219,12 +220,13 @@ def fill_from_backup(segments: list[dict], pauses: list[tuple], main: np.ndarray
 def transcribe(audio: np.ndarray, course: Course, engine, prompt: str | None, lang_override: str | None = None,
                spans: list[tuple[int, float]] | None = None,
                skip: list[tuple[float, float]] = (), stop=None,
-               cache: ChunkCache | None = None) -> tuple[list[dict], list[str], str]:
+               cache: ChunkCache | None = None, progress: Progress | None = None) -> tuple[list[dict], list[str], str]:
     """Chunked transcription. `spans` maps recorded audio to lecture time for live recordings; each
     stretch between real breaks is transcribed on its own, so no chunk straddles a pause.
     `skip`: lecture-time ranges left out (gaps where the microphone sent only digital silence).
     `stop`: asked before each chunk; True raises Interrupted.
     `cache`: chunks already transcribed (during the recording) are taken from it, new ones are added to it.
+    `progress`: told about each chunk, for the window's progress bar.
     Returns (segments in lecture time, languages used by share, language note)."""
     spans = spans or [(0, 0.0)]
     bounds = chunk_bounds(spans, len(audio), skip)
@@ -235,6 +237,9 @@ def transcribe(audio: np.ndarray, course: Course, engine, prompt: str | None, la
         chunks += [(s0 + a, s0 + b, i) for a, b in cuts]
     langs, note = language.plan(audio, [(a, b) for a, b, _ in chunks], course, engine, lang_override)
     log(f"Language: {note}; {len(chunks)} chunks")
+    if progress:  # chunks from the cache take no time, so the time left counts only the others
+        progress.plan([(a, b, bool(cache) and cache.get(a, b, lang) is not None)
+                       for (a, b, _), lang in zip(chunks, langs)])
 
     segments, step, done, reused = [], max(1, len(chunks) // 10), 0, 0
     for i, (s0, s1) in enumerate(bounds):
@@ -245,7 +250,10 @@ def transcribe(audio: np.ndarray, course: Course, engine, prompt: str | None, la
                 raise Interrupted(f"stopped after {done}/{len(chunks)} chunks")
             off = (a - s0) / SAMPLE_RATE
             segs = cache.get(a, b, lang) if cache else None
-            if segs is None:
+            new = segs is None
+            if new:
+                if progress:
+                    progress.before_whisper()
                 segs = engine.transcribe(audio[a:b], lang, prompt)
                 if cache:  # an interrupted final pass goes on from here next time
                     cache.put(a, b, lang, segs, lecture_time(spans, a))
@@ -254,6 +262,8 @@ def transcribe(audio: np.ndarray, course: Course, engine, prompt: str | None, la
             for seg in segs:
                 local.append({**seg, "start": seg["start"] + off, "end": min(seg["end"] + off, (b - s0) / SAMPLE_RATE)})
             done += 1
+            if progress:
+                progress.chunk(a, b, lecture_time(spans, b), new)
             if done % step == 0 or done == len(chunks):
                 log(f"  {done}/{len(chunks)} chunks ({fmt_ts(b / SAMPLE_RATE)} of {fmt_ts(len(audio) / SAMPLE_RATE)})")
 
@@ -420,9 +430,44 @@ def update_glossary(vault: Vault, course: str, glossary: Glossary, new: list[str
 
 
 def postprocess(lec: Lecture, folder: Path, segments: list[dict], glossary: Glossary, cfg: Config, vault: Vault, *,
-                use_llm: bool = True, summary: bool | None = None, slides: Slides | None = None) -> dict:
+                use_llm: bool = True, summary: bool | None = None, slides: Slides | None = None,
+                progress: Progress | None = None, hold: bool = False) -> dict:
     """Segments → transcript: paragraphs, glossary corrections, then the optional AI step (edit list,
-    validated by the guard) and the summary. Shared by `process` and `refresh`. The raw output is not touched."""
+    validated by the guard) and the summary. Shared by `process` and `refresh`. The raw output is not touched.
+    `hold`: the transcript is written at once but says "finalizing" until the caller is done too (the final pass
+    saves the audio after this): result["_finish"]() then writes it as it is, final. If this fails, the transcript
+    written so far is made final before the error goes on, so it is never left looking unfinished."""
+    files = vault.files(lec.course, folder)
+    status, last = lec.status, None
+
+    def write(paragraphs: list[dict], sections: list[dict]) -> None:
+        nonlocal last
+        last = (paragraphs, sections)
+        vault.write(files.target("transcript"), transcript_md(lec, paragraphs, sections))
+
+    def finish() -> None:
+        if hold and last and lec.status != status:
+            lec.status = status
+            write(*last)
+
+    def tidying(part: float) -> None:
+        if progress:
+            progress.step("tidying", part)
+
+    if hold:
+        lec.status = "finalizing"
+    tidying(0.0)
+    try:
+        result = _postprocess(lec, folder, segments, glossary, cfg, vault, write, tidying,
+                              use_llm=use_llm, summary=summary, slides=slides)
+    except BaseException:
+        finish()
+        raise
+    return {**result, "_finish": finish}
+
+
+def _postprocess(lec: Lecture, folder: Path, segments: list[dict], glossary: Glossary, cfg: Config, vault: Vault,
+                 write, tidying, *, use_llm: bool, summary: bool | None, slides: Slides | None) -> dict:
     files = vault.files(lec.course, folder)
     plain = to_paragraphs(segments, breaks=paragraph_breaks(lec.pauses))
     corrected, n_corr = [], 0
@@ -432,7 +477,7 @@ def postprocess(lec: Lecture, folder: Path, segments: list[dict], glossary: Glos
         n_corr += n
     paragraphs, sections = corrected, time_sections(corrected)
     lec.structure = "time"
-    vault.write(files.target("transcript"), transcript_md(lec, paragraphs, sections))
+    write(paragraphs, sections)
 
     usage, applied, rejected, generator = Usage(), [], [], None
     try:
@@ -441,9 +486,12 @@ def postprocess(lec: Lecture, folder: Path, segments: list[dict], glossary: Glos
         log(f"LLM step skipped: {e} The transcript is complete without it.")
         backend = None
     if backend and corrected:
+        with_summary = cfg.summary if summary is None else summary
         try:
             log(f"Structuring with {backend.name}" + (f" (with {slides.count} slides)" if slides else ""))
+            tidying(0.05)
             proposal, u = tasks.propose_edits(corrected, glossary, lec.languages, backend, slides, vault.topic_names())
+            tidying(0.55 if with_summary else 0.95)
             usage += u
             proposed_sections = proposal["sections"]
             fixed, applied, rejected = guard.apply_fixes(corrected, proposal["term_fixes"], glossary, slides)
@@ -458,17 +506,18 @@ def postprocess(lec: Lecture, folder: Path, segments: list[dict], glossary: Glos
             full_text = "\n".join(p["text"] for p in paragraphs)
             lec.topics = [] if lec.kind == "event" else guard.validate_topics(
                 proposal["topics"], full_text, slides, vault.topic_names(), reserved=list(cfg.courses))
-            vault.write(files.target("transcript"), transcript_md(lec, paragraphs, sections))
+            write(paragraphs, sections)
             refs = sum(1 for s in sections if s.get("slides"))
             log(f"  {len(sections)} sections" + (f" ({refs} with slide pages)" if slides else "")
                 + f", {len(applied)} term fixes applied, {len(rejected)} rejected, {len(lec.topics)} topics")
-            if cfg.summary if summary is None else summary:
+            if with_summary:
                 log("Writing summary")
                 body, u = tasks.summarize(paragraphs, lec.languages, backend)
                 usage += u
                 vault.write(files.target("summary"), summary_md(lec, body, backend.name))
         except LLMError as e:
             log(f"LLM step skipped: {e} The transcript is complete without it.")
+    tidying(0.95)
     if lec.kind != "event":  # the automatic terms most used lately first (Whisper's prompt has room for a few dozen)
         update_glossary(vault, lec.course, glossary, [], "\n".join(p["text"] for p in paragraphs), folder)
     return {
@@ -516,66 +565,79 @@ def process(path: Path, cfg: Config, course: Course, engine, *, lang: str | None
     folder = vault.course_dir(course.name) / live.folder if live else vault.lecture_dir(course.name, date, source)
     prompt, slides, slides_copy = whisper_prompt(vault, folder, glossary, course.name, slides_src)
 
-    gaps = [(p[0], p[1]) for p in pauses if p[2] == "no input"]  # only zeros there, or nothing at all
-    cache = ChunkCache(live.chunks) if live and live.chunks else None
-    segments, languages, lang_note = transcribe(audio, course, engine, prompt, lang, spans, skip=gaps, stop=stop,
-                                                cache=cache)
-    backup_path = Path(live.backup["recording"]) if live and live.backup else None
-    backup_mic, filled = None, 0.0
-    if backup_path and backup_path.exists() and backup_path.stat().st_size:
-        backup_mic = live.backup.get("microphone")
-        if gaps:
-            backup_audio = audio_io.load(backup_path)
-            segments, pauses, filled = fill_from_backup(
-                segments, pauses, audio, spans, backup_audio, [tuple(s) for s in live.backup["spans"]],
-                course, engine, prompt, lang)
-    segments = mark_dropped(segments, prompt)
-    t_whisper = time.time() - t0
+    # how far this pass is, for Stenny's window (progress.py); gone when it ends, however it ends
+    progress = Progress(progress_path(cfg.data_for(course), folder.name), duration)
+    try:
+        progress.step("transcribing")
+        gaps = [(p[0], p[1]) for p in pauses if p[2] == "no input"]  # only zeros there, or nothing at all
+        cache = ChunkCache(live.chunks) if live and live.chunks else None
+        segments, languages, lang_note = transcribe(audio, course, engine, prompt, lang, spans, skip=gaps, stop=stop,
+                                                    cache=cache, progress=progress)
+        backup_path = Path(live.backup["recording"]) if live and live.backup else None
+        backup_mic, filled = None, 0.0
+        if backup_path and backup_path.exists() and backup_path.stat().st_size:
+            backup_mic = live.backup.get("microphone")
+            if gaps:
+                backup_audio = audio_io.load(backup_path)
+                segments, pauses, filled = fill_from_backup(
+                    segments, pauses, audio, spans, backup_audio, [tuple(s) for s in live.backup["spans"]],
+                    course, engine, prompt, lang)
+        segments = mark_dropped(segments, prompt)
+        t_whisper = time.time() - t0
 
-    audio_dest = cfg.data_for(course) / f"{folder.name}.opus"
-    lec = Lecture(course=course.name, date=date, start_time=f"{when:%H:%M}", duration=duration,
-                  languages=languages, language_note=lang_note, model=cfg.model, source=source, pauses=pauses,
-                  tags=course.tags, audio=home_relative(audio_dest) if cfg.keep_audio else None,
-                  microphone=microphone, backup_microphone=backup_mic,
-                  number=0 if course.is_event else vault.lecture_number(course.name, folder), kind=course.kind)
-    files = vault.files(course.name, folder)
-    lec.name = own_title(files)
+        audio_dest = cfg.data_for(course) / f"{folder.name}.opus"
+        lec = Lecture(course=course.name, date=date, start_time=f"{when:%H:%M}", duration=duration,
+                      languages=languages, language_note=lang_note, model=cfg.model, source=source, pauses=pauses,
+                      tags=course.tags, audio=home_relative(audio_dest) if cfg.keep_audio else None,
+                      microphone=microphone, backup_microphone=backup_mic,
+                      number=0 if course.is_event else vault.lecture_number(course.name, folder), kind=course.kind)
+        files = vault.files(course.name, folder)
+        lec.name = own_title(files)
 
-    # 1. raw output first, so it exists no matter what happens later
-    if slides_copy:
-        vault.copy(slides_copy, files.slides() or files.target("slides"))
-    lec.names = files.names()
-    raw = raw_path(cfg, course, folder)
-    write_file(raw, raw_md(lec, segments))
-    lec.raw_file = home_relative(raw)
-    lec.names = files.names()
-    lec.slides = slides.count if slides else 0
+        # 1. raw output first, so it exists no matter what happens later
+        if slides_copy:
+            vault.copy(slides_copy, files.slides() or files.target("slides"))
+        lec.names = files.names()
+        raw = raw_path(cfg, course, folder)
+        write_file(raw, raw_md(lec, segments))
+        lec.raw_file = home_relative(raw)
+        lec.names = files.names()
+        lec.slides = slides.count if slides else 0
 
-    # 2.–3. clean transcript, optional AI structure and summary
-    result = postprocess(lec, folder, segments, glossary, cfg, vault, use_llm=use_llm, summary=summary, slides=slides)
+        # 2.–3. clean transcript, optional AI structure and summary; the lecture shows as "finalizing" (with the
+        # window's progress bar) until the audio is saved too, then final
+        result = postprocess(lec, folder, segments, glossary, cfg, vault, use_llm=use_llm, summary=summary,
+                             slides=slides, progress=progress, hold=True)
+        finish = result.pop("_finish")
 
-    # 4. archive audio + machine-readable data outside the vault
-    meta_dir = cfg.data_for(course)
-    meta_dir.mkdir(parents=True, exist_ok=True)
-    if cfg.keep_audio:
-        log(f"Archiving audio → {audio_dest}")
-        audio_io.archive(path, audio_dest)
-        if filled:  # otherwise the backup holds nothing the main recording doesn't
-            audio_io.archive(backup_path, audio_dest.with_name(f"{folder.name}.backup.opus"))
-    info = {
-        "folder": str(folder), "source": str(path), "duration_s": round(duration, 1),
-        "language": lang_note, "filled_from_backup_s": round(filled, 1), **result,
-        "timing_s": {"whisper": round(t_whisper, 1), "total": round(time.time() - t0, 1)},
-    }
-    info.pop("_usage")
-    write_meta(meta_dir / f"{folder.name}.segments.json", info, lec, segments)
-    if not course.is_event:
-        course_files.rebuild(vault, course.name, log)
-    speed = duration / max(t_whisper, 1e-6)
-    log(f"Done in {fmt_ts(time.time() - t0)} (Whisper {fmt_ts(t_whisper)}, {speed:.1f}x realtime), "
-        f"{info['words']} words → {folder}")
-    log_llm(result)
-    return info
+        # 4. archive audio + machine-readable data outside the vault
+        try:
+            progress.step("saving")
+            meta_dir = cfg.data_for(course)
+            meta_dir.mkdir(parents=True, exist_ok=True)
+            if cfg.keep_audio:
+                log(f"Archiving audio → {audio_dest}")
+                audio_io.archive(path, audio_dest)
+                if filled:  # otherwise the backup holds nothing the main recording doesn't
+                    audio_io.archive(backup_path, audio_dest.with_name(f"{folder.name}.backup.opus"))
+        finally:
+            finish()  # segments.json and the course files below take the lecture as final
+        info = {
+            "folder": str(folder), "source": str(path), "duration_s": round(duration, 1),
+            "language": lang_note, "filled_from_backup_s": round(filled, 1), **result,
+            "timing_s": {"whisper": round(t_whisper, 1), "total": round(time.time() - t0, 1)},
+        }
+        info.pop("_usage")
+        write_meta(meta_dir / f"{folder.name}.segments.json", info, lec, segments)
+        if not course.is_event:
+            course_files.rebuild(vault, course.name, log)
+        speed = duration / max(t_whisper, 1e-6)
+        log(f"Done in {fmt_ts(time.time() - t0)} (Whisper {fmt_ts(t_whisper)}, {speed:.1f}x realtime), "
+            f"{info['words']} words → {folder}")
+        log_llm(result)
+        return info
+    finally:
+        progress.clear()
 
 
 def write_meta(path: Path, info: dict, lec: Lecture, segments: list[dict]) -> None:
@@ -640,6 +702,7 @@ def refresh(cfg: Config, course: Course, folder_name: str, *, use_llm: bool = Tr
     log(f"Refreshing {course.name} {folder.name}" + (f" with {slides.count} slides" if slides else "")
         + " (no re-transcription)")
     result = postprocess(lec, folder, segments, glossary, cfg, vault, use_llm=use_llm, summary=summary, slides=slides)
+    result.pop("_finish")
     info = {**meta, **{k: v for k, v in result.items() if k != "_usage"},
             "refreshed_at": datetime.now().isoformat(timespec="seconds")}
     info.pop("lecture", None)

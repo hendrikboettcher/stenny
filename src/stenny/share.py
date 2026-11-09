@@ -4,8 +4,8 @@ A shared copy is the transcript as a classmate should get it: no frontmatter (au
 source …), no pointer to the raw output on this Mac, Obsidian links turned into plain text. The disclaimer, the
 "audio only" note, headings and timestamps stay. Copies go to Stenny's cache folder (paths.SHARED_DIR), outside the Stenny folder.
 
-Formats: Markdown as it is, Word (.docx, through macOS's textutil) and HTML. Word and HTML (so the PDF too) end
-with a small "Transcribed with Stenny · stenny.eu" line; Markdown doesn't, as it gets pasted into chats. Stenny's window turns the HTML
+Formats: Markdown as it is, Word (.docx: through macOS's textutil on a Mac, Stenny's own writer in word.py on Windows)
+and HTML. Word and HTML (so the PDF too) end with a small "Transcribed with Stenny · stenny.eu" line; Markdown doesn't, as it gets pasted into chats. Stenny's window turns the HTML
 into a PDF (paginated by macOS's text system); there is no PDF converter on a Mac without the app.
 """
 
@@ -13,10 +13,11 @@ import html
 import os
 import re
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
-from . import paths
+from . import paths, word
 from .i18n import tr
 from .render import DRAFT_STATES, draft_status, parse_frontmatter
 from .vault import LectureFiles, Vault, folder_key, safe_name
@@ -177,25 +178,23 @@ def _inline(text: str) -> str:
     return re.sub(r"(?<![*\w])\*(?![\s*])(.+?)(?<![\s*])\*(?![*\w])", r"<em>\1</em>", out)
 
 
-def to_html(markdown: str, title: str, bullet_lines: bool = False, credit: bool = False) -> str:
-    """The Markdown Stenny writes (headings, paragraphs, quotes, bullets, bold, italics, rules) as a page.
-    `bullet_lines`: bullets as "• …" paragraphs instead of a list, for textutil, whose Word lists come out with
-    the text pushed far right of the bullet. `credit`: end with "Transcribed with Stenny · stenny.eu"."""
-    out: list[str] = []
+def blocks(markdown: str) -> list[tuple]:
+    """The Markdown Stenny writes, as blocks: ("h", level, text), ("p", text), ("quote", [paragraphs]),
+    ("list", [items]), ("hr",). The text in them is still Markdown inline (bold, italics, timestamps: _inline)."""
+    out: list[tuple] = []
     para: list[str] = []
     quote: list[list[str]] = []
     items: list[str] = []
 
     def flush() -> None:
         if para:
-            out.append(f"<p>{_inline(' '.join(para))}</p>")
+            out.append(("p", " ".join(para)))
             para.clear()
         if quote:
-            out.append("<blockquote>" + "".join(f"<p>{_inline(' '.join(q))}</p>" for q in quote if q) + "</blockquote>")
+            out.append(("quote", [" ".join(q) for q in quote if q]))
             quote.clear()
         if items:
-            out.append("".join(f'<p class="li">•&nbsp;&nbsp;{_inline(i)}</p>' for i in items) if bullet_lines
-                       else "<ul>" + "".join(f"<li>{_inline(i)}</li>" for i in items) + "</ul>")
+            out.append(("list", list(items)))
             items.clear()
 
     for raw in markdown.splitlines():
@@ -217,11 +216,10 @@ def to_html(markdown: str, title: str, bullet_lines: bool = False, credit: bool 
             flush()
         elif m := re.match(r"(#{1,6})\s+(.*)", line):
             flush()
-            level = len(m.group(1))
-            out.append(f"<h{level}>{_inline(m.group(2))}</h{level}>")
+            out.append(("h", len(m.group(1)), m.group(2)))
         elif re.fullmatch(r"-{3,}|\*{3,}", line):
             flush()
-            out.append("<hr>")
+            out.append(("hr",))
         elif line.startswith(("- ", "* ")):
             if para:
                 flush()
@@ -233,6 +231,27 @@ def to_html(markdown: str, title: str, bullet_lines: bool = False, credit: bool 
                 flush()
             para.append(line)
     flush()
+    return out
+
+
+def to_html(markdown: str, title: str, bullet_lines: bool = False, credit: bool = False) -> str:
+    """The Markdown Stenny writes (headings, paragraphs, quotes, bullets, bold, italics, rules) as a page.
+    `bullet_lines`: bullets as "• …" paragraphs instead of a list, for textutil, whose Word lists come out with
+    the text pushed far right of the bullet. `credit`: end with "Transcribed with Stenny · stenny.eu"."""
+    out: list[str] = []
+    for kind, *rest in blocks(markdown):
+        if kind == "h":
+            level, text = rest
+            out.append(f"<h{level}>{_inline(text)}</h{level}>")
+        elif kind == "p":
+            out.append(f"<p>{_inline(rest[0])}</p>")
+        elif kind == "quote":
+            out.append("<blockquote>" + "".join(f"<p>{_inline(q)}</p>" for q in rest[0]) + "</blockquote>")
+        elif kind == "list":
+            out.append("".join(f'<p class="li">•&nbsp;&nbsp;{_inline(i)}</p>' for i in rest[0]) if bullet_lines
+                       else "<ul>" + "".join(f"<li>{_inline(i)}</li>" for i in rest[0]) + "</ul>")
+        elif kind == "hr":
+            out.append("<hr>")
     if credit:
         out.append(CREDIT)
     return (f'<!DOCTYPE html>\n<html><head><meta charset="utf-8"><title>{html.escape(title)}</title>'
@@ -246,10 +265,17 @@ def share_name(entry: dict, fmt: str = "md") -> str:
     return f"{safe_name(entry['course'])}{number}{title} ({entry['folder']}).{fmt}"
 
 
-def _docx(page: str, path: Path) -> None:
+def _docx(text: str, title: str, path: Path) -> None:
+    """The Word file: through macOS's textutil on a Mac (as always), Stenny's own writer elsewhere (word.py)."""
+    if sys.platform != "darwin":
+        try:
+            word.write(path, blocks(text), _inline, title)
+        except (OSError, ValueError) as e:
+            raise ShareError(tr("The Word file couldn't be made: {error}", error=str(e))) from e
+        return
     with tempfile.TemporaryDirectory() as tmp:
         source = Path(tmp) / "copy.html"
-        source.write_text(page, encoding="utf-8")
+        source.write_text(to_html(text, title, bullet_lines=True, credit=True), encoding="utf-8")
         done = subprocess.run(["textutil", "-convert", "docx", "-format", "html", "-inputencoding", "UTF-8",
                                "-output", str(path), str(source)], capture_output=True, text=True, encoding="utf-8", errors="replace")
     if done.returncode or not path.exists():
@@ -269,12 +295,10 @@ def share(entry: dict, with_summary: bool = False, out_dir: Path | None = None, 
     try:
         if fmt == "md":
             tmp.write_text(text, encoding="utf-8")
+        elif fmt == "html":
+            tmp.write_text(to_html(text, path.stem, credit=True), encoding="utf-8")
         else:
-            page = to_html(text, path.stem, bullet_lines=fmt == "docx", credit=True)
-            if fmt == "html":
-                tmp.write_text(page, encoding="utf-8")
-            else:
-                _docx(page, tmp)
+            _docx(text, path.stem, tmp)
         tmp.replace(path)
     finally:
         if tmp.exists():

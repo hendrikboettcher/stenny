@@ -231,6 +231,24 @@ def assert_final_pass_reuses(s):
     return made
 
 
+def drive(s, script, *args):
+    """Runs the test's script beside the recording (s.run()). If the script fails (a timeout, an assertion), the
+    recording is stopped and the error raised here: without that the session would record forever and the test
+    run hang instead of failing."""
+    failed = []
+
+    def guarded():
+        try:
+            script(*args)
+        except BaseException as e:  # noqa: BLE001 — raised again in the test's thread
+            failed.append(e)
+            s.command("stop")
+    threading.Thread(target=guarded, daemon=True).start()
+    s.run()
+    if failed:
+        raise failed[0]
+
+
 def wait_until(cond, timeout=10):
     end = time.time() + timeout
     while not cond() and time.time() < end:
@@ -253,8 +271,7 @@ def test_pause_resume_timeline(tmp_path, monkeypatch):
         mic.at(19, lambda: s.command("toggle"))            # resume at 19 s
         mic.at(36, lambda: s.command("stop"))
 
-    threading.Thread(target=script, daemon=True).start()
-    s.run()
+    drive(s, script)
 
     level = s.command("level")
     assert level["ok"] and set(level) == {"ok", "state", "input_lost", "level_db"}
@@ -306,8 +323,7 @@ def test_microphone_dropout_keeps_session_and_marks_gap(tmp_path, monkeypatch):
     def script():
         mic.at(30, lambda: s.command("stop"))
 
-    threading.Thread(target=script, daemon=True).start()
-    s.run()
+    drive(s, script)
 
     gaps = [p for p in s.pauses if p[2] == "no input"]
     assert len(gaps) == 1, s.pauses
@@ -334,8 +350,7 @@ def run_session(tmp_path, monkeypatch, mic, until=30.0, stall=0.05, backup=None,
     monkeypatch.setattr(live_session, "RETRY", 0.01)
     monkeypatch.setattr(live_session, "POLL", 0.002)
     script = script or (lambda s: mic.at(until, lambda: s.command("stop")))
-    threading.Thread(target=script, args=(s,), daemon=True).start()
-    s.run()
+    drive(s, script, s)
     return s
 
 
@@ -399,6 +414,56 @@ def test_backup_microphone_records_through_main_gaps_but_not_pauses(tmp_path, mo
     info = json.loads(s.session_path.read_text(encoding="utf-8"))["backup"]
     assert info["microphone"] == "MacBook Air Microphone" and info["recorded_samples"] == b.written
     assert Path(info["recording"]).stat().st_size == b.written * 2
+
+
+def test_the_microphone_starts_before_the_system_is_asked_about_devices(monkeypatch):
+    from stenny.live import sources
+
+    asked = []
+    monkeypatch.setattr(sources.subprocess, "run", lambda cmd, **kw: asked.append(cmd))
+    mic = sources.MicSource(None)
+    assert mic.device == "default" and mic.microphone is None and not asked  # system_profiler: only after the start
+
+
+def test_microphone_name_and_backup_join_after_the_start(tmp_path, monkeypatch):
+    mic = FakeMic()
+    mic.device, mic.microphone = "default", None  # the system's input device, not named yet
+    seen = {}
+
+    def after_start(s):
+        seen["placeholder"] = s.transcript_path.exists()  # the library shows it as soon as it is "recording"
+        seen["status"] = s.status()["microphone"]
+        seen["audio"] = s.written > 0  # it runs once the first audio is in
+        seen["joined"] = mic.at(mic.t + 1.0, lambda: (s.name_microphone("Alex’s iPhone Microphone"),
+                                                      s.attach_backup(FakeBackup(mic)), mic.t)[-1])
+
+    def script(s):
+        wait_until(lambda: "joined" in seen)
+        t = seen["joined"]
+        mic.at(t + 10.0, lambda: s.command("pause"))
+        mic.at(t + 12.0, lambda: s.command("resume"))
+        mic.at(t + 18.0, lambda: s.command("stop"))
+
+    (tmp_path / "vault" / "Areas").mkdir(parents=True)
+    cfg = Config(folder=tmp_path / "vault" / "Areas/Lectures", data_dir=tmp_path / "audio")
+    s = LiveSession(cfg, Course("Calculus", language="fr"), mic, FakeEngine())
+    short_chunks(s, monkeypatch)
+    monkeypatch.setattr(s, "now", lambda: mic.t)
+    monkeypatch.setattr(s, "wall", lambda: mic.ticks * TICK_S)
+    monkeypatch.setattr(live_session, "POLL", 0.002)
+    threading.Thread(target=script, args=(s,), daemon=True).start()
+    s.run(after_start=after_start)
+
+    joined = seen.pop("joined")
+    assert seen == {"placeholder": True, "status": None, "audio": True}  # no "default" in the menu while unnamed
+    assert s.status()["microphone"] == mic.device == "Alex’s iPhone Microphone"
+    info = json.loads(s.session_path.read_text(encoding="utf-8"))
+    assert info["microphone"] == "Alex’s iPhone Microphone"
+    b = s.backup
+    assert len(b.spans) == 2 and abs(b.spans[0][1] - joined) < 1.0    # from when it joined (Windows: ~15 ms timer); off when paused
+    assert info["backup"]["microphone"] == "MacBook Air Microphone" and b.written > 0
+    s.name_microphone("Another Microphone")                             # a named microphone keeps its name
+    assert mic.device == "Alex’s iPhone Microphone"
 
 
 def test_gap_at_the_end_is_kept_when_a_backup_heard_it(tmp_path, monkeypatch):
@@ -555,6 +620,7 @@ def test_virtual_devices_are_not_offered_as_microphones(monkeypatch):
 """
     listing = ("AVFoundation audio devices:\n[x] [0] Microsoft Teams Audio\n"
                "[x] [1] Alex's iPhone Microphone\n[x] [2] Built-in Microphone\n")
+    monkeypatch.setattr(sources.sys, "platform", "darwin")  # macOS's way; Windows' is in test_recorder.py
     monkeypatch.setattr(sources.subprocess, "run", lambda cmd, **kw: SimpleNamespace(
         stdout=profile if cmd[0] == "system_profiler" else "", stderr=listing))
     assert sources.input_devices() == ["Alex's iPhone Microphone", "Built-in Microphone"]
@@ -581,8 +647,7 @@ def test_cancel_ends_without_a_transcript_and_trashes_the_recording(tmp_path, mo
     def script():
         mic.at(8, lambda: s.command("cancel"))
 
-    threading.Thread(target=script, daemon=True).start()
-    s.run()
+    drive(s, script)
     assert s.cancelled and s.state == "cancelling" and s.recorded > 0
     queued = []
     monkeypatch.setattr(jobs, "enqueue", lambda *a, **k: queued.append(a))

@@ -42,7 +42,6 @@
       "resources/Stenny.mcpb": "Stenny.mcpb"
     },
     "externalBin": [
-      "binaries/stenny-agent",
       "binaries/stenny-rec",
       "binaries/ffmpeg",
       "binaries/ffprobe"
