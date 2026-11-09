@@ -773,7 +773,7 @@ def cmd_schedule(args) -> None:
         return
     if args.action == "install":
         path = jobs.install_agent()
-        print(f"Installed {path}: checks the queue every 15 min (runs only on AC power"
+        print(f"Installed {path}: checks the queue every {jobs.QUEUE_INTERVAL_S // 60} min (runs only on AC power"
               f"{' and at night' if load_config().night_only else ''}). Log: {jobs.LOGS_DIR / 'queue.log'}")
     else:
         print("Removed." if jobs.uninstall_agent() else "No schedule installed.")
