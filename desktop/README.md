@@ -84,3 +84,4 @@ One word for each thing, everywhere:
 | microphone / backup microphone / this Mac's microphone | Mikrofon / Ersatzmikrofon / Integriertes Mikrofon |
 | lecturer / speaker | Lehrperson / vortragende Person |
 | the Mac is plugged in | der Mac ist am Netzteil |
+| on battery / the battery is low | im Akkubetrieb / der Akku ist fast leer |

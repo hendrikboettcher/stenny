@@ -3,12 +3,14 @@
 import json
 import os
 import plistlib
+import re
 import shutil
 import subprocess
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import NamedTuple
 
 from .paths import LOGS_DIR, QUEUE_DIR
 AGENT_LABEL = "local.stenny.queue"
@@ -40,9 +42,52 @@ def lower_own_priority(mode: str) -> None:
         subprocess.run(["taskpolicy", "-b", "-p", str(os.getpid())], capture_output=True)
 
 
+class Power(NamedTuple):
+    plugged_in: bool
+    battery: int | None  # percent charged; None without a battery (a desktop) or when it can't be read
+
+
+def power() -> Power:
+    """Whether the computer is plugged in, and how full its battery is. Unknown counts as plugged in, so a desktop
+    (or a check that fails) never holds work back."""
+    if sys.platform == "win32":
+        return _power_windows()
+    try:
+        out = subprocess.run(["pmset", "-g", "ps"], capture_output=True, text=True, encoding="utf-8",
+                             errors="replace", timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return Power(True, None)
+    lines = out.splitlines()
+    if not lines:
+        return Power(True, None)
+    m = re.search(r"\t(\d+)%;", out)  # " -InternalBattery-0 (id=…)\t82%; discharging; …"
+    return Power("AC Power" in lines[0], int(m.group(1)) if m else None)
+
+
+def _power_windows() -> Power:
+    """GetSystemPowerStatus: ACLineStatus 0 = on battery, 1 = plugged in, 255 = unknown; BatteryLifePercent 255 =
+    unknown; BatteryFlag 128 = no battery."""
+    import ctypes
+    from ctypes import wintypes
+
+    class SYSTEM_POWER_STATUS(ctypes.Structure):
+        _fields_ = [("ACLineStatus", wintypes.BYTE), ("BatteryFlag", wintypes.BYTE),
+                    ("BatteryLifePercent", wintypes.BYTE), ("SystemStatusFlag", wintypes.BYTE),
+                    ("BatteryLifeTime", wintypes.DWORD), ("BatteryFullLifeTime", wintypes.DWORD)]
+
+    st = SYSTEM_POWER_STATUS()
+    try:
+        if not ctypes.windll.kernel32.GetSystemPowerStatus(ctypes.byref(st)):
+            return Power(True, None)
+    except (AttributeError, OSError):
+        return Power(True, None)
+    ac, flag, percent = st.ACLineStatus & 0xFF, st.BatteryFlag & 0xFF, st.BatteryLifePercent & 0xFF
+    battery = None if flag == 128 or percent == 255 else percent
+    return Power(ac != 0, battery)
+
+
 def on_ac_power() -> bool:
-    out = subprocess.run(["pmset", "-g", "ps"], capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
-    return "AC Power" in out.splitlines()[0] if out else True
+    return power().plugged_in
 
 
 def unplugged_check(every_s: float = 20):

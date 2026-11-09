@@ -93,6 +93,37 @@ def test_a_recording_without_transcript_shows_its_text_so_far(cfg, tmp_path):
     assert final["progress"] is None
 
 
+def test_the_running_recording_counts_its_length_with_the_menu_bar(cfg, monkeypatch):
+    lec = Lecture(course="Calculus", date="2026-11-09", start_time="10:00", duration=4, languages=["en"],
+                  language_note="live", model="m", source="live", status="live", number=2,
+                  names={"transcript": "Calculus 2026-11-09.md"})
+    path = cfg.folder / "Calculus" / "2026-11-09" / "Calculus 2026-11-09.md"
+    path.parent.mkdir(parents=True)
+    path.write_text(transcript_md(lec, [], []), encoding="utf-8")
+    status = {"ok": True, "state": "recording", "transcript": str(path), "elapsed_s": 239.4, "paused_s": 30.0,
+              "draft": True, "transcribing": False, "warning": "Battery is low: recording goes on, transcription paused"}
+    monkeypatch.setattr(app_server.app_live.control, "send", lambda cmd, **k: status)
+
+    entries = app_server.handle(cfg, {"id": 1, "method": "library"})["result"]["entries"]
+    live = next(e for e in entries if e["folder"] == "2026-11-09")
+    # the menu bar shows elapsed_s - paused_s (menubar.rs), not the placeholder's 4 s from the start
+    assert live["duration"] == "0:03:29"
+    assert live["live"] == {"length_s": 209.4, "counting": True, "draft": True, "transcribing": False,
+                            "warning": status["warning"]}
+    assert all("live" not in e for e in entries if e is not live)
+    assert app_server._entry(cfg, {"course": "Calculus", "folder": "2026-11-09"})["duration"] == "0:03:29"
+
+    status.update(state="paused")
+    assert app_server.handle(cfg, {"id": 3, "method": "library"})["result"]["entries"][-1]["live"]["counting"] is False
+
+    def gone(cmd, **k):
+        raise app_server.app_live.control.NoSession("No live session is running.")
+    monkeypatch.setattr(app_server.app_live.control, "send", gone)
+    entries = app_server.handle(cfg, {"id": 4, "method": "library"})["result"]["entries"]
+    stored = next(e for e in entries if e["folder"] == "2026-11-09")
+    assert "live" not in stored and stored["duration"] == "0:00:04"   # no session: what the file says
+
+
 def test_setup_status_checks_each_step(cfg, monkeypatch):
     """The "Finish setting up Stenny" card: courses, the AI step and the connector, each as it really is now."""
     from stenny import claude_setup

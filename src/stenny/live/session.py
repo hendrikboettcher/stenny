@@ -49,12 +49,16 @@ DRAFT_RESUME = 120.0   # seconds of normal memory before transcription paused fo
 # Audio this close to the recording's head may still become a gap (SILENT_GAP of zeros is noticed only after
 # 2 s); chunks are cut only behind it, so they are the ones the final pass will cut.
 LAG = SILENT_GAP + 1.5
-POWER_CHECK = 20.0     # seconds between looks at whether the Mac is plugged in
+POWER_CHECK = 20.0     # seconds between looks at the battery
+# On battery under this charge (%) the live draft pauses, so the laptop doesn't die mid-lecture: the recording goes
+# on, and the final pass transcribes the rest. Low Power Mode alone doesn't pause it: many Macs turn it on
+# whenever they are on battery, and that would be no live draft on battery at all.
+BATTERY_LOW = 20
 PROMPT_CHECK = 300.0   # seconds between looks for slides dropped into the lecture's folder (terms for the prompt)
 
 
 class _Stopping(Exception):
-    """The second look stops: the recording ended, or transcription has to wait (battery, memory)."""
+    """The second look stops: the recording ended, or transcription has to wait (low battery, memory)."""
 
 
 class _Recorded:
@@ -131,7 +135,7 @@ class LiveSession:
     def __init__(self, cfg: Config, course: Course, source, engine, lang: str | None = None, draft: bool = True,
                  backup=None):
         self.cfg, self.course, self.source, self.engine, self.lang_override = cfg, course, source, engine, lang
-        self.draft = draft  # transcribe during the recording when plugged in (False: record only)
+        self.draft = draft  # transcribe during the recording, plugged in or not (False: record only)
         self.started_at = datetime.now().replace(microsecond=0)
         self.t0 = time.monotonic()
         self.vault = cfg.vault_for(course)
@@ -181,12 +185,12 @@ class LiveSession:
         self.stopped = threading.Event()  # wakes the transcription thread at Stop
         self.render_lock = threading.Lock()  # the main and the control thread both write the placeholder
         self.final_note = ""
-        self.warning = ""                 # shown in the menu while it applies: disk or memory running out
         self.next_resource_check = time.monotonic() + RESOURCE_CHECK
         self.disk_low = False             # the backup microphone stays off from here on
         self.draft_paused = False         # memory is low: record only, transcription catches up later
         self.memory_normal_since: float | None = None
-        self.on_power = False             # looked at by the transcription thread (pmset takes a moment)
+        self.battery_low = False          # on battery under BATTERY_LOW %: record only, transcription catches up later
+        self.battery: int | None = None   # looked at by the transcription thread (pmset takes a moment)
         self.power_checked = float("-inf")
         self.model_released = True
 
@@ -374,7 +378,6 @@ class LiveSession:
         free = resources.free_disk(self.pcm_path.parent)
         if free < resources.DISK_FULL:
             log(f"Only {free // resources.MB} MB free: stopping, so what was recorded can be saved")
-            self.warning = ""
             self.final_note = tr("stopped early: the disk is full")
             self._stop_locked()
             return
@@ -394,21 +397,34 @@ class LiveSession:
             if time.monotonic() - self.memory_normal_since >= DRAFT_RESUME:
                 log("Memory is back: transcription goes on")
                 self.draft_paused = False
-        # shown in the app's menu, in its language ($STENNY_LANGUAGE)
-        self.warning = tr("Disk almost full") if self.disk_low else \
-            tr("Memory is low: recording goes on, transcription paused") if self.draft_paused else ""
+
+    @property
+    def warning(self) -> str:
+        """Shown in the app's menu and window while it applies, in the app's language ($STENNY_LANGUAGE)."""
+        if self.disk_low:
+            return tr("Disk almost full")
+        if self.draft_paused:
+            return tr("Memory is low: recording goes on, transcription paused")
+        if self.battery_low:
+            return tr("Battery is low: recording goes on, transcription paused")
+        return ""
 
     # --- transcription (worker thread) ----------------------------------------
     # The final pass's chunks (pipeline.transcribe), cut as the recording grows (textproc.chunk_end), in order.
 
     def _may_transcribe(self) -> bool:
-        if time.monotonic() - self.power_checked >= POWER_CHECK:
-            on_power = jobs.on_ac_power()
-            if on_power != self.on_power and self.draft and self.power_checked > float("-inf"):
-                log("Plugged in: transcribing during the recording" if on_power else
-                    "On battery: recording only, the transcript catches up when the Mac is plugged in")
-            self.on_power, self.power_checked = on_power, time.monotonic()
-        return self.draft and self.on_power and not self.draft_paused
+        """The live draft runs plugged in and on battery; a low battery or low memory pauses it."""
+        if self.draft and time.monotonic() - self.power_checked >= POWER_CHECK:
+            power = jobs.power()
+            low = not power.plugged_in and power.battery is not None and power.battery < BATTERY_LOW
+            if low != self.battery_low:
+                log(f"Battery at {power.battery} %: transcription paused, the recording goes on and catches up later"
+                    if low else "Plugged in: transcription goes on")
+            self.battery_low, self.battery, self.power_checked = low, power.battery, time.monotonic()
+        return self._transcribing()
+
+    def _transcribing(self) -> bool:
+        return self.draft and not self.draft_paused and not self.battery_low
 
     def _next_chunk(self) -> tuple[int, int, int] | None:
         """(stretch start, chunk start, chunk end) in recorded samples of the next chunk to transcribe, or None."""
@@ -532,7 +548,7 @@ class LiveSession:
         self.model_released = False
 
     def _release_model_if_idle(self) -> None:
-        """On battery or low memory Whisper's model (GBs) is unloaded until transcription goes on."""
+        """On a low battery or low memory Whisper's model (GBs) is unloaded until transcription goes on."""
         if not self.model_released and not self._may_transcribe() and hasattr(self.engine, "release"):
             self.engine.release()
             self.model_released = True
@@ -706,7 +722,7 @@ class LiveSession:
                 "elapsed_s": round(self.ended_at if self.ended_at is not None else self.now(), 1),
                 "recorded_s": round(self.recorded / SAMPLE_RATE, 1), "paused_s": round(paused, 1),
                 "words": words, "transcribed_s": round(self.done_to, 1), "language": self.current_lang,
-                "draft": self.draft, "transcribing": self.draft and self.on_power and not self.draft_paused, "level_db": round(self.level_db, 1),
+                "draft": self.draft, "transcribing": self._transcribing(), "level_db": round(self.level_db, 1),
                 "current_pause_s": round(self.now() - self.pauses[-1][0], 1)
                 if self.state == "paused" and self.pauses else 0.0, "input_lost": self.stalled or self.silent,
                 "transcript": str(self.transcript_path), "note": self.final_note, "warning": self.warning,

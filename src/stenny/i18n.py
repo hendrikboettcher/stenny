@@ -187,6 +187,8 @@ DE = {
     "Disk almost full": "Fast kein Speicherplatz mehr",
     "Memory is low: recording goes on, transcription paused":
         "Wenig Arbeitsspeicher – Aufnahme läuft weiter, Transkription pausiert",
+    "Battery is low: recording goes on, transcription paused":
+        "Akku fast leer – Aufnahme läuft weiter, Transkription pausiert",
     "stopped early: the disk is full": "vorzeitig beendet – kein Speicherplatz mehr",
     "final pass queued (as requested)": "Transkript folgt später (wie gewünscht)",
     "final pass queued (memory is low)": "Transkript folgt später (wenig Arbeitsspeicher)",

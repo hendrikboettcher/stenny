@@ -19,6 +19,10 @@
   type Group = { course: string; event: boolean };
 
   let data = $state<Library | null>(null);
+  // The running recording's length counts up every second between two looks at the library (every 5 s),
+  // together with the menu bar's timer: both come from the recording's own status (app_server._with_live).
+  let loadedAt = $state(Date.now());
+  let now = $state(Date.now());
   let failed = $state<string | null>(null);
   let group = $state<Group | null>(null);
   let selectedId = $state<string | null>(null);
@@ -86,6 +90,7 @@
   async function reload() {
     try {
       data = await library();
+      loadedAt = Date.now();
       failed = null;
     } catch (e) {
       failed = String(e);
@@ -123,6 +128,12 @@
   $effect(() => {
     if (!data?.entries.some((e) => e.status === "queued" || e.status === "finalizing" || e.status === "live")) return;
     const timer = setInterval(reload, 5000);
+    return () => clearInterval(timer);
+  });
+
+  $effect(() => {
+    if (!data?.entries.some((e) => e.live?.counting)) return;
+    const timer = setInterval(() => (now = Date.now()), 1000);
     return () => clearInterval(timer);
   });
 
@@ -285,17 +296,23 @@
   // always there, renamed or not, so a lecture keeps the same line whatever its title
   const number = (e: Entry) => (e.number > 0 ? t("lib.lectureN", { n: e.number }) : null);
   // "1:42:17" → "1 h 42 min": next to a clock time ("16:09") the two mustn't look alike
-  const length = (duration: string | null) => {
-    const parts = duration?.split(":").map(Number);
-    if (!parts || parts.some(isNaN)) return duration;
-    const [h, m, sec] = parts.length === 3 ? parts : [0, ...parts];
+  const inWords = (seconds: number) => {
+    const s = Math.max(0, Math.floor(seconds));
+    const [h, m, sec] = [Math.floor(s / 3600), Math.floor(s / 60) % 60, s % 60];
     if (!h && !m) return `${sec} s`;
     return h ? `${h} h${m ? ` ${m} min` : ""}` : `${m} min`;
   };
+  const length = (e: Entry) => {
+    if (e.live) return inWords(e.live.length_s + (e.live.counting ? Math.max(0, now - loadedAt) / 1000 : 0));
+    const parts = e.duration?.split(":").map(Number);
+    if (!parts || parts.some(isNaN)) return e.duration;
+    const [h, m, sec] = parts.length === 3 ? parts : [0, ...parts];
+    return inWords(h * 3600 + m * 60 + sec);
+  };
   const rowDetail = (e: Entry) =>
-    [number(e), e.number > 0 || e.title ? prettyDate(e) : e.start, length(e.duration)].filter(Boolean).join(" · ");
+    [number(e), e.number > 0 || e.title ? prettyDate(e) : e.start, length(e)].filter(Boolean).join(" · ");
   const details = (e: Entry) =>
-    [number(e), prettyDate(e) + (e.start ? `, ${e.start}` : ""), length(e.duration), languageName(e.language)].filter(Boolean).join(" · ");
+    [number(e), prettyDate(e) + (e.start ? `, ${e.start}` : ""), length(e), languageName(e.language)].filter(Boolean).join(" · ");
   const statusLabel = (status: string) =>
     t((["live", "queued", "finalizing"].includes(status) ? `lib.status.${status}` : "lib.status.draft") as Key);
 
@@ -466,7 +483,8 @@
           <div class="draft">
             <p class="serif">
               <span class="status {selected.status}">{statusLabel(selected.status)}</span>
-              {selected.draft_note ?? t("lib.comesLater")}
+              <!-- a low battery or memory pauses the text so far: said calmly, the recording goes on -->
+              {selected.live?.warning || (selected.draft_note ?? t("lib.comesLater"))}
             </p>
             {#if selected.status === "queued"}
               <button class="pill small" onclick={finish} disabled={busy === "finish"}>
@@ -519,7 +537,9 @@
             <div class="kicker">{t("lib.soFar")}</div>
             <div class="summary serif selectable">{@html renderMarkdown(progress)}</div>
           {:else}
-            <p class="quiet serif">{t("lib.nothingYet")} {selected.status === "live" ? t("lib.nothingYet.live") : t("lib.nothingYet.later")}</p>
+            <!-- live: the text comes as the recording goes on, unless that is switched off or paused (low battery) -->
+            <p class="quiet serif">{t("lib.nothingYet")} {selected.status === "live" && (selected.live?.transcribing ?? true)
+              ? t("lib.nothingYet.live") : t("lib.nothingYet.later")}</p>
           {/if}
         {:else if summary}
           <div class="kicker">{t("lib.summary")}</div>

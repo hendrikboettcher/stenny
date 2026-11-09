@@ -17,6 +17,17 @@ export interface Entry {
   draft_note: string | null; // a live draft: where its final transcript is
   transcript: string;
   summary: string | null;
+  live?: Live;              // only the recording that is running now (app_server._with_live)
+}
+
+// The running recording, as the menu bar sees it: its length (pauses left out) and whether it is counting up now,
+// whether the text so far is being transcribed, and a warning (battery or memory low, disk full) while one applies
+export interface Live {
+  length_s: number;
+  counting: boolean;
+  draft: boolean;
+  transcribing: boolean;
+  warning: string;
 }
 
 export interface Library {

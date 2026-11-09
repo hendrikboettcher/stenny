@@ -164,7 +164,8 @@ fn status_line(st: &State) -> String {
     match str_of(s, "state") {
         "recording" if s.get("input_lost").and_then(Value::as_bool) == Some(true) => tr!("menu.status.noAudio"),
         "recording" if !str_of(s, "warning").is_empty() => str_of(s, "warning").to_string(),
-        // the words transcribed so far, while it transcribes (plugged in); on battery it only records
+        // the words transcribed so far, while it transcribes (plugged in or on battery; a low battery or low
+        // memory pauses it, and then the warning above shows instead)
         "recording" if s.get("transcribing").and_then(Value::as_bool) == Some(true) => {
             tr!("menu.status.recordingWords", course = course, words = s.get("words").and_then(Value::as_u64).unwrap_or(0))
         }
