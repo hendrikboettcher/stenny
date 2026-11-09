@@ -24,8 +24,10 @@ TICK_S = 0.002  # real seconds per simulated block (0.1 s): slow enough that a b
 
 class FakeMic:
     """Writes speech-like noise to the recording file like ffmpeg does, with a 0.5 s pause every 4 s.
-    A background clock advances simulated time (0.1 s per ~2 ms) whether or not it is recording. It counts whole
-    blocks, so 33 blocks are exactly 3.3 s (adding 0.1 up gives 3.3000000000000016)."""
+    A background clock advances simulated time (0.1 s per ~2 ms) whether or not it is recording, from the moment the
+    session first starts it: how long setting up the session took in real time (long on a busy CI runner) never
+    shows up as lecture time. It counts whole blocks, so 33 blocks are exactly 3.3 s (adding 0.1 up gives
+    3.3000000000000016)."""
 
     name, clock_rate, restartable = "fake mic", 1.0, True
     microphone = "Alex’s iPhone Microphone"
@@ -39,6 +41,7 @@ class FakeMic:
         self.finished = False
         self.twins = []         # FakeBackup microphones hearing the same room on the same clock
         self.lock = threading.Lock()
+        self.started = threading.Event()  # the clock stands at 0 until the session starts the microphone
         threading.Thread(target=self._clock, daemon=True).start()
 
     @property
@@ -71,6 +74,7 @@ class FakeMic:
             done.set()
 
     def _clock(self):
+        self.started.wait()
         while True:
             time.sleep(TICK_S)
             self._run_due()
@@ -97,6 +101,7 @@ class FakeMic:
         with self.lock:
             self.out = open(path, "ab")
             self.running, self.warming = True, self.startup_blocks
+        self.started.set()
 
     def stop(self):
         with self.lock:
@@ -436,7 +441,8 @@ def test_low_memory_pauses_transcription_but_never_the_recording(tmp_path, monke
         wait_until(lambda: s.draft_paused and s.warning)
         s.engine.release = lambda: released.append(True)
         before = len(s.segments)
-        wait_until(lambda: mic.t >= 25)
+        # the session reads what the clock wrote a little later (much later on a busy runner): wait for both
+        wait_until(lambda: mic.t >= 25 and s.recorded >= 24 * SAMPLE_RATE)
         s.seen = before, len(s.segments), s.recorded
         state["pressure"] = 1
         wait_until(lambda: not s.draft_paused)
