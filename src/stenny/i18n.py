@@ -67,7 +67,7 @@ def resolve(setting: str | None) -> str:
 def tr(text: str, **values) -> str:
     """`text` in the current language, with {placeholders} filled in."""
     if _language == "de":
-        text = DE.get(text, text)
+        text = (DE_WINDOWS.get(text) if sys.platform == "win32" else None) or DE.get(text, text)
     return text.format(**values) if values else text
 
 
@@ -82,6 +82,9 @@ DE = {
     "Trash": "Papierkorb",
     "Recycle Bin": "Papierkorb",
     "Missing '{name}'.": "„{name}“ fehlt.",
+    "Talks have no glossary.": "Vorträge haben kein Glossar.",
+    "Stenny can only remember the spelling of a name or term, a few words long.":
+        "Stenny kann sich nur die Schreibweise eines Namens oder Begriffs merken, ein paar Wörter lang.",
     "Unknown method '{name}'.": "Unbekannte Methode „{name}“.",
     "Not JSON.": "Kein JSON.",
     "Something went wrong ({error}).": "Da ist etwas schiefgelaufen ({error}).",
@@ -95,6 +98,8 @@ DE = {
     "This lecture has no final transcript waiting.": "Für diese Vorlesung steht kein Transkript aus.",
     "The recording is finished; its transcript is made once the Mac is plugged in.":
         "Aufnahme abgeschlossen. Das Transkript wird erstellt, sobald dein Mac am Netzteil ist.",
+    "The recording is finished; its transcript is made once the PC is plugged in.":
+        "Aufnahme abgeschlossen. Das Transkript wird erstellt, sobald dein PC am Netzteil ist.",
     "The recording is finished; its transcript comes later.":
         "Aufnahme abgeschlossen. Das Transkript folgt später.",
     "The recording is finished and its transcript is being made now.":
@@ -228,4 +233,10 @@ DE = {
     "Claude Code couldn't add the connector: {error}": "Claude Code konnte den Connector nicht hinzufügen: {error}",
     "Claude Code couldn't remove the connector: {error}": "Claude Code konnte den Connector nicht entfernen: {error}",
     "Couldn't open Claude: {error}": "Claude ließ sich nicht öffnen: {error}",
+}
+
+# Where the German names the Mac and the English doesn't: the same message on Windows.
+DE_WINDOWS = {
+    "final pass queued (on battery)": "Transkript folgt, sobald der PC am Netzteil ist",
+    "final pass queued (unplugged)": "Transkript folgt, sobald der PC wieder am Netzteil ist",
 }

@@ -36,13 +36,54 @@ jobs:
       - name: ffmpeg (macOS)
         if: runner.os == 'macOS'
         run: brew install ffmpeg
+      # Chocolatey is on the runner; setup-ffmpeg asked GitHub's API for the latest release and failed whenever
+      # that didn't answer ("Cannot get latest release"), which kept main red
       - name: ffmpeg (Windows)
         if: runner.os == 'Windows'
-        uses: FedericoCarboni/setup-ffmpeg@v3
+        run: choco install ffmpeg --no-progress -y
       - name: Install
         run: uv sync --locked --group dev
       - name: Tests
         run: uv run pytest -q
+
+  # stenny-rec.exe, the Windows microphone recorder (desktop/stenny-rec, WASAPI). Its tests (the command line, the
+  # conversion to 16 kHz mono, the device details) run on both systems; on Windows it is also built and asked about
+  # the runner's audio devices. The runner has no microphone: recording itself is tested on a real PC (#2).
+  recorder:
+    name: Recorder (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    defaults:
+      run:
+        working-directory: desktop/stenny-rec
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/stenny-rec
+      - name: Tests
+        run: cargo test --locked
+      - name: Build
+        if: runner.os == 'Windows'
+        run: cargo build --release --locked
+      - name: Devices and errors (no microphone on the runner)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          rec=target/release/stenny-rec.exe
+          "$rec" --list
+          "$rec" --list-json | tee devices.json
+          python -c "import json; d = json.load(open('devices.json', encoding='utf-8')); assert isinstance(d, list), d"
+          # a microphone that isn't there: exit 1 and say so, like the Swift recorder
+          set +e; "$rec" --out test.pcm --device "No such microphone" 2> error.txt < /dev/null; code=$?; set -e
+          cat error.txt
+          [[ $code == 1 ]] && grep -q "stenny-rec: error:" error.txt
+          set +e; "$rec" --loud 2> /dev/null; code=$?; set -e
+          [[ $code == 1 ]]
 
   app:
     name: App (${{ matrix.os }})
@@ -72,8 +113,9 @@ jobs:
       - name: Build the interface
         run: npm run build
       # The bundle's helpers (stenny-agent, stenny-rec, ffmpeg) and the connector are built by their own scripts
-      # (scripts/helpers.sh, connector/build.sh), on a Mac. Compiling only needs the files to exist. stenny-agent is
-      # macOS's only (tauri.macos.conf.json); on Windows the app does its work itself.
+      # (scripts/helpers.sh, connector/build.sh on a Mac; scripts/ffmpeg-windows.sh, connector/build.sh and
+      # scripts/stenny-rec.sh on Windows, the recorder checked in its own job). Compiling only needs the files to exist.
+      # stenny-agent is macOS's only (tauri.macos.conf.json); on Windows the app does its work itself.
       - name: Placeholders for the bundled helpers
         shell: bash
         run: |
@@ -82,7 +124,7 @@ jobs:
           agent=""; [[ "$triple" == *apple* ]] && agent="stenny-agent"
           mkdir -p src-tauri/binaries src-tauri/resources
           for b in $agent stenny-rec ffmpeg ffprobe; do touch "src-tauri/binaries/$b-$triple$ext"; done
-          touch src-tauri/resources/Stenny.mcpb
+          touch src-tauri/resources/Stenny.mcpb src-tauri/resources/ffmpeg-license.txt
       - name: Compile
         working-directory: desktop/src-tauri
         run: cargo check --locked --all-targets
@@ -90,8 +132,9 @@ jobs:
   # Full tier only. Builds the installers (macOS: .app + .dmg, Windows: .msi + setup .exe) to prove bundling works on
   # both systems; they are kept as the run's artifacts for a week, unsigned, NOT for handing out. On the Mac the Swift
   # helpers and the connector are the real ones (scripts/helpers.sh); ffmpeg/ffprobe are placeholders (the LGPL build,
-  # app/build-ffmpeg.sh, takes too long here). On Windows every helper is still a placeholder: stenny-rec has no
-  # Windows version yet (#2), so the Windows installer is a bundling check, not a working app.
+  # app/build-ffmpeg.sh, takes too long here). On Windows ffmpeg/ffprobe (a pinned LGPL build, scripts/ffmpeg-windows.sh),
+  # the connector (connector/build.sh) and stenny-rec (scripts/stenny-rec.sh) are the real ones; stenny-agent is macOS's
+  # only (on Windows the app does its work itself).
   installers:
     name: Installer (${{ matrix.os }})
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
@@ -114,12 +157,25 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: desktop/src-tauri
+          workspaces: |
+            desktop/src-tauri
+            desktop/stenny-rec
       - name: Install
         run: npm ci
       - name: Helpers (macOS)
         if: runner.os == 'macOS'
         run: scripts/helpers.sh
+      - name: ffmpeg and the connector (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          bash scripts/ffmpeg-windows.sh "$(rustc -vV | sed -n 's/^host: //p')"
+          bash ../connector/build.sh
+          mkdir -p src-tauri/resources && cp ../dist/Stenny.mcpb src-tauri/resources/Stenny.mcpb
+      - name: Recorder (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: scripts/stenny-rec.sh
       - name: Placeholders for the helpers that can't be built here
         shell: bash
         run: |
@@ -131,6 +187,7 @@ jobs:
             f="src-tauri/binaries/$b-$triple$ext"; [[ -e "$f" ]] || touch "$f"
           done
           [[ -e src-tauri/resources/Stenny.mcpb ]] || touch src-tauri/resources/Stenny.mcpb
+          [[ -e src-tauri/resources/ffmpeg-license.txt ]] || touch src-tauri/resources/ffmpeg-license.txt
       - name: Build the installers
         run: npm run tauri build
       - uses: actions/upload-artifact@v4

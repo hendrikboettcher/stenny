@@ -390,13 +390,15 @@ def write_file(path: Path, text: str) -> Path:
 RECENT_LECTURES = 5  # automatic glossary terms are ranked by how many of the course's last lectures use them
 
 
-def update_glossary(vault: Vault, course: str, folder: Path, glossary: Glossary, new: list[str], text: str) -> list[str]:
-    """Add checked terms (guard.validate_terms) to the glossary's automatic section and re-rank it by use in
-    the course's recent final transcripts. Only that section of the note changes. Returns the added terms."""
+def update_glossary(vault: Vault, course: str, glossary: Glossary, new: list[str], text: str | None = None,
+                    folder: Path | None = None) -> list[str]:
+    """Add terms to the glossary's automatic section and re-rank it by use in the course's recent final
+    transcripts (`text`: the lecture just made in `folder`, if any). Only that section of the note changes.
+    Returns the added terms."""
     path = vault.glossary_path(course)
     if not path.exists():
         return []
-    recent = [text]
+    recent = [text] if text else []
     for other in reversed(vault.lectures(course)):
         if len(recent) >= RECENT_LECTURES:
             break
@@ -432,7 +434,7 @@ def postprocess(lec: Lecture, folder: Path, segments: list[dict], glossary: Glos
     lec.structure = "time"
     vault.write(files.target("transcript"), transcript_md(lec, paragraphs, sections))
 
-    usage, applied, rejected, generator, added = Usage(), [], [], None, []
+    usage, applied, rejected, generator = Usage(), [], [], None
     try:
         backend = get_backend(cfg) if use_llm else None
     except LLMError as e:
@@ -460,9 +462,6 @@ def postprocess(lec: Lecture, folder: Path, segments: list[dict], glossary: Glos
             refs = sum(1 for s in sections if s.get("slides"))
             log(f"  {len(sections)} sections" + (f" ({refs} with slide pages)" if slides else "")
                 + f", {len(applied)} term fixes applied, {len(rejected)} rejected, {len(lec.topics)} topics")
-            new_terms = guard.validate_terms(proposal["terms"], full_text, slides, glossary.terms)
-            if lec.kind != "event":
-                added = update_glossary(vault, lec.course, folder, glossary, new_terms, full_text)
             if cfg.summary if summary is None else summary:
                 log("Writing summary")
                 body, u = tasks.summarize(paragraphs, lec.languages, backend)
@@ -470,10 +469,12 @@ def postprocess(lec: Lecture, folder: Path, segments: list[dict], glossary: Glos
                 vault.write(files.target("summary"), summary_md(lec, body, backend.name))
         except LLMError as e:
             log(f"LLM step skipped: {e} The transcript is complete without it.")
+    if lec.kind != "event":  # the automatic terms most used lately first (Whisper's prompt has room for a few dozen)
+        update_glossary(vault, lec.course, glossary, [], "\n".join(p["text"] for p in paragraphs), folder)
     return {
         "words": sum(len(p["text"].split()) for p in paragraphs), "glossary_corrections": n_corr,
         "term_fixes_applied": applied, "term_fixes_rejected": rejected,
-        "slides": slides.count if slides else 0, "topics": lec.topics, "glossary_terms_added": added,
+        "slides": slides.count if slides else 0, "topics": lec.topics,
         "llm": {"backend": generator, "input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens,
                 "cost_usd": round(usage.cost_usd, 5), "billed": usage.billed} if generator else None,
         "_usage": usage,

@@ -14,9 +14,15 @@ import sys
 ENGINES = ("auto", "mlx", "faster-whisper")
 
 
-def get_engine(model: str, engine: str = "auto"):
+def resolve(engine: str = "auto") -> str:
+    """The engine `auto` stands for on this computer."""
     if engine == "auto":
-        engine = "mlx" if sys.platform == "darwin" else "faster-whisper"
+        return "mlx" if sys.platform == "darwin" else "faster-whisper"
+    return engine
+
+
+def get_engine(model: str, engine: str = "auto"):
+    engine = resolve(engine)
     if engine == "mlx":
         from .mlx_engine import MlxEngine
 

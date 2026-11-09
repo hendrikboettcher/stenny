@@ -1,10 +1,12 @@
+import re
 import sys
-import subprocess
+import zipfile
 from types import SimpleNamespace
+from xml.etree import ElementTree
 
 import pytest
 
-from stenny import share
+from stenny import share, word
 from stenny.render import Lecture, summary_md, transcript_md
 
 
@@ -83,7 +85,16 @@ def test_html_keeps_the_structure_and_greys_timestamps():
     assert "<hr>" in page
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Word copies come from textutil, macOS only for now (#2)")
+W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+
+
+def docx_lines(path) -> list[str]:
+    """A Word file's paragraphs as text (textutil's and word.py's alike)."""
+    with zipfile.ZipFile(path) as z:
+        body = ElementTree.fromstring(z.read("word/document.xml"))
+    return ["".join(t.text or "" for t in p.iter(f"{W}t")) for p in body.iter(f"{W}p")]
+
+
 def test_share_writes_word_and_html(cfg, tmp_path):
     entry = share.find(cfg, "Calculus", "2026-10-20")
     docx = share.share(entry, with_summary=True, out_dir=tmp_path / "out", fmt="docx")
@@ -96,13 +107,76 @@ def test_share_writes_word_and_html(cfg, tmp_path):
         share.share(entry, fmt="pdf")
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Word copies come from textutil, macOS only for now (#2)")
 def test_word_and_pdf_end_with_the_credit_markdown_does_not(cfg, tmp_path):
     entry = share.find(cfg, "Calculus", "2026-10-20")
     page = share.share(entry, out_dir=tmp_path, fmt="html").read_text(encoding="utf-8")
     assert page.rstrip().endswith(share.CREDIT + "\n</body></html>") and 'href="https://stenny.eu"' in page
     docx = share.share(entry, out_dir=tmp_path, fmt="docx")
-    words = subprocess.run(["textutil", "-convert", "txt", "-stdout", str(docx)], capture_output=True, text=True).stdout
-    assert words.rstrip().endswith("Transcribed with Stenny · stenny.eu")
+    assert [line for line in docx_lines(docx) if line.strip()][-1].strip() == "Transcribed with Stenny · stenny.eu"
     assert "Stenny ·" not in share.share(entry, out_dir=tmp_path).read_text(encoding="utf-8")
     assert "credit" not in share.to_html("# Title\n", "Title").split("<body>")[1]
+
+
+@pytest.mark.parametrize("platform", ["win32", "darwin"])
+def test_word_copies_on_windows_come_from_stennys_own_writer(cfg, tmp_path, monkeypatch, platform):
+    """No textutil on Windows: word.py writes the .docx (macOS keeps textutil)."""
+    if platform == "darwin" and sys.platform != "darwin":
+        pytest.skip("textutil is macOS's")
+    monkeypatch.setattr(share.sys, "platform", platform)
+    made = []
+    monkeypatch.setattr(share.word, "write", lambda *a, **kw: made.append(a) or a[0].write_bytes(b"PK"))
+    share.share(share.find(cfg, "Calculus", "2026-10-20"), out_dir=tmp_path, fmt="docx")
+    assert bool(made) == (platform == "win32")
+
+
+MARKDOWN = """# Calculus – Lecture 3 (2026-10-20)
+
+> *Automatic transcript.* Names may be misheard.
+
+## Summary
+
+- **Limits** & *continuity* **[0:03:10]**
+  wrapped onto a second line
+- x < y
+
+---
+
+### Details
+
+**[0:00:05]** Good morning, "everyone".\x07
+"""
+
+
+def test_the_word_writer(tmp_path):
+    path = tmp_path / "copy.docx"
+    word.write(path, share.blocks(MARKDOWN), share._inline, "Calculus – Lecture 3 & more")
+    with zipfile.ZipFile(path) as z:
+        assert z.testzip() is None
+        parts = {name: z.read(name) for name in z.namelist()}
+    assert {"[Content_Types].xml", "_rels/.rels", "word/document.xml", "word/styles.xml", "word/numbering.xml",
+            "word/_rels/document.xml.rels", "docProps/core.xml"} <= set(parts)
+    for xml in parts.values():  # every part is well-formed XML: Word refuses the whole file otherwise
+        ElementTree.fromstring(xml)
+    assert "Calculus – Lecture 3 &amp; more".encode() in parts["docProps/core.xml"]
+    assert b'Target="https://stenny.eu"' in parts["word/_rels/document.xml.rels"]
+    assert docx_lines(path) == [
+        "Calculus – Lecture 3 (2026-10-20)", "Automatic transcript. Names may be misheard.", "Summary",
+        "Limits & continuity [0:03:10] wrapped onto a second line", "x < y", "", "Details",
+        '[0:00:05] Good morning, "everyone".', "Transcribed with Stenny · stenny.eu"]
+
+    body = ElementTree.fromstring(parts["word/document.xml"])
+    styles = [p.find(f"{W}pPr/{W}pStyle") for p in body.iter(f"{W}p")]
+    assert [s.get(f"{W}val") if s is not None else None for s in styles] == [
+        "Heading1", "Quote", "Heading2", "ListBullet", "ListBullet", "Rule", "Heading3", None, "Credit"]
+    runs = {"".join(t.text for t in r.iter(f"{W}t")): r.find(f"{W}rPr") for r in body.iter(f"{W}r")}
+    assert runs["Limits"].find(f"{W}b") is not None and runs["continuity"].find(f"{W}i") is not None
+    stamp = runs["[0:03:10]"]
+    assert stamp.find(f"{W}sz").get(f"{W}val") == str(word.TS) and stamp.find(f"{W}b") is None
+    # Word's own heading styles, so its navigation pane and a table of contents find them
+    assert re.search(rb'w:styleId="Heading2"><w:name w:val="heading 2"/>', parts["word/styles.xml"])
+
+
+def test_word_runs_follow_the_html():
+    assert word.runs(share._inline("a **b *c*** [0:01:02] <")) == [
+        ("a ", False, False, False), ("b ", True, False, False), ("c", True, True, False), (" ", False, False, False),
+        ("[0:01:02]", False, False, True), (" <", False, False, False)]

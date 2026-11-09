@@ -107,3 +107,24 @@ def test_the_model_goes_to_stennys_models_folder(fake, monkeypatch, tmp_path):
     monkeypatch.setattr(paths, "models_dir", lambda: None)  # a Mac: the Hugging Face cache
     FasterWhisperEngine("large-v3-turbo").transcribe(np.zeros(16000, np.float32), "en")
     assert fake.root is None
+
+
+def test_download_model_fetches_faster_whispers_model_where_the_engine_reads_it(tmp_path, monkeypatch, capsys):
+    """`stenny download-model` on Windows: the CTranslate2 model, into %LOCALAPPDATA%\\Stenny\\Models (not mlx's)."""
+    from stenny import cli, paths
+
+    asked = []
+
+    def download_model(name, cache_dir=None):
+        asked.append((name, cache_dir))
+        return str(tmp_path / "Models" / name)
+
+    utils = SimpleNamespace(download_model=download_model)
+    monkeypatch.setitem(sys.modules, "faster_whisper", SimpleNamespace(utils=utils))
+    monkeypatch.setitem(sys.modules, "faster_whisper.utils", utils)
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(paths, "models_dir", lambda: tmp_path / "Models")
+    monkeypatch.setenv("STENNY_CONFIG", str(tmp_path / "none.toml"))  # no config: the defaults
+    cli.cmd_download_model(SimpleNamespace())
+    assert asked == [("large-v3-turbo", str(tmp_path / "Models"))]
+    assert "Done:" in capsys.readouterr().out

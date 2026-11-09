@@ -26,7 +26,7 @@ def places(tmp_path, monkeypatch):
     values = {
         "CONFIG_DIR": app / "config", "DATA_DIR": app / "data", "LOGS_DIR": app / "logs", "CACHE_DIR": app / "cache",
         "CONFIG_PATH": app / "config" / "config.toml", "CONSENT_PATH": app / "config" / "consent.json",
-        "QUEUE_DIR": app / "data" / "Queue", "SOCKET": app / "data" / "live.sock",
+        "QUEUE_DIR": app / "data" / "Queue", "SOCKET": paths.control_address(app / "data"),
         "SHARED_DIR": app / "cache" / "Shared",
         "LEGACY_HOME": home / "Lectures Data", "LEGACY_SYSTEM_DIR": home / "Lectures Data" / "_System",
         "LEGACY_CONFIG_DIR": home / ".config/lecture", "LEGACY_STATE_DIR": home / ".local/share/lecture",

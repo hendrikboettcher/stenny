@@ -8,6 +8,7 @@ replace the Swift menu bar app in `app/`. Everything about lectures comes from t
 ```bash
 npm install                                   # once
 scripts/helpers.sh                            # what it bundles: stenny-agent (macOS only, tauri.macos.conf.json), stenny-rec, Stenny.mcpb (needs Node)
+bash scripts/stenny-rec.sh                    # on Windows (Git Bash): stenny-rec.exe, the WASAPI recorder (stenny-rec/)
 npm run check                                 # type check
 npm run tauri build -- --debug --bundles app  # src-tauri/target/debug/bundle/macos/Stenny.app
 open -n --env STENNY_CLI=../.venv/bin/stenny src-tauri/target/debug/bundle/macos/Stenny.app --args --library
@@ -60,6 +61,22 @@ Check for Updates… (installing comes with the app's own updater). An installed
 adds itself to the login items once, through stenny-agent (on Windows: the Run value, see above); after that it's the
 user's choice.
 
+## The Windows installer
+
+`npm run tauri build` on Windows makes two: the setup program (`bundle/nsis/Stenny_<version>_x64-setup.exe`, the one
+to hand out) and an .msi (for administrators who install for everyone, into `%ProgramFiles%\Stenny`). Their settings
+are in src-tauri/tauri.windows.conf.json: the setup program installs for the current user only, without administrator
+rights, into `%LOCALAPPDATA%\Stenny` (Tauri's default, so next to the engine's own data; its uninstaller deletes only
+the files it installed), in English or German after Windows' language, with Microsoft's WebView2 bootstrapper inside
+(installs WebView2 only where it's missing). Before building, `scripts/ffmpeg-windows.sh` puts a pinned, checksummed
+LGPL ffmpeg/ffprobe into src-tauri/binaries and their licence notice into src-tauri/resources (installed as
+`ffmpeg-license.txt`), and `../connector/build.sh` makes Stenny.mcpb; CI's installer job does both (Git Bash). The
+engine finds the bundled ffmpeg next to Stenny.exe (src/stenny/paths.py, `bundled()`).
+
+**Not signed:** there is no Windows code-signing certificate, so Windows SmartScreen warns about the setup program
+("Windows protected your PC" ▸ *More info* ▸ *Run anyway*; SETUP.md says so). `bundle.windows.signCommand` /
+`certificateThumbprint` stay unset until there is one.
+
 ## Language
 
 The app is in English and German: every window, menu, dialog and notification, and the engine's messages. By
@@ -94,7 +111,6 @@ One word for each thing, everywhere:
 | recording | Aufnahme |
 | transcript | Transkript |
 | summary | Zusammenfassung |
-| slides | Folien |
 | glossary | Glossar |
 | draft (live draft) | Entwurf (Live-Entwurf) |
 | pause shortcut | Kurzbefehl zum Pausieren |
