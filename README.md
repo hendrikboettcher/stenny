@@ -24,6 +24,15 @@ Website and docs: [stenny.eu](https://stenny.eu/docs/quickstart/)
 
 Stenny comes as a finished app with its source code next to it. Changing the menu bar app's own code later needs Apple's Command Line Tools (about 1.8 GB), which Claude Code can install then.
 
+**Windows (preview, not yet tested on a real PC):** Stenny's Windows version is being built ([#2](https://github.com/hendrikboettcher/stenny/issues/2)); some parts, such as recording from the microphone, may not be there yet.
+
+| | |
+|---|---|
+| PC | Windows 10 (version 1809) or Windows 11, 64-bit Intel or AMD (not ARM) |
+| Speed | With an NVIDIA graphics card (and its CUDA libraries) much faster than realtime; on the processor alone, transcribing takes about as long as the lecture |
+| Disk space and memory | As on a Mac: about 5 GB, and 8 GB of memory or more |
+| Claude | The Claude desktop app for Windows, and Claude Code (with Git for Windows) to set Stenny up |
+
 ## Setup
 
 ### The easy way: let Claude Code do it
@@ -37,6 +46,8 @@ Install Stenny on my Mac by following https://github.com/hendrikboettcher/stenny
 That's all. Claude Code downloads Stenny to `~/Applications/stenny.noindex`, checks your Mac, installs what's missing and the menu bar app, asks where your transcripts should go and which courses you take, downloads the Whisper model, makes a test recording with you and adds the Stenny connector to Claude. It explains each step and asks before anything important. [SETUP.md](SETUP.md) is the exact script it follows; you can read it first.
 
 The app is signed with the author's own certificate, not one from Apple, so macOS refuses a copy downloaded in a browser. Claude Code's download doesn't have that problem. To get a new version later: Stenny's menu ▸ *Check for Updates…* (or `stenny update`).
+
+**On Windows,** paste `Install Stenny on my PC by following https://github.com/hendrikboettcher/stenny/blob/main/SETUP.md` instead; [SETUP.md](SETUP.md#stenny-on-windows-preview) has a Windows part. Stenny's code goes to `%LOCALAPPDATA%\Programs\stenny` and the `stenny` command is installed with uv, as on a Mac. The app comes as a setup program (`Stenny_<version>_x64-setup.exe`) that installs for your user only, into `%LOCALAPPDATA%\Stenny`, with its own LGPL ffmpeg and the connector. It isn't signed yet, so Windows says *"Windows protected your PC"*: *More info ▸ Run anyway*. New versions: a newer setup program installs over the old one, and Claude Code updates the code (`stenny update` is macOS only).
 
 ### By hand
 
@@ -93,7 +104,7 @@ See `config.example.toml` for every setting.
 
 **Finish setting up Stenny:** until the three things that make Stenny really useful work (at least one course, the AI step, the connector in Claude), a small card at the bottom of the window's sidebar shows how many are done. Click it for the steps, each with its action right there (*Add a course…*, *Sign in…*, *Install…*); a step counts as done when it really works, checked again whenever the window comes back to the front. Choosing *Off* for the AI step counts as done. The × hides the card until Stenny opens again; after a few times it also offers *Don't show this again*. Once everything works it says *You're all set* and is gone for good (`[app] setup_checklist = false`). Settings stays the full place for all of it.
 
-**Share with classmates:** *Share…* in the window makes a clean copy as PDF, Word or Markdown (summary on top, if you like): no file paths, microphone names or Obsidian links. PDF and Word end with a small "Transcribed with Stenny · stenny.eu" line; Markdown doesn't. The copies are saved in Stenny's caches folder (`~/Library/Caches/Stenny/Shared/`). Stenny asks once per course whether the lecturer is fine with it.
+**Share with classmates:** *Share…* in the window makes a clean copy as PDF, Word or Markdown (summary on top, if you like): no file paths, microphone names or Obsidian links. PDF and Word end with a small "Transcribed with Stenny · stenny.eu" line; Markdown doesn't. (Word files come from macOS's textutil on a Mac and from Stenny's own small writer on Windows, with Word's heading styles and real bullet lists.) The copies are saved in Stenny's caches folder (`~/Library/Caches/Stenny/Shared/`). Stenny asks once per course whether the lecturer is fine with it.
 
 **Other things you can do:**
 - **Use your iPhone as the microphone** (*Microphone ▸*, via Continuity) and put it closer to the lecturer. The Mac's own microphone records as a backup and fills the gaps when you use the phone.
@@ -256,6 +267,8 @@ stenny course add "Name" -l en        # or the + next to Courses in Stenny's win
 app/make-cert.sh                       # once: a signing certificate, so macOS remembers permissions across builds
 app/build.sh                           # build the app and install it (needs Apple's Command Line Tools; --no-install: only build)
 app/release.sh                         # dist/Stenny.zip for a release (--publish: also tag and upload it)
+connector/build.sh                     # dist/Stenny.mcpb, the connector (macOS or Git Bash on Windows; --icon: redraw its icon)
+desktop/scripts/ffmpeg-windows.sh      # the pinned LGPL ffmpeg/ffprobe for the Windows installer (CI does this)
 uv run python bench/run_bench.py --help
 ```
 
