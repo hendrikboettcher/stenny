@@ -17,7 +17,8 @@ use engine::Engine;
 use i18n::tr;
 use menubar::MenuBar;
 use serde_json::Value;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu, HELP_SUBMENU_ID, WINDOW_SUBMENU_ID};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent, Wry};
 
@@ -275,7 +276,11 @@ fn app_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &PredefinedMenuItem::paste(app, Some(&t("app.paste")))?,
             &PredefinedMenuItem::select_all(app, Some(&t("app.selectAll")))?,
         ])?,
-        &Submenu::with_items(app, t("app.view"), true, &[&PredefinedMenuItem::fullscreen(app, Some(&t("app.fullscreen")))?])?,
+        &Submenu::with_items(app, t("app.view"), true, &[
+            &MenuItem::with_id(app, "reload", t("app.reload"), true, Some("CmdOrCtrl+R"))?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::fullscreen(app, Some(&t("app.fullscreen")))?,
+        ])?,
         &Submenu::with_id_and_items(app, WINDOW_SUBMENU_ID, t("app.window"), true, &[
             &PredefinedMenuItem::minimize(app, Some(&t("app.minimize")))?,
             &PredefinedMenuItem::maximize(app, Some(&t("app.zoom")))?,
@@ -292,15 +297,51 @@ fn open_settings(app: &AppHandle) {
     let _ = app.emit_to("library", "open-settings", ());
 }
 
+/// ⌘R / Ctrl+R or View ▸ Reload: the window's page loads again, like a browser's. Only the web view: a recording,
+/// its live draft and a final pass run in their own processes and the menu bar icon is Rust's, so they all go on;
+/// the page picks them up again as it loads (routes/+page.svelte). The page catches the key itself
+/// (routes/+layout.svelte) and the menu has it too; where both get one press (Windows, maybe), it reloads once.
+fn reload(window: &tauri::WebviewWindow) {
+    static LAST: Mutex<Option<(String, Instant)>> = Mutex::new(None);
+    {
+        let mut last = LAST.lock().unwrap();
+        if matches!(&*last, Some((label, at)) if label == window.label() && at.elapsed() < Duration::from_millis(800)) {
+            return;
+        }
+        *last = Some((window.label().to_string(), Instant::now()));
+    }
+    let _ = window.reload();
+}
+
+#[tauri::command]
+fn reload_window(window: tauri::WebviewWindow) {
+    reload(&window);
+}
+
 /// Shows a window, creating it the first time: "library" or "talk".
 pub fn show_window(app: &AppHandle, label: &str) {
+    present(app, label, false);
+}
+
+/// The menu bar's "Text so far": the library comes up on the running recording, even if it was open already.
+pub fn show_recording(app: &AppHandle) {
+    present(app, "library", true);
+}
+
+/// The library coming back (it was hidden or in the Dock, or `to_recording`) is told so ("library-shown"): it then
+/// selects a running recording (routes/+page.svelte). Showing it for the first time needs no word: the page loads.
+fn present(app: &AppHandle, label: &str, to_recording: bool) {
     let app2 = app.clone();
     let label = label.to_string();
     let _ = app.run_on_main_thread(move || {
         if let Some(window) = app2.get_webview_window(&label) {
+            let hidden = !window.is_visible().unwrap_or(true) || window.is_minimized().unwrap_or(false);
             let _ = window.show();
             let _ = window.unminimize();
             let _ = window.set_focus();
+            if label == "library" && (hidden || to_recording) {
+                let _ = window.emit("library-shown", ());
+            }
             return;
         }
         let built = match label.as_str() {
@@ -345,8 +386,15 @@ pub fn run() {
     let app = tauri::Builder::default()
         .menu(app_menu)
         .on_menu_event(|app, event| {
-            if event.id() == "settings" {
-                open_settings(app);
+            match event.id().as_ref() {
+                "settings" => open_settings(app),
+                // the window in front (the menu is the app's, not a window's)
+                "reload" => {
+                    if let Some(window) = app.webview_windows().into_values().find(|w| w.is_focused().unwrap_or(false)) {
+                        reload(&window);
+                    }
+                }
+                _ => {}
             }
         })
         .plugin(tauri_plugin_opener::init())
@@ -354,7 +402,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(Arc::new(Engine::default()))
         .manage(MenuBar::default())
-        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, share_files, copy_text, check_updates, microphone_pref, set_microphone_pref, login_item, apply_shortcut, ui_language, set_ui_language, courses_changed])
+        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, share_files, copy_text, check_updates, reload_window, microphone_pref, set_microphone_pref, login_item, apply_shortcut, ui_language, set_ui_language, courses_changed])
         .setup(move |app| {
             if !library_only {
                 // A Dock app with the menu bar icon next to it. Info.plist keeps LSUIElement for the helpers in the

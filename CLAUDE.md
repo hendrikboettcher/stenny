@@ -42,8 +42,8 @@ src/stenny/
                   corrections; fills itself from the student's fixes ("Always write it like this?" → their own sections)
                   and from Claude (connector → the "(added automatically)" sections, never over the student's)
   slides.py       dormant (#20): a lecture's slides PDF; nothing new may rely on it or point users to it
-  course_files.py generated _Course Files/<Course> (overview|all lectures|summaries).md and _Topics/<topic>.md;
-                  renumbers lectures, sets previous/next links
+  course_files.py generated _Course Files/<Course> (overview).md (links only: each lecture's text exists once, in
+                  its folder) and _Topics/<topic>.md; renumbers lectures, sets previous/next links
   share.py        the library (every lecture and talk, for Stenny's window) and clean copies to share
   connector.py    what Claude may read through the connector, as clean text (no paths, no microphones): courses,
                   lectures, transcripts in parts, summaries, search, glossary; two writes, both to the glossary's automatic
@@ -68,7 +68,10 @@ src/stenny/
   vault.py        safe writes into the Stenny folder (courses, Talks/, _Glossaries …), folder rule enforcement
   migrate.py      `stenny migrate`: an older install (~/Lectures Data, talks in <vault>/Recordings) into today's
                   places, once; the app runs it at start (`on_start`, also makes a config if there is none)
-  jobs.py         queue, AC-power check, priority wrappers
+  jobs.py         queue, AC-power check, priority wrappers, keep awake; the queue's background job (launchd agent,
+                  on Windows a Task Scheduler task started with pythonw.exe, `run_without_console`)
+  winsys.py       Windows' own calls (ctypes, kernel32) behind jobs.py and resources.py: priority class and background
+                  mode, AC power, SetThreadExecutionState, GlobalMemoryStatusEx
   live/           live mode: sources.py (mic/file via ffmpeg), session.py (record, chunk, draft,
                   pause/resume, spans → lecture time), control.py (JSON lines: a Unix socket, on Windows a named pipe)
 app/              Swift menu bar app (SwiftPM + build.sh): starts `stenny live`, pause shortcut (`[app] pause_shortcut`,
@@ -96,7 +99,7 @@ Stenny folder (`folder` in config.toml, default `~/Documents/Stenny`, may be ins
 - `segments.json` (in Recordings/, outside the Stenny folder) keeps every segment plus the lecture details (`meta.lecture`), so `stenny refresh` can rebuild everything after Whisper without the audio.
 - **Only what you or Claude read goes into the Stenny folder** (transcripts, summaries, glossaries, course files, topic notes). Everything else lives in the system's app-data places, and only `paths.py` knows them: config.toml + consent.json in `~/Library/Application Support/Stenny/` (Windows `%APPDATA%\Stenny\`); `Recordings/<Course>/` (audio, segments.json, sessions, raw output) and `Queue/` in `~/Library/Application Support/Stenny/` (Windows `%LOCALAPPDATA%\Stenny\`, or `data_dir` in the config); logs in `~/Library/Logs/Stenny/` (Windows `%LOCALAPPDATA%\Stenny\Logs\`); shared copies in the caches folder. `STENNY_HOME` puts them all in one folder (tests, development). Never upload audio anywhere.
 - **No hardcoded personal paths, names or courses in code, tests or docs.** Everything comes from the config; examples stay neutral.
-- Heavy commands must respect the priority settings (`nice`/`taskpolicy`) unless the user passes `--now`.
+- Heavy commands must respect the priority settings (`nice`/`taskpolicy`; on Windows the priority class, `winsys.py`) unless the user passes `--now`.
 - **Microphone capture goes through `stenny-rec` (AVAudioEngine), never through Python** and not through ffmpeg's avfoundation input, which silently dropped ~1 s every ~8 s. Check every change to live mode with `stenny check`.
 - **Starting, the microphone comes first:** nothing slow runs before the recorder starts (`cli.cmd_live`). The system's
   input device records as "default" and is named after its first audio, when the backup microphone joins too
@@ -116,7 +119,7 @@ Stenny folder (`folder` in config.toml, default `~/Documents/Stenny`, may be ins
 - **Every change is for macOS and Windows, in English and German** (see Platforms at the top and the English/German rule above); a PR says
   what it couldn't test on Windows.
 - **Keep README.md, SETUP.md and config.example.toml current** in the same commit as a change to a feature, a command, a setting or a storage location.
-- Don't install large dependencies (>100 MB) or persistent system config without asking the user. The one exception: setup installs the queue's launchd agent by itself (`stenny schedule uninstall` removes it).
+- Don't install large dependencies (>100 MB) or persistent system config without asking the user. The one exception: setup installs the queue's launchd agent (Windows: Task Scheduler task) by itself (`stenny schedule uninstall` removes it).
 
 ## Commands
 ```bash

@@ -83,13 +83,24 @@
   // what the detail view depends on: a reload every few seconds gives new objects, but the same key
   let selectedKey = $derived(selected ? `${id(selected)}:${selected.status}` : "");
 
-  // Several reloads can be under way at once (the window's focus, the timer, the menu bar's "recording" event), and
-  // the engine answers each in its own thread: only the latest one counts, or an older answer could take a recording
-  // that just appeared away again for a moment.
-  // `show`: the entry to show once it's read (in the same step, so the list never shows it with the old selection)
+  const groupOf = (e: Entry): Group => ({ course: e.course, event: e.kind === "event" });
+  // what's recording now, else what's having its final transcript made (the newest of them)
+  const running = (list: Entry[]) =>
+    [...list].reverse().find((e) => e.status === "live") ?? [...list].reverse().find((e) => e.status === "finalizing");
+
+  // `cameBack`: the window has just come back (opened, reloaded with ⌘R, shown again from the Dock or the menu
+  // bar). Then a running recording is what it shows, so its text is right there. Otherwise the selection stays
+  // (the refresh every few seconds never takes it away while someone is clicking around).
+  // `show`: the entry to show once it's read (the menu bar's "recording" event), in the same step, so the list never
+  // shows it with the old selection.
+  // Several reloads can be under way at once (the window's focus, the timer, the menu bar's event), and the engine
+  // answers each in its own thread: only the latest one counts, or an older answer could take a recording that just
+  // appeared away again for a moment. What an older one was asked to show, the latest one shows.
   let reloads = 0;
-  async function reload(show?: (all: Entry[]) => Entry | undefined) {
+  let wanted: { cameBack: boolean; show?: (all: Entry[]) => Entry | undefined } = { cameBack: false };
+  async function reload({ cameBack = false, show }: { cameBack?: boolean; show?: (all: Entry[]) => Entry | undefined } = {}) {
     const mine = ++reloads;
+    wanted = { cameBack: wanted.cameBack || cameBack, show: show ?? wanted.show };
     let next: Library;
     try {
       next = await library();
@@ -98,14 +109,17 @@
       return;
     }
     if (mine !== reloads) return;
+    const asked = wanted;
+    wanted = { cameBack: false };
     data = next;
     failed = null;
-    const shown = show?.(next.entries);
-    if (shown) {
-      group = { course: shown.course, event: shown.kind === "event" };
-      selectedId = id(shown);
-    }
     const all = [...groups.courses, ...groups.talks];
+    const now = asked.show?.(next.entries) ?? (asked.cameBack ? running(next.entries) : undefined);
+    if (now && all.some((g) => same(g, groupOf(now)))) {
+      group = groupOf(now);
+      selectedId = id(now);
+      return;
+    }
     if (!group || !all.some((g) => same(g, group))) group = all[0] ?? null;
     if (!selected) selectedId = entries[0] ? id(entries[0]) : null;
   }
@@ -115,12 +129,29 @@
   type RecordingEvent = { state: string; course: string; kind: string; transcript: string; started: boolean };
   async function recordingChanged(r: RecordingEvent) {
     if (r.state === "starting") return; // its transcript file isn't there yet
-    await reload(r.started && !editing ? (all) => {
+    await reload({ show: r.started && !editing ? (all) => {
       const live = all.filter((e) => e.status === "live");
       return live.find((e) => e.transcript === r.transcript)
         ?? live.find((e) => e.course === r.course && (e.kind === "event") === (r.kind === "event"));
-    } : undefined);
+    } : undefined });
   }
+
+  // The selection outlives the window (⌘R, quitting): it opens where it was when nothing records.
+  const SELECTION = "selection";
+  function lastSelection() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(SELECTION) ?? "null");
+      if (typeof saved?.group?.course === "string") {
+        group = { course: saved.group.course, event: !!saved.group.event };
+        selectedId = typeof saved.selectedId === "string" ? saved.selectedId : null;
+      }
+    } catch {}
+  }
+  $effect(() => {
+    const saved = JSON.stringify({ group, selectedId });
+    if (!group) return;
+    try { localStorage.setItem(SELECTION, saved); } catch {}
+  });
 
   function pick(g: Group) {
     group = g;
@@ -177,7 +208,8 @@
   }
 
   onMount(() => {
-    reload();
+    lastSelection();
+    reload({ cameBack: true });
     const onFocus = () => reload();
     window.addEventListener("focus", onFocus);
     window.addEventListener("keydown", settingsShortcut);
@@ -185,6 +217,8 @@
     if ("__TAURI_INTERNALS__" in window) {
       listen("open-settings", () => openSettings()).then((u) => unlisten.push(u));
       listen<RecordingEvent>("recording", (e) => recordingChanged(e.payload)).then((u) => unlisten.push(u));
+      // shown again from the Dock, Spotlight or the menu bar (src-tauri/src/lib.rs, `present`)
+      listen("library-shown", () => reload({ cameBack: true })).then((u) => unlisten.push(u));
     }
     return () => {
       window.removeEventListener("focus", onFocus);

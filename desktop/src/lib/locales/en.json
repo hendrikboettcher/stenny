@@ -324,6 +324,7 @@
   "app.copy": "Copy",
   "app.paste": "Paste",
   "app.selectAll": "Select All",
+  "app.reload": "Reload",
   "app.fullscreen": "Enter Full Screen",
   "app.minimize": "Minimize",
   "app.zoom": "Zoom",
