@@ -152,7 +152,6 @@ MAX_TOPIC_CHARS = 60
 MAX_TOPIC_WORDS = 6
 MAX_TERM_WORDS = 5
 MAX_TERM_CHARS = 50
-MIN_TERM_REPEATS = 2  # without slides, a term must be transcribed the same way this often
 
 
 def _forms(word: str) -> set[str]:
@@ -199,28 +198,70 @@ def validate_topics(proposed, text: str, slides=None, existing: list[str] = (), 
     return sorted(out, key=lambda t: -count[t])[:MAX_TOPICS]
 
 
-def validate_terms(proposed, text: str, slides=None, known: list[str] = ()) -> list[str]:
-    """Keep the proposed glossary terms that have evidence: on the slides, or in the transcript at least
-    MIN_TERM_REPEATS times with that spelling (ignoring case). A term the LLM spelled differently from the
-    text gets the text's most frequent spelling. Skips `known` terms and plain common words."""
-    known_keys = {k.casefold() for k in known}
+# --- glossary entries from Claude (connector) and from the student's edits ------------------------------------
+# Claude's terms and corrections are taken as they are (the student decided so): no evidence in the transcripts is
+# needed. They only have to be the shape of a spelling, so a correction stays a word-for-word fix, never a rewrite.
+
+MAX_ENTRY_CHARS = 60
+MARKUP = re.compile(r"[\[\]#|`*\n<>{}]|→|->|=>")
+
+
+def clean_entry(value) -> str:
+    return " ".join(str(value or "").split()).strip(" .,;:")
+
+
+def check_term(term: str) -> str | None:
+    """Why `term` can't be a glossary term, or None if it can: 1-5 words, no Markdown, not a plain common word."""
+    words = _words(term)
+    if not words or len(words) > MAX_TERM_WORDS or len(term) > MAX_TERM_CHARS or MARKUP.search(term):
+        return "not a name or term (1-5 words, no Markdown)"
+    if len(words) == 1 and term.islower() and term.isalpha() and len(term) < 6:
+        return "a common word, not worth a place in Whisper's prompt"
+    return None
+
+
+def check_correction(wrong: str, right: str) -> str | None:
+    """Why `wrong → right` can't be a glossary correction, or None if it can: a different spelling of at most
+    MAX_FIX_WORDS words on each side (applied word for word wherever `wrong` occurs, so never a short common word
+    like "the", which would change ordinary text everywhere)."""
+    if not wrong or not right or wrong == right:
+        return "empty or no change"
+    ow, nw = _words(wrong), _words(right)
+    if (not ow or not nw or len(ow) > MAX_FIX_WORDS or len(nw) > MAX_FIX_WORDS or abs(len(ow) - len(nw)) > 2
+            or max(len(wrong), len(right)) > MAX_ENTRY_CHARS):
+        return "too long for a spelling fix (at most 5 words on each side)"
+    if MARKUP.search(wrong) or MARKUP.search(right):
+        return "no Markdown or arrows inside"
+    if len(ow) == 1 and wrong.islower() and wrong.isalpha() and len(wrong) <= 3:
+        return f"'{wrong}' is too common a word to replace everywhere"
+    return None
+
+
+def _spans(text: str) -> list[re.Match]:
+    return list(re.finditer(r"\w+(?:[-'’]\w+)*", text))
+
+
+def _looks_like_a_name(old: str, new: str, sentence_start: bool) -> bool:
+    if old.casefold() == new.casefold():  # only the case changed: a name ("bayes" → "Bayes"), unless a sentence begins
+        return not sentence_start and len(new) >= 4 and any(c.isupper() for c in new)
+    return (any(c.isupper() or c.isdigit() for c in new) or "-" in new
+            or any(len(w) >= 9 for w in _words(new)))
+
+
+def spelling_changes(before: str, after: str, limit: int = 3) -> list[tuple[str, str]]:
+    """What the student's edit of a passage changed that looks like a misheard name or term, as (wrong, right),
+    for "Always write it like this?": replaced words (not added or deleted ones) of the shape check_correction
+    accepts, where the new spelling has a capital, digit or hyphen, or is a long word. Fixing ordinary words or
+    rewording asks nothing."""
+    a, b = _spans(before), _spans(after)
+    sm = difflib.SequenceMatcher(None, [m.group() for m in a], [m.group() for m in b], autojunk=False)
     out = []
-    for value in proposed if isinstance(proposed, list) else []:
-        if not isinstance(value, str):
+    for op, i1, i2, j1, j2 in sm.get_opcodes():
+        if op != "replace":
             continue
-        term = " ".join(value.split()).strip(" .,;:")
-        words = _words(term)
-        if not words or len(words) > MAX_TERM_WORDS or len(term) > MAX_TERM_CHARS or term.casefold() in known_keys:
-            continue
-        if len(words) == 1 and term.islower() and term.isalpha() and len(term) < 6:
-            continue  # "mean", "data": common words, not worth a place in Whisper's prompt
-        found = re.findall(rf"(?<!\w){re.escape(term)}(?!\w)", text, re.I)
-        on_slides = slides is not None and slides.contains(term, ignore_case=True)
-        if not on_slides and len(found) < MIN_TERM_REPEATS:
-            continue
-        if term not in found and not (slides is not None and slides.contains(term)):
-            term = max(set(found), key=found.count) if found else term
-        if term.casefold() not in {t.casefold() for t in out}:
-            out.append(term)
-            known_keys.add(term.casefold())
-    return out
+        old, new = before[a[i1].start():a[i2 - 1].end()], after[b[j1].start():b[j2 - 1].end()]
+        sentence_start = not before[:a[i1].start()].strip() or before[:a[i1].start()].rstrip()[-1] in ".!?:"
+        if check_correction(old, new) is None and _looks_like_a_name(old, new, sentence_start) \
+                and (old, new) not in out:
+            out.append((old, new))
+    return out[:limit]
