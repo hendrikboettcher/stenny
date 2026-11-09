@@ -2,11 +2,17 @@
 
 A release is a zip of the whole folder with the finished app inside. The old folder is kept next to the new
 one, because Stenny is made to be changed: whoever changed its code can carry that over with Claude Code.
+
+On Windows only the check works (`stenny update --check`, the app's Check for Updates…): the app comes as an
+installer there (a newer one installs over the old one), and the engine's code is updated by Claude Code (SETUP.md,
+"Updating on Windows"). Doing that from inside the engine can't work there: Windows won't let `uv` replace the
+stenny.exe and Python that are running the update.
 """
 
 import json
 import shutil
 import subprocess
+import sys
 import tempfile
 from importlib.metadata import version as package_version
 from pathlib import Path
@@ -14,6 +20,7 @@ from pathlib import Path
 REPO = "hendrikboettcher/stenny"
 LATEST_API = f"https://api.github.com/repos/{REPO}/releases/latest"
 ZIP_URL = f"https://github.com/{REPO}/releases/latest/download/Stenny.zip"
+RELEASES = f"https://github.com/{REPO}/releases/latest"
 FOLDER = Path(__file__).resolve().parents[2]
 
 
@@ -29,9 +36,18 @@ def parse(version: str) -> tuple[int, ...]:
     return tuple(int(part) for part in version.lstrip("v").split("."))
 
 
+def curl() -> str:
+    """macOS's curl, or Windows' own curl.exe (in System32 since Windows 10 1803)."""
+    return "curl.exe" if sys.platform == "win32" else "/usr/bin/curl"
+
+
 def _curl(*args: str) -> subprocess.CompletedProcess:
     # curl, not urllib: uv's Python doesn't reliably find macOS's certificates
-    p = subprocess.run(["/usr/bin/curl", "-fsSL", "--max-time", "600", *args], capture_output=True, text=True, encoding="utf-8", errors="replace")
+    try:
+        p = subprocess.run([curl(), "-fsSL", "--max-time", "600", *args], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
+    except OSError as e:
+        raise UpdateError(f"Couldn't reach GitHub: {e}") from e
     if p.returncode != 0:
         raise UpdateError(f"Couldn't reach GitHub: {p.stderr.strip()}")
     return p
@@ -68,8 +84,18 @@ def install_tool(folder: Path) -> None:
                    check=True, capture_output=True)
 
 
+def supported() -> None:
+    """Raises on Windows, where updates come through the installer and Claude Code (see above)."""
+    if sys.platform == "win32":
+        raise UpdateError(
+            "On Windows, Stenny updates through its installer: download the newest one from "
+            f"{RELEASES} and run it. Then ask Claude Code to update Stenny's engine (SETUP.md, \"Updating on "
+            "Windows\").")
+
+
 def update(folder: Path = FOLDER) -> Path:
     """Installs the newest release into `folder`, reopens the app and returns where the old folder went."""
+    supported()
     if (folder / ".git").exists():
         raise UpdateError(f"{folder} is a git checkout: use `git pull` and `app/build.sh` there.")
     if not (folder / "pyproject.toml").exists():

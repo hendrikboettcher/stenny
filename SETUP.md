@@ -4,11 +4,15 @@
 
 > Install Stenny on my Mac by following https://github.com/hendrikboettcher/stenny/blob/main/SETUP.md
 
+(On a Windows PC: "Install Stenny on my PC by following …", the same link.)
+
 Claude Code will go through the steps below with you and ask whenever it needs a decision or a click.
 
 ---
 
 **For Claude Code.** You are setting up Stenny for someone who may never have used a terminal. Work through the steps below in order, together with them.
+
+**On Windows,** follow [Stenny on Windows](#stenny-on-windows-preview) at the end instead of Phases A–C. The rules under *How to work* apply there too, with Windows' apps instead of macOS's.
 
 How to work:
 - **Short and engaging.** Nobody wants to read for hours. Say a sentence or two per step: only what helps them decide or click. No walls of text, no jargon. These instructions are detailed; what you say to the user isn't.
@@ -149,6 +153,8 @@ pause_shortcut = "ctrl+opt+p"
 
 Format: modifiers `cmd`, `shift`, `ctrl`, `opt`, joined with `+`, then one key as printed on their keyboard (or `space`, `f1`–`f20`). At least one of cmd/ctrl/opt.
 
+On Windows `cmd` means Ctrl and `opt` means Alt (Settings shows it as *Ctrl+Shift+Ü*); without a Ü key the default takes the key right of P. Ask there with "Ctrl+Shift+Ü (Recommended)" for a German layout, else "Ctrl+Alt+P (Recommended)" (`ctrl+opt+p`).
+
 **Check:** `stenny app-settings` prints their shortcut and `"error": null`.
 
 ## 7. Open Stenny and allow access
@@ -277,6 +283,8 @@ Tell the user: **Stenny works now.** Two short parts are left.
 
 Say in a sentence or two: Stenny offers lectures from the calendar on this Mac, from 10 minutes before they start, and never starts by itself. If the timetable isn't in the Mac's Calendar, that part won't work, but recording from the menu still does. Don't teach how to subscribe to or use a calendar.
 
+On Windows, skip this step: Stenny can't read the calendar there yet (Settings ▸ General says so). Say in one line that they start lectures from Stenny's icon in the notification area.
+
 **Check, without asking anything:** for each lecture-like title in `calendar-titles.json`, run `stenny match-course "<title>"`. If one of their courses doesn't match its events, add a word that's in the titles to that course as `calendar = ["<word>"]` and check again. Only tell the user the result, in one line. If there are no titles, skip this.
 
 # Phase C: Recommended, not required
@@ -335,3 +343,171 @@ If it prints `{"ok":true}`, say it was sent; otherwise say it didn't go through 
 | Transcript is empty or wrong language | Check the course's `language`; for lectures that switch languages use `"mixed"`. Check the microphone level meter. |
 | The AI step fails ("claude CLI not found") | Step 9. Or set `[llm] backend = "none"`. The transcript is always written anyway. |
 | Anything else | Logs are in `~/Library/Logs/Stenny/`: `stenny.log` (the menu bar app), `live.log` (the running recording), `queue.log` (waiting transcripts). Read the end of the newest one. |
+
+# Stenny on Windows (preview)
+
+**Not yet tested on a real Windows PC.** Stenny's Windows version is being built (issue #2 on GitHub); only GitHub's Windows test machines have run it so far. Say this to the user in one sentence before you start, and that this setup is a real test of it. Some parts may not be there yet (recording from the microphone, the pause shortcut, lecture notifications, the background queue): when a step below can't work for that reason, say so in one line and go on, and note it for the report at the end.
+
+**Commands.** Claude Code on Windows runs commands in Git Bash, so the commands below are written for it. The Windows-only parts run through `powershell -NoProfile -Command '…'` (single quotes, so Git Bash leaves PowerShell's `$env:…` alone). `$LOCALAPPDATA`, `$APPDATA` and `$USERPROFILE` work in Git Bash too. To open something, name the app: `explorer.exe "<folder>"`, `notepad.exe "<file>"`; web pages with `cmd //c start "" "https://…"`.
+
+Greet the user as in Phase A, with "PC" for "Mac". The essential part takes about 20–30 minutes, mostly downloads. Windows will ask once whether to run the installer (it isn't signed yet, see W4).
+
+## W1. Check the PC
+
+```bash
+echo "$PROCESSOR_ARCHITECTURE"                                                           # must be AMD64
+powershell -NoProfile -Command '[Environment]::OSVersion.Version.Build'                  # 17763 or higher
+powershell -NoProfile -Command '[math]::Round((Get-PSDrive C).Free/1GB)'                 # GB free
+powershell -NoProfile -Command '[math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory/1GB)'  # GB memory
+nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null                            # an NVIDIA graphics card?
+```
+
+**Check:** `AMD64`, a build ≥ 17763 (Windows 10 version 1809 or Windows 11), ≥ 5 GB free, ≥ 8 GB memory.
+
+Tell the user in one sentence how fast transcription will be: with an NVIDIA card, much faster than the lecture lasted (if its CUDA libraries are installed; Stenny never installs them, they're several GB); without one, on the processor, a lecture takes about as long to transcribe as it lasted, or longer. Both give the same text.
+
+*If it fails:* `ARM64` (a Snapdragon PC): Stenny's speech recognition doesn't run there yet; tell the user kindly and stop. An older Windows: Settings ▸ Windows Update, then come back. Too little disk space: help them see what's big, but don't delete anything yourself.
+
+## W2. Get Stenny onto the PC
+
+Stenny's code lives in a permanent folder: `%LOCALAPPDATA%\Programs\stenny` (in Git Bash `"$LOCALAPPDATA/Programs/stenny"`), without asking. If the current folder already contains Stenny (`SETUP.md`, `pyproject.toml`), use it instead. If `ls "$LOCALAPPDATA/Programs/stenny/SETUP.md"` finds an earlier attempt, ask "Use the existing folder (Recommended)" / "Replace it with the newest version"; replace only by moving the old folder to the Recycle Bin first (the command is in W10).
+
+Download the code of the newest release and unpack it there:
+
+```bash
+powershell -NoProfile -Command '
+  $ProgressPreference = "SilentlyContinue"
+  $tag = (Invoke-RestMethod https://api.github.com/repos/hendrikboettcher/stenny/releases/latest).tag_name
+  $zip = "$env:TEMP\stenny.zip"
+  Invoke-WebRequest "https://github.com/hendrikboettcher/stenny/archive/refs/tags/$tag.zip" -OutFile $zip
+  New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\Programs" | Out-Null
+  Expand-Archive $zip "$env:LOCALAPPDATA\Programs" -Force
+  Rename-Item "$env:LOCALAPPDATA\Programs\stenny-$($tag.TrimStart("v"))" stenny
+  Remove-Item $zip'
+```
+
+**Check:** `ls "$LOCALAPPDATA/Programs/stenny/SETUP.md" "$LOCALAPPDATA/Programs/stenny/pyproject.toml"` shows both. From now on "this folder" means `"$LOCALAPPDATA/Programs/stenny"`: run every command there (`cd "$LOCALAPPDATA/Programs/stenny" && …`) and continue with the copy of this file in it.
+
+## W3. Install the `stenny` command
+
+As in step 2, with Windows' installer for `uv`:
+
+```bash
+command -v uv || ls ~/.local/bin/uv.exe 2>/dev/null
+powershell -NoProfile -ExecutionPolicy ByPass -Command 'irm https://astral.sh/uv/install.ps1 | iex'   # only if missing
+```
+
+Use `~/.local/bin/uv.exe` if plain `uv` isn't found. Look for an earlier install as in step 2 (`uv-receipt.toml`), then:
+
+```bash
+uv tool install -e . --python 3.12   # Python 3.12 and Stenny's parts, about 300 MB: a few minutes
+uv tool update-shell
+```
+
+**Check:** `~/.local/bin/stenny.exe --version` prints a version. Always pass `--python 3.12`. uv brings Python itself; nothing here needs administrator rights.
+
+## W4. Install the app
+
+The Windows app comes as a setup program, `Stenny_<version>_x64-setup.exe`, attached to the release. See whether the newest release has one:
+
+```bash
+powershell -NoProfile -Command '(Invoke-RestMethod https://api.github.com/repos/hendrikboettcher/stenny/releases/latest).assets | ? name -like "*-setup.exe" | % browser_download_url'
+```
+
+- **Nothing printed:** the Windows app isn't released yet. Tell the user in one sentence, and that they can still transcribe recordings and study them with Claude (the rest of this setup). Stenny then needs `ffmpeg` from elsewhere: `command -v ffmpeg`; if it's missing, ask "Install ffmpeg with winget (Recommended, about 100 MB)" / "Skip" and run `winget install --id Gyan.FFmpeg -e` (then open a new terminal). Skip W10's microphone test.
+- **A link:** download it and start it:
+
+  ```bash
+  curl -fL -o "$USERPROFILE/Downloads/Stenny-setup.exe" "<the link>"
+  cmd //c start "" "$USERPROFILE\Downloads\Stenny-setup.exe"
+  ```
+
+  Stenny isn't signed with a certificate yet, so Windows shows **"Windows protected your PC"**. Tell the user to click **More info ▸ Run anyway**, and that the code is open at github.com/hendrikboettcher/stenny. The installer speaks English or German (Windows' language), installs for this user only (no administrator) into `%LOCALAPPDATA%\Stenny`, next to Stenny's own data, and sets up Microsoft's WebView2 if the PC lacks it. Its uninstaller removes only the app's own files, never recordings. They can uncheck *Run Stenny* at the end; it opens in W10.
+
+**Check:** `"$LOCALAPPDATA/Stenny/ffmpeg.exe" -version` prints a version (without the app: `ffmpeg -version`). If they picked another folder in the installer, `ffmpeg.exe` is in that one; Stenny finds it there.
+
+## W5. Start the Whisper download
+
+In the background, as in step 4: `stenny download-model`. On Windows it's faster-whisper's version of the same model (about 1.6 GB), in `%LOCALAPPDATA%\Stenny\Models`.
+
+## W6. Where the transcripts go
+
+As in step 5. The recommended folder is `Documents\Stenny` (`stenny init` picks Windows' Documents folder, which may be in OneDrive; that's fine for text files). **Check:** `stenny where` prints `folder: …`.
+
+## W7. Courses
+
+As in step 8, without the calendar: ask the user to type their course names (Stenny doesn't read a Windows calendar yet). The config is `%APPDATA%\Stenny\config.toml` (`stenny where` shows it): delete the two example courses at its end, then `stenny course add …` for each course. **Check:** `stenny courses`.
+
+## W8. The AI step
+
+As in step 9, with Windows' installer for the `claude` command if it's missing:
+
+```bash
+command -v claude || ls ~/.local/bin/claude.exe 2>/dev/null
+powershell -NoProfile -ExecutionPolicy ByPass -Command 'irm https://claude.ai/install.ps1 | iex'
+```
+
+An Anthropic API key goes into Windows' Credential Manager (`stenny api-key`, which the user runs in their own PowerShell window).
+
+## W9. Wait for Whisper
+
+**Check:** the download from W5 ended with `Done: …`, a folder under `Models`.
+
+## W10. Test recording
+
+**a) Transcription without the microphone**, run by you:
+
+```bash
+powershell -NoProfile -Command 'Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.SetOutputToWaveFile("$env:TEMP\stenny-test.wav"); $s.Speak("This is a short test of Stenny. The lecture today is about supply and demand."); $s.Dispose()'
+stenny add "$(cygpath -w /tmp)\stenny-test.wav" --event "Stenny test" --now
+```
+
+(Git Bash's `/tmp` is Windows' `%TEMP%`.) Without an NVIDIA card the first run takes a minute or two, as the model loads first. **Check:** as in step 11 a.
+
+**b) Microphone, through the app:** only with the app installed (W4). Open it (`cmd //c start "" "$LOCALAPPDATA\Stenny\Stenny.exe"`), then as in step 11 b, with Stenny's icon in the taskbar's notification area (behind the **^** arrow if it's hidden). Windows asks for the microphone the first time. If the app can't record yet, skip this and say so.
+
+Deleting the test recordings (step 11's list, with `%LOCALAPPDATA%\Stenny\Recordings\Talks\…` for the recordings, and `stenny-test.wav`): to the Recycle Bin, one at a time (`DeleteFile` for the .wav):
+
+```bash
+powershell -NoProfile -Command 'Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory("<folder>", "OnlyErrorDialogs", "SendToRecycleBin")'
+```
+
+## W11. Finish waiting transcripts automatically
+
+Step 12. If `stenny schedule install` says it can't do that on Windows yet, skip it and note it for the report.
+
+## W12. Let Claude read the transcripts
+
+As in step 13, with the Claude desktop app for Windows (claude.ai/download). The extension comes with the app as `%LOCALAPPDATA%\Stenny\Stenny.mcpb`; without the app, download it: `curl -fL -o "$USERPROFILE/Downloads/Stenny.mcpb" https://github.com/hendrikboettcher/stenny/releases/latest/download/Stenny.mcpb`. Open it with Claude:
+
+```bash
+cmd //c start "" "$LOCALAPPDATA\Stenny\Stenny.mcpb"
+```
+
+If Claude doesn't open it, the user can add it in Claude's **Settings ▸ Extensions ▸ Advanced settings ▸ Install Extension…** (open its folder for them with `explorer.exe "<folder>"`). **Check:** as in step 13.
+
+## W13. Recommended, not required
+
+Steps 15 (Claude projects) and 16 (Obsidian: the Windows download at obsidian.md/download) work the same on Windows.
+
+## W14. Finish
+
+As in step 17, with Windows' words: the taskbar's notification area instead of the menu bar, the Recycle Bin instead of the Trash, *Show in Explorer*. For the report: `powershell -NoProfile -Command '(Get-CimInstance Win32_ComputerSystem).Model'`, the memory, the Windows build, the graphics card, the Stenny version, and which steps couldn't work on Windows yet. Sending it is the same command as in step 17.
+
+## Updating on Windows
+
+`stenny update` doesn't work on Windows (Windows won't let it replace the program that is running it), and *Check for Updates…* only says whether there is a new version. When the user asks you to update Stenny:
+1. `stenny status` must say no recording is running, and no final transcript may be in progress. Quit Stenny (its icon ▸ *Quit Stenny*).
+2. The engine: download the new code as in W2, but rename it to `stenny-new` instead. Rename the old folder to `stenny (before <old version>)` (`stenny --version`), so their own changes can be carried over, rename `stenny-new` to `stenny`, and run `uv tool install -e . --force --python 3.12` in it.
+3. The app: download the new setup program as in W4 and run it; it installs over the old one.
+4. **Check:** `stenny --version` shows the new version, and `stenny mcp --desktop-config` works.
+
+## Troubleshooting on Windows
+
+| Problem | What to do |
+|---|---|
+| `stenny: command not found` | Use `~/.local/bin/stenny.exe`, run `uv tool update-shell` and open a new terminal. |
+| "Windows protected your PC" | The installer isn't signed yet: *More info ▸ Run anyway* (W4). |
+| `ffmpeg` not found | `%LOCALAPPDATA%\Stenny\ffmpeg.exe` (or in the folder the installer was given) should exist; otherwise W4. |
+| Transcription is very slow | Without an NVIDIA card (and its CUDA libraries) the processor does it: about as long as the lecture. That's expected. |
+| Anything else | Logs are in `%LOCALAPPDATA%\Stenny\Logs\`. Read the end of the newest one. |

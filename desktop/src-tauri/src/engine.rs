@@ -26,22 +26,25 @@ pub struct Engine {
     next_id: AtomicU64,
 }
 
-/// `stenny` as installed by `uv tool install` (~/.local/bin), unless $STENNY_CLI points at another one
-/// (a development checkout's `.venv/bin/stenny`). Later the app bundles its own.
+/// `stenny` as installed by `uv tool install` (~/.local/bin; on Windows %USERPROFILE%\.local\bin\stenny.exe), unless
+/// $STENNY_CLI points at another one (a development checkout's `.venv/bin/stenny`). Later the app bundles its own.
 fn stenny_command() -> PathBuf {
     if let Ok(path) = std::env::var("STENNY_CLI") {
         return PathBuf::from(path);
     }
-    let home = std::env::var("HOME").unwrap_or_default();
-    let installed = PathBuf::from(home).join(".local/bin/stenny");
+    // Windows has no $HOME as a rule; uv's own tool folder is under the user's profile there
+    let (home, program) = if cfg!(windows) { ("USERPROFILE", "stenny.exe") } else { ("HOME", "stenny") };
+    let installed = PathBuf::from(std::env::var_os(home).unwrap_or_default()).join(".local").join("bin").join(program);
     if installed.exists() { installed } else { PathBuf::from("stenny") }
 }
 
 fn start() -> Result<Running, String> {
     let exe = stenny_command();
     let mut command = Command::new(&exe);
-    // the recorder bundled with this app (Contents/MacOS), not another Stenny's; `stenny live` reads $STENNY_REC
-    if let Some(rec) = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join("stenny-rec"))) {
+    // the recorder bundled with this app (Contents/MacOS; next to Stenny.exe on Windows: stenny-rec.exe, WASAPI),
+    // not another Stenny's; `stenny live` reads $STENNY_REC
+    let recorder = if cfg!(windows) { "stenny-rec.exe" } else { "stenny-rec" };
+    if let Some(rec) = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join(recorder))) {
         if rec.exists() && std::env::var_os("STENNY_REC").is_none() {
             command.env("STENNY_REC", rec);
         }
@@ -56,6 +59,13 @@ fn start() -> Result<Running, String> {
     }
     // "System default" in Settings: the language the system prefers, as Rust sees it (src/stenny/i18n.py)
     command.env("STENNY_SYSTEM_LANGUAGE", i18n::system_language());
+    // Windows: the engine is a console program; started from Stenny it would open a console window of its own
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
     let mut child = command
         .arg("app-server")
         .stdin(Stdio::piped())

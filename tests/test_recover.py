@@ -69,7 +69,6 @@ def test_a_talk_stays_a_talk(cfg):
     assert cli.recover_sessions(cfg) == [{"course": "Guest talk", "kind": "event"}]
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="uses ps, macOS only for now (#2)")
 def test_orphan_recorder_is_stopped(tmp_path):
     fake = tmp_path / "stenny-rec"
     fake.write_text("#!/bin/sh\nexec sleep 60\n", encoding="utf-8")

@@ -14,7 +14,7 @@ const tables: Record<Lang, Record<string, string>> = { en, de };
 
 // Stenny runs on macOS and Windows: a key with a ".windows" twin (what the file manager and the bin are called)
 // uses that twin on Windows
-const onWindows = typeof navigator !== "undefined" && /Windows/.test(navigator.userAgent);
+export const onWindows = typeof navigator !== "undefined" && /Windows/.test(navigator.userAgent);
 
 let current = $state<Lang>("en");
 
