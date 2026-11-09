@@ -93,6 +93,11 @@
   let selectedKey = $derived(selected ? `${id(selected)}:${selected.status}` : "");
 
   const groupOf = (e: Entry): Group => ({ course: e.course, event: e.kind === "event" });
+  // shows this recording: its course or talk, and it selected (the window coming back, the activity bar's Show)
+  function select(e: Entry) {
+    group = groupOf(e);
+    selectedId = id(e);
+  }
   // what's recording now, else what's having its final transcript made (the newest of them)
   const running = (list: Entry[]) =>
     [...list].reverse().find((e) => e.status === "live") ?? [...list].reverse().find((e) => e.status === "finalizing");
@@ -111,8 +116,7 @@
     const all = [...groups.courses, ...groups.talks];
     const now = cameBack ? running(data.entries) : undefined;
     if (now && all.some((g) => same(g, groupOf(now)))) {
-      group = groupOf(now);
-      selectedId = id(now);
+      select(now);
       return;
     }
     if (!group || !all.some((g) => same(g, group))) group = all[0] ?? null;
@@ -176,7 +180,7 @@
     if (liveGroup && FINISHING.includes(s)) return { kind: "finishing", group: liveGroup, folder: live.folder, number: live.number };
     // a final pass from the queue (Finish Now, the night's run): the library says so
     const making = data?.entries.find((e) => e.status === "finalizing");
-    if (making) return { kind: "finishing", group: { course: making.course, event: making.kind === "event" }, folder: making.folder, number: making.number };
+    if (making) return { kind: "finishing", group: groupOf(making), folder: making.folder, number: making.number };
     // the calendar's lecture on now, while nothing runs (with the menu bar only)
     if (suggestion && groups.courses.some((g) => g.course === suggestion!.course)) return { kind: "suggestion", ...suggestion };
     return null;
@@ -232,9 +236,9 @@
   // "Show": that course and its recording, wherever the window is
   async function showRecording(g: Group, folder?: string) {
     if (folder && !barEntry(g, folder)) await reload();
-    group = g;
     const e = barEntry(g, folder);
-    selectedId = e ? id(e) : entries[0] ? id(entries[0]) : null;
+    if (e) select(e);
+    else pick(g);  // not in the library yet: the course, its newest recording
   }
 
   function showBarError(e: unknown) {
