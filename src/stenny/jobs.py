@@ -27,6 +27,12 @@ def apply_priority(mode: str) -> None:
     """Re-exec this command under nice/taskpolicy (once). Children inherit the policy."""
     if mode == "normal" or os.environ.get("STENNY_PRIORITY"):
         return
+    if sys.platform == "win32":  # no nice/taskpolicy: this process's own priority class, children inherit it
+        import ctypes
+        k32 = ctypes.windll.kernel32
+        k32.SetPriorityClass(k32.GetCurrentProcess(), 0x00000040 if mode == "background" else 0x00004000)  # IDLE / BELOW_NORMAL
+        os.environ["STENNY_PRIORITY"] = mode
+        return
     argv = [*PRIORITY_PREFIX[mode], sys.executable, "-m", "stenny", *sys.argv[1:]]
     os.execvpe(argv[0], argv, {**os.environ, "STENNY_PRIORITY": mode})
 
@@ -119,9 +125,13 @@ class QueueLock:
             self.f.close()
 
 
-def keep_awake() -> subprocess.Popen:
+def keep_awake() -> None:
     """Prevent idle sleep while this process runs (released automatically when it exits)."""
-    return subprocess.Popen(["caffeinate", "-i", "-w", str(os.getpid())])
+    if sys.platform == "win32":  # ES_CONTINUOUS | ES_SYSTEM_REQUIRED, for this process's main thread
+        import ctypes
+        ctypes.windll.kernel32.SetThreadExecutionState(0x80000000 | 0x00000001)
+        return
+    subprocess.Popen(["caffeinate", "-i", "-w", str(os.getpid())])
 
 
 def install_agent(interval_s: int = 600, exe: str | None = None) -> Path:

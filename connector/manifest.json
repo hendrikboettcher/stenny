@@ -3,8 +3,8 @@
   "name": "stenny",
   "display_name": "Stenny",
   "version": "0.4.0",
-  "description": "Your lecture transcripts, summaries, slides and glossaries from Stenny, for studying with Claude.",
-  "long_description": "Stenny records your lectures on your Mac and transcribes them locally. With this extension Claude can read them: ask what the lecturer said about a topic, go through a lecture, or get quizzed, and Claude answers from your transcripts with timestamps like \"Lecture 3 [0:12:30]\".\n\nEverything stays on your computer: Claude gets clean text (no file paths, no microphone names), and the only change it can make is adding terms to a course glossary when the slides or transcripts back them up.\n\nNeeds Stenny installed on this computer (https://stenny.eu). Works in the Claude desktop app only, not on the web or on your phone.",
+  "description": "Your lecture transcripts, summaries and glossaries from Stenny, for studying with Claude.",
+  "long_description": "Stenny records your lectures on your Mac and transcribes them locally. With this extension Claude can read them: ask what the lecturer said about a topic, go through a lecture, or get quizzed, and Claude answers from your transcripts with timestamps like \"Lecture 3 [0:12:30]\".\n\nEverything stays on your computer: Claude gets clean text (no file paths, no microphone names), and the only change it can make is adding correct spellings of names and terms to a course glossary, so future transcripts get them right.\n\nNeeds Stenny installed on this computer (https://stenny.eu). Works in the Claude desktop app only, not on the web or on your phone.",
   "author": {
     "name": "Hendrik Böttcher",
     "url": "https://stenny.eu"
@@ -32,15 +32,15 @@
     {"name": "get_summary", "description": "The AI-written summary of a lecture"},
     {"name": "search_lectures", "description": "Where something was said: lecture, date, timestamp and a snippet"},
     {"name": "get_glossary", "description": "A course's glossary: correct spellings of names and terms"},
-    {"name": "get_slides_text", "description": "The text of a lecture's slides, page by page"},
-    {"name": "suggest_glossary_terms", "description": "Add terms to a course glossary, only if slides or transcripts back them up"}
+    {"name": "suggest_glossary_corrections", "description": "Fix a misheard name or term in all future transcripts of a course"},
+    {"name": "suggest_glossary_terms", "description": "Add correctly spelled names and terms to a course glossary"}
   ],
   "prompts": [
     {
       "name": "study",
       "description": "Start a study session on one course with its lectures",
       "arguments": ["course"],
-      "text": "I want to study ${arguments.course} with my lecture transcripts from Stenny. Use the Stenny tools: list the lectures of ${arguments.course} first, read the summaries, and read the transcripts for details. Then help me learn it: give me a short overview of what the lectures covered so far and ask what I want to do (explain a topic, go through a lecture, quiz me, prepare for the exam). Cite passages as \"Lecture N [h:mm:ss]\". The transcripts are automatic, so check unclear terms against the glossary and the slides."
+      "text": "I want to study ${arguments.course} with my lecture transcripts from Stenny. Use the Stenny tools: list the lectures of ${arguments.course} first, read the summaries, and read the transcripts for details. Then help me learn it: give me a short overview of what the lectures covered so far and ask what I want to do (explain a topic, go through a lecture, quiz me, prepare for the exam). Cite passages as \"Lecture N [h:mm:ss]\". The transcripts are automatic, so check unclear terms against the glossary."
     }
   ],
   "compatibility": {

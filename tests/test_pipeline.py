@@ -340,11 +340,11 @@ def test_transcripts_say_they_are_audio_only(setup):
 
 
 class TopicLLM(FakeLLM):
-    """Also proposes topics and glossary terms, some without evidence in the text."""
+    """Also proposes topics, some without evidence in the text (and glossary terms, which Stenny no longer takes)."""
 
     def complete(self, system, prompt):
         if "JSON" in system:
-            self.prompts = getattr(self, "prompts", []) + [prompt]
+            self.prompts, self.system = getattr(self, "prompts", []) + [prompt], system
             return json.dumps({"sections": [{"at": 0, "title": "Introduction"}],
                                "term_fixes": [{"p": 0, "from": "Rimane", "to": "Riemann"}],
                                "topics": ["Riemann", "suites", "Théorème inventé", "Calculus", "a/b: [x]"],
@@ -366,7 +366,8 @@ def test_topics_glossary_and_links_between_lectures(setup, monkeypatch):
     course = cfg.courses["Calculus"]
     gloss = cfg.folder / "_Glossaries" / "Calculus (glossary).md"
     gloss.parent.mkdir(parents=True)
-    gloss.write_text("## Terms\n- Riemann\n\n## Corrections\n- Rimann → Riemann\n", encoding="utf-8")
+    gloss.write_text("## Terms\n- Riemann\n\n## Terms (added automatically)\n- Lebesgue\n- Phrase\n\n"
+                     "## Corrections\n- Rimann → Riemann\n", encoding="utf-8")
 
     first = Path(pipeline.process(wav, cfg, course, FakeEngine({"fr": 1.0}), when=datetime(2026, 10, 15, 9))["folder"])
     fm = parse_frontmatter(lf(first).read_text(encoding="utf-8"))
@@ -376,12 +377,14 @@ def test_topics_glossary_and_links_between_lectures(setup, monkeypatch):
     assert "[[Calculus 2026-10-15|Lecture 1 (2026-10-15)]]" in topic and "## Calculus" in topic
     assert not (cfg.folder / "_Topics" / "Théorème inventé.md").exists()
 
-    # glossary: only "Phrase" has evidence (said in every chunk) and isn't known or a common word
+    # glossary: the AI step adds no terms from the transcript any more (it would feed Whisper its own spellings
+    # back); the automatic terms are only re-ranked, the ones used in the lecture first
     g = Glossary.load(gloss)
-    assert g.auto_terms == ["Phrase"] and g.terms == ["Riemann", "Phrase"]
+    assert g.auto_terms == ["Phrase", "Lebesgue"] and g.terms == ["Riemann", "Phrase", "Lebesgue"]
     text = gloss.read_text(encoding="utf-8")
     assert text.index("## Terms (added automatically)") < text.index("## Corrections")
     assert "- Rimann → Riemann" in text and text.startswith("## Terms\n- Riemann\n")  # the rest is untouched
+    assert '"terms"' not in llm.system  # not even asked for
 
     second = Path(pipeline.process(wav, cfg, course, FakeEngine({"fr": 1.0}), when=datetime(2026, 10, 22, 9))["folder"])
     assert "Existing topics: Riemann; suites" in llm.prompts[-1]  # names are reused across lectures
@@ -393,7 +396,7 @@ def test_topics_glossary_and_links_between_lectures(setup, monkeypatch):
     assert "[[Calculus 2026-10-15|transcript]] · [[Calculus 2026-10-15 (summary)|summary]]" in hub
     assert "[[_Glossaries/Calculus (glossary)|Calculus (glossary)]]" in hub and "Topics: Riemann, suites" in hub
     assert "[[Calculus (all lectures)]]" in hub
-    assert Glossary.load(gloss).auto_terms == ["Phrase"]  # not added twice
+    assert Glossary.load(gloss).auto_terms == ["Phrase", "Lebesgue"]
     assert cfg.vault_for().violations() == []
 
     # a refresh without the AI keeps the topics it had
