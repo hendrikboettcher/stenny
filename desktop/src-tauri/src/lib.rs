@@ -11,6 +11,10 @@ mod i18n;
 mod macos;
 mod menubar;
 #[cfg(windows)]
+mod windows_agent;
+#[cfg(windows)]
+mod windows_pdf;
+#[cfg(windows)]
 mod windows_share;
 
 use engine::Engine;
@@ -34,7 +38,11 @@ async fn engine(state: tauri::State<'_, Arc<Engine>>, method: String, params: Op
 /// Opens a transcript in Obsidian when it's installed (the vault is an Obsidian vault), else in the default app.
 #[tauri::command]
 fn open_transcript(path: String) -> Result<(), String> {
-    if std::path::Path::new("/Applications/Obsidian.app").exists() {
+    #[cfg(windows)]
+    let obsidian = windows_agent::obsidian_installed();
+    #[cfg(not(windows))]
+    let obsidian = std::path::Path::new("/Applications/Obsidian.app").exists();
+    if obsidian {
         let url = format!("obsidian://open?path={}", urlencode(&path));
         if tauri_plugin_opener::open_url(url, None::<&str>).is_ok() {
             return Ok(());
@@ -87,19 +95,28 @@ async fn share_files(window: tauri::WebviewWindow, paths: Vec<String>, x: f64, y
 }
 
 /// Share… as PDF: the engine's HTML copy (`make_copy` with format "html") turned into a PDF next to it by
-/// stenny-agent (`--pdf`, the macOS text system paginates it); the HTML is removed. Returns the PDF's path.
+/// stenny-agent (`--pdf`, the macOS text system paginates it) or, on Windows, by WebView2 (windows_pdf.rs); the HTML
+/// is removed. Returns the PDF's path.
 #[tauri::command]
-async fn make_pdf(html: String) -> Result<String, String> {
+async fn make_pdf(app: AppHandle, html: String) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let agent = menubar::agent_path().ok_or_else(|| tr!("error.noAgentPdf"))?;
-        // stenny-agent's own messages in Stenny's language
-        let lang = i18n::language();
-        let out = std::process::Command::new(agent).args(["--pdf", &html, "--lang", lang]).output().map_err(|e| e.to_string())?;
-        let text = String::from_utf8_lossy(&out.stdout);
-        let line = text.lines().last().unwrap_or("");
-        match line.strip_prefix("pdf ") {
-            Some(path) => Ok(path.to_string()),
-            None => Err(line.strip_prefix("error ").map(String::from).unwrap_or_else(|| tr!("error.pdf"))),
+        #[cfg(windows)]
+        {
+            windows_pdf::make_pdf(&app, &html)
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = app;
+            let agent = menubar::agent_path().ok_or_else(|| tr!("error.noAgentPdf"))?;
+            // stenny-agent's own messages in Stenny's language
+            let lang = i18n::language();
+            let out = std::process::Command::new(agent).args(["--pdf", &html, "--lang", lang]).output().map_err(|e| e.to_string())?;
+            let text = String::from_utf8_lossy(&out.stdout);
+            let line = text.lines().last().unwrap_or("");
+            match line.strip_prefix("pdf ") {
+                Some(path) => Ok(path.to_string()),
+                None => Err(line.strip_prefix("error ").map(String::from).unwrap_or_else(|| tr!("error.pdf"))),
+            }
         }
     })
     .await
@@ -121,7 +138,14 @@ fn show_feedback(app: AppHandle) {
 }
 
 /// Share Stenny in the library window's footer: text to the clipboard (pbcopy; the web view's own clipboard
-/// isn't reliable in a WKWebView).
+/// isn't reliable in a WKWebView). On Windows through the clipboard's own calls (windows_agent.rs).
+#[cfg(windows)]
+#[tauri::command]
+fn copy_text(text: String) -> Result<(), String> {
+    windows_agent::copy_text(&text)
+}
+
+#[cfg(not(windows))]
 #[tauri::command]
 fn copy_text(text: String) -> Result<(), String> {
     use std::io::Write;
@@ -163,6 +187,12 @@ async fn login_item(app: AppHandle, on: Option<bool>) -> Result<Option<String>, 
 #[tauri::command]
 async fn apply_shortcut(app: AppHandle) -> Result<Option<String>, String> {
     tauri::async_runtime::spawn_blocking(move || menubar::restart_agent(&app)).await.map_err(|e| e.to_string())
+}
+
+/// The pause shortcut as Windows registered it ("Strg+Umschalt+Ü"); null on a Mac, where Settings shows the config's.
+#[tauri::command]
+fn pause_shortcut_label(app: AppHandle) -> Option<String> {
+    menubar::pause_label(&app)
 }
 
 #[tauri::command]
@@ -275,7 +305,9 @@ pub fn language_changed(app: &AppHandle) {
 }
 
 /// The app menu while a window of Stenny's is in front (macOS): Tauri's own default, in Stenny's language.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn app_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
+    #[cfg(target_os = "macos")]
     let about = tauri::menu::AboutMetadata {
         name: Some("Stenny".into()),
         version: Some(app.package_info().version.to_string()),
@@ -414,8 +446,21 @@ pub fn run() {
     let library_only = std::env::args().any(|a| a == "--library");
     // until the engine says which (menubar.rs, load_lists): the system's
     i18n::set_language(i18n::system_language());
-    let app = tauri::Builder::default()
-        .menu(app_menu)
+    #[allow(unused_mut)]
+    let mut builder = tauri::Builder::default();
+    // One Stenny at a time on Windows (macOS sees to that itself): starting it again while it runs brings the
+    // running one's library window up, as reopening it does on a Mac. Not for a --library window next to it.
+    #[cfg(windows)]
+    if !library_only {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_window(app, "library")));
+    }
+    // The app menu is macOS's, at the top of the screen; on Windows it would be a menu bar inside every window
+    // (Ctrl+, for Settings is the page's own there)
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.menu(app_menu);
+    }
+    let app = builder
         .on_menu_event(|app, event| {
             match event.id().as_ref() {
                 "settings" => open_settings(app),
@@ -433,7 +478,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(Arc::new(Engine::default()))
         .manage(MenuBar::default())
-        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, share_files, copy_text, check_updates, reload_window, microphone_pref, set_microphone_pref, login_item, apply_shortcut, ui_language, set_ui_language, courses_changed, start_recording, recording_command, recording_status, show_talk])
+        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, share_files, copy_text, check_updates, reload_window, microphone_pref, set_microphone_pref, login_item, apply_shortcut, pause_shortcut_label, ui_language, set_ui_language, courses_changed, start_recording, recording_command, recording_status, show_talk])
         .setup(move |app| {
             if !library_only {
                 // A Dock app with the menu bar icon next to it. Info.plist keeps LSUIElement for the helpers in the
@@ -469,6 +514,14 @@ pub fn run() {
                 }
                 let app = app.clone();
                 macos::handle_quit_event(move || quit_as_asked(&app));
+            }
+        }
+        // Windows: opened by the user, the library comes up; started at login (the Run value's --autostart), Stenny
+        // waits in the notification area
+        #[cfg(windows)]
+        if let RunEvent::Ready = event {
+            if !library_only && !windows_agent::launched_at_login() {
+                show_window(app, "library");
             }
         }
         // Opened again while running (Dock icon, Spotlight, Finder) with no window showing: the library comes back

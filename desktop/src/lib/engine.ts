@@ -114,7 +114,7 @@ export const recordingCommand = (cmd: "toggle" | "stop") =>
   inApp ? invoke<LiveStatus>("recording_command", { cmd }) : engine<LiveStatus>("command", { cmd });
 // "Record a Talk or Event": its own small window, as from the menu
 export const showTalkWindow = () => (inApp ? invoke<void>("show_talk") : Promise.resolve(console.log("talk window")));
-// A PDF from an HTML copy (stenny-agent, see make_pdf in src-tauri/src/lib.rs); in a browser the HTML stays
+// A PDF from an HTML copy (stenny-agent on a Mac, WebView2 on Windows: make_pdf in src-tauri/src/lib.rs); in a browser the HTML stays
 export const makePdf = (html: string) => (inApp ? invoke<string>("make_pdf", { html }) : Promise.resolve(html));
 export const finishNow = (e: Entry) => engine<{ started: boolean }>("finish_now", where(e));
 export const openTranscript = (path: string) => (inApp ? invoke("open_transcript", { path }) : console.log("open", path));

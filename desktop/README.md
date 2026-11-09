@@ -7,7 +7,8 @@ replace the Swift menu bar app in `app/`. Everything about lectures comes from t
 
 ```bash
 npm install                                   # once
-scripts/helpers.sh                            # what it bundles: stenny-agent, stenny-rec, Stenny.mcpb (needs Node)
+scripts/helpers.sh                            # what it bundles: stenny-agent (macOS only, tauri.macos.conf.json), stenny-rec, Stenny.mcpb (needs Node)
+bash scripts/stenny-rec.sh                    # on Windows (Git Bash): stenny-rec.exe, the WASAPI recorder (stenny-rec/)
 npm run check                                 # type check
 npm run tauri build -- --debug --bundles app  # src-tauri/target/debug/bundle/macos/Stenny.app
 open -n --env STENNY_CLI=../.venv/bin/stenny src-tauri/target/debug/bundle/macos/Stenny.app --args --library
@@ -30,6 +31,27 @@ selection (localStorage); the refresh every few seconds never changes it.
 Without `--library` it is the menu bar app (src-tauri/src/menubar.rs): the classic menu, the clock next to the icon,
 the calendar's lecture with its "Record this lecture?" notification, and the pause shortcut, the last two through
 `stenny-agent` (app/Sources/stenny-agent), which runs inside the bundle so the permissions are Stenny's.
+
+On Windows the same icon sits in the notification area (white on a dark taskbar; the clock is its tooltip) and the app
+does stenny-agent's work itself (src-tauri/src/windows_agent.rs, windows_pdf.rs), with Windows' own calls and no
+helper program:
+
+- **Pause shortcut:** `RegisterHotKey` on a thread of its own. `cmd` in the config is Ctrl, `opt` is Alt; the key is
+  looked up in the current keyboard layout as printed on it, and without a Ü key the default (`cmd+shift+ü`) takes
+  the key right of P, as on a Mac. Settings and the menu write it the Windows way (*Strg+Umschalt+Ü*). Tauri's
+  global-shortcut plugin wasn't used: it takes physical key names (US positions), not the printed key.
+- **Open at login:** the `Run` value in the user's registry, with `--autostart` so the library window stays closed;
+  turned off in Task Manager ▸ Startup apps it counts as off. Not the autostart plugin: it writes the program's path
+  without quotes, which breaks under "Program Files". An installed copy (under Program Files or
+  `%LOCALAPPDATA%\Programs`, or next to its uninstaller) adds itself once, as on a Mac.
+- **PDF for Share…:** WebView2's own `PrintToPdf` in a hidden window (A4, or Letter in the US and Canada; no header
+  or footer), the same contract as stenny-agent's `--pdf`.
+- **Calendar:** none yet. An app without a package identity (MSIX) can't use Windows' calendar
+  (`AppointmentManager`), and Outlook's COM interface only reaches classic Outlook, with security prompts. Settings ▸
+  General says so; there's no "Record this lecture?" notification and no suggestion in the menu.
+- Also: the beep when there's nothing to pause (`MessageBeep`), the clipboard for Share Stenny, Obsidian found by its
+  `obsidian://` registration, one Stenny at a time (`tauri-plugin-single-instance`: starting it again brings the
+  library window up), no app menu inside the windows, and the engine started without a console window.
 `STENNY_TEST_FILE=<audio>` records that file instead of the microphone (with `STENNY_HOME` on a test copy).
 The library window shows what's running in an activity bar across the list and detail (whichever course is open):
 recording or paused with the menu bar's clock, the course · lecture and whether live text is on, Show (selects it),
@@ -46,10 +68,27 @@ or sign in to Claude Code, paste an API key, or what Off leaves out), Use with C
 connector: installed in Claude Desktop or not, Install…, Add to Claude Code), background work (priority, power, night hours) and each course's language. Changes are saved at once:
 config.toml through the engine (src/stenny/settings.py; the AI step's and the connector's status through
 src/stenny/claude_setup.py, checked again whenever the window gets the focus back), the microphone and login item through the app (menubar.rs,
-the same choices as the menu bar's; a new pause shortcut restarts stenny-agent). Also in the menu and the library
+the same choices as the menu bar's; a new pause shortcut restarts stenny-agent, or registers it again on Windows). Also in the menu and the library
 window's footer: Send Feedback… (to stenny.eu, like the website's form) and
 Check for Updates… (installing comes with the app's own updater). An installed copy (in an Applications folder)
-adds itself to the login items once, through stenny-agent; after that it's the user's choice.
+adds itself to the login items once, through stenny-agent (on Windows: the Run value, see above); after that it's the
+user's choice.
+
+## The Windows installer
+
+`npm run tauri build` on Windows makes two: the setup program (`bundle/nsis/Stenny_<version>_x64-setup.exe`, the one
+to hand out) and an .msi (for administrators who install for everyone, into `%ProgramFiles%\Stenny`). Their settings
+are in src-tauri/tauri.windows.conf.json: the setup program installs for the current user only, without administrator
+rights, into `%LOCALAPPDATA%\Stenny` (Tauri's default, so next to the engine's own data; its uninstaller deletes only
+the files it installed), in English or German after Windows' language, with Microsoft's WebView2 bootstrapper inside
+(installs WebView2 only where it's missing). Before building, `scripts/ffmpeg-windows.sh` puts a pinned, checksummed
+LGPL ffmpeg/ffprobe into src-tauri/binaries and their licence notice into src-tauri/resources (installed as
+`ffmpeg-license.txt`), and `../connector/build.sh` makes Stenny.mcpb; CI's installer job does both (Git Bash). The
+engine finds the bundled ffmpeg next to Stenny.exe (src/stenny/paths.py, `bundled()`).
+
+**Not signed:** there is no Windows code-signing certificate, so Windows SmartScreen warns about the setup program
+("Windows protected your PC" ▸ *More info* ▸ *Run anyway*; SETUP.md says so). `bundle.windows.signCommand` /
+`certificateThumbprint` stay unset until there is one.
 
 ## Language
 

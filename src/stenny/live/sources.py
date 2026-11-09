@@ -7,11 +7,18 @@ drop audio (Whisper holds Python's GIL for seconds at a time, which made ffmpeg 
 
 The session tails the file for the live draft. Pausing stops ffmpeg, so the microphone is
 really off (macOS's orange mic indicator goes out too).
+
+The microphone itself is recorded by the native `stenny-rec`: AVAudioEngine on macOS (app/Sources/stenny-rec),
+WASAPI on Windows (`stenny-rec.exe`, desktop/stenny-rec), with the same command line and file. On Windows it also
+lists the microphones (`--list-json`), where macOS asks system_profiler and ffmpeg.
 """
 
+import contextlib
+import json
 import os
 import re
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -19,12 +26,41 @@ from ..paths import bundled, tool
 from ..textproc import SAMPLE_RATE
 
 
+def _windows() -> bool:
+    return sys.platform == "win32"
+
+
+def _no_window() -> int:
+    """Windows: no console window for a helper started from Stenny (it has none to share)."""
+    return getattr(subprocess, "CREATE_NO_WINDOW", 0) if _windows() else 0
+
+
+def windows_devices() -> list[dict]:
+    """Windows' active inputs as stenny-rec.exe sees them: [{"name", "default", "builtin", "virtual"}]."""
+    recorder = find_recorder()
+    if not recorder:
+        return []
+    try:
+        p = subprocess.run([recorder, "--list-json"], capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=20, creationflags=_no_window())
+        devices = json.loads(p.stdout)
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return []
+    return [d for d in devices if isinstance(d, dict) and d.get("name")] if isinstance(devices, list) else []
+
+
 def audio_devices() -> dict:
     """What the system says about its audio devices, from one look (system_profiler takes a third of a second or
     more, so it's asked once, and only after the microphone started): "default", the current input device
     (System Settings → Sound → Input); "builtin", the Mac's own microphone ("MacBook Air Microphone"); "virtual",
     the devices apps install for themselves (Microsoft Teams Audio), which hear no room. None and an empty set
-    where it can't tell (not a Mac)."""
+    where it can't tell. On Windows from stenny-rec.exe's --list-json (desktop/stenny-rec/src/devices.rs): its
+    default, built-in and virtual flags."""
+    if _windows():
+        listed = windows_devices()
+        return {"default": next((d["name"] for d in listed if d.get("default")), None),
+                "builtin": next((d["name"] for d in listed if d.get("builtin") and not d.get("virtual")), None),
+                "virtual": {d["name"] for d in listed if d.get("virtual")}}
     try:
         out = subprocess.run(["system_profiler", "SPAudioDataType"], capture_output=True, text=True, encoding="utf-8",
                              errors="replace").stdout
@@ -54,6 +90,8 @@ def default_input_device() -> str | None:
 def input_devices(devices: dict | None = None) -> list[str]:
     """Real microphones only (`devices`: audio_devices(), if already known). A virtual device can still be used by
     naming it: `[live] device` in the config."""
+    if _windows():
+        return [d["name"] for d in windows_devices() if not d.get("virtual")]
     p = subprocess.run([tool("ffmpeg"), "-hide_banner", "-f", "avfoundation", "-list_devices", "true", "-i", ""],
                        capture_output=True, text=True, encoding="utf-8", errors="replace")
     text = p.stderr.split("audio devices:", 1)[-1]
@@ -130,16 +168,23 @@ class MicSource(FfmpegSource):
 
 
 def find_recorder() -> str | None:
-    """The native recorder (app/Sources/stenny-rec), bundled in Stenny.app."""
-    candidates = [os.environ.get("STENNY_REC"), bundled("stenny-rec"),
-                  str(Path(__file__).resolve().parents[3] / "app/.build/release/stenny-rec")]
+    """The native recorder: $STENNY_REC (the app passes its own copy), Stenny.app's, or a development build
+    (app/Sources/stenny-rec on macOS, desktop/stenny-rec on Windows)."""
+    repo = Path(__file__).resolve().parents[3]
+    if _windows():
+        candidates = [os.environ.get("STENNY_REC"), str(repo / "desktop/stenny-rec/target/release/stenny-rec.exe")]
+        return next((c for c in candidates if c and os.path.isfile(c)), None)
+    candidates = [os.environ.get("STENNY_REC"), bundled("stenny-rec"), str(repo / "app/.build/release/stenny-rec")]
     return next((c for c in candidates if c and os.access(c, os.X_OK)), None)
 
 
 class NativeMicSource(MicSource):
-    """Records through AVAudioEngine (CoreAudio) with the bundled `stenny-rec` helper.
+    """Records through AVAudioEngine (CoreAudio) with the bundled `stenny-rec` helper, or WASAPI on Windows.
     ffmpeg's avfoundation input silently dropped ~1 s every ~8 s (12 %) on an M4 MacBook Air,
-    with the built-in and the iPhone microphone alike; this path doesn't."""
+    with the built-in and the iPhone microphone alike; this path doesn't.
+
+    Stopping: SIGTERM on macOS. Windows has no signal to catch (terminate() ends the process mid-write), so there
+    the recorder gets a pipe on stdin and `stop` on it; the pipe closing without one tells it the engine is gone."""
 
     def __init__(self, device: str | None = None, recorder: str | None = None):
         super().__init__(device)
@@ -153,11 +198,32 @@ class NativeMicSource(MicSource):
         self._log.flush()
         self._out = None
         self._proc = subprocess.Popen([self.recorder, "--out", str(path), "--device", self.device],
-                                      stdout=subprocess.DEVNULL, stderr=self._log, stdin=subprocess.DEVNULL)
+                                      stdout=subprocess.DEVNULL, stderr=self._log,
+                                      stdin=subprocess.PIPE if _windows() else subprocess.DEVNULL,
+                                      creationflags=_no_window())
+
+    def stop(self) -> None:
+        p = self._proc
+        if p and p.stdin and p.poll() is None:  # Windows: ask, let it write the last audio, only then terminate()
+            with contextlib.suppress(OSError):
+                p.stdin.write(b"stop\n")
+                p.stdin.close()
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                p.wait(timeout=5)
+        if p and p.stdin:
+            with contextlib.suppress(OSError):
+                p.stdin.close()
+        super().stop()
 
 
 def make_mic(device: str | None, recorder: str = "native") -> MicSource:
-    """Native recorder when available (and not disabled in the config), else ffmpeg."""
+    """Native recorder when available (and not disabled in the config), else ffmpeg. On Windows always the native
+    one (`[live] recorder` is macOS only): ffmpeg's inputs are no way around it."""
+    if _windows():
+        if not (found := find_recorder()):
+            raise SystemExit("stenny-rec.exe, Stenny's microphone recorder, wasn't found: set STENNY_REC to it, or "
+                             "build it with desktop/scripts/stenny-rec.sh.")
+        return NativeMicSource(device, found)
     if recorder != "ffmpeg" and find_recorder():
         return NativeMicSource(device)
     return MicSource(device)
@@ -192,7 +258,7 @@ class FileSource(FfmpegSource):
 
 def make_backup(setting: str, main: MicSource, devices: dict | None = None) -> MicSource | None:
     """A second microphone recorded alongside the main one, so the final pass can fill the main one's
-    gaps (an iPhone stops sending audio while it is in use). `setting`: "auto" (the Mac's built-in
+    gaps (an iPhone stops sending audio while it is in use). `setting`: "auto" (the computer's built-in
     microphone, unless that is already the main one), "off", or a device name. Native recorder only.
     `devices`: audio_devices(), if already known."""
     if setting == "off" or not isinstance(main, NativeMicSource):
