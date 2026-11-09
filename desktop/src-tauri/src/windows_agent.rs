@@ -23,7 +23,8 @@ use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::{ERROR_SUCCESS, HANDLE, LPARAM, WIN32_ERROR, WPARAM};
 use windows::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData};
 use windows::Win32::System::Diagnostics::Debug::MessageBeep;
-use windows::Win32::System::Memory::{GlobalAlloc, GlobalFree, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
+use windows::Win32::Foundation::GlobalFree; // in Foundation since windows 0.62, not System::Memory
+use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
 use windows::Win32::System::Ole::CF_UNICODETEXT;
 use windows::Win32::System::Registry::{
     RegCloseKey, RegDeleteKeyValueW, RegGetValueW, RegOpenKeyExW, RegSetKeyValueW, HKEY, HKEY_CLASSES_ROOT,

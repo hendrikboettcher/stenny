@@ -22,7 +22,9 @@ use i18n::tr;
 use menubar::MenuBar;
 use serde_json::Value;
 use std::sync::Arc;
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu, HELP_SUBMENU_ID, WINDOW_SUBMENU_ID};
+#[cfg(target_os = "macos")]
+use tauri::menu::MenuItem;
+use tauri::menu::{Menu, PredefinedMenuItem, Submenu, HELP_SUBMENU_ID, WINDOW_SUBMENU_ID};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent, Wry};
 
 /// One request to the engine, e.g. `engine("library")`. Runs off the main thread: a request can take a moment.
@@ -275,6 +277,7 @@ pub fn language_changed(app: &AppHandle) {
 /// The app menu while a window of Stenny's is in front (macOS): Tauri's own default, in Stenny's language.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn app_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
+    #[cfg(target_os = "macos")]
     let about = tauri::menu::AboutMetadata {
         name: Some("Stenny".into()),
         version: Some(app.package_info().version.to_string()),
