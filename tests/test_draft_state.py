@@ -141,3 +141,40 @@ def test_the_window_can_start_one_waiting_final_pass_now_also_on_battery(cfg, mo
         cli.cmd_queue(SimpleNamespace(**{**vars(args), "lecture": ["Calculus", "2026-10-30"]}))
     with jobs.QueueLock(), pytest.raises(SystemExit, match="Another final transcript is being made"):
         cli.cmd_queue(args)
+
+
+def test_make_final_transcript_now_says_being_made_at_once_and_waits_again_if_it_cant_start(cfg, monkeypatch):
+    from stenny import app_server
+    monkeypatch.setattr(jobs, "on_ac_power", lambda: False)
+    monkeypatch.setattr(jobs, "apply_priority", lambda mode: None)
+    monkeypatch.setattr(jobs, "keep_awake", lambda: None)
+    monkeypatch.setattr(cli, "load_config", lambda: cfg)
+    monkeypatch.setattr(cli, "recover_sessions", lambda cfg: [])
+    session = StoppedSession(cfg)
+    cli.finalize(session, cfg, "auto", True, object())
+    status = lambda: share.library(cfg)[0]["status"]  # noqa: E731
+    assert status() == "queued"
+
+    # the window: "Finishing" before the reply, while the new process is still starting and loading the model
+    started = []
+    monkeypatch.setattr(app_server.subprocess, "Popen", lambda args, **kw: started.append(args))
+    params = {"course": "Calculus", "folder": "2026-10-31"}
+    assert app_server.finish_now(cfg, params) == {"started": True}
+    assert status() == "finalizing" and started[0][-2:] == ["Calculus", "2026-10-31"]
+
+    # the model doesn't load: waiting again, so the window shows its button again
+    def broken(model, engine="auto"):
+        raise RuntimeError("no model")
+    monkeypatch.setattr("stenny.engines.get_engine", broken)
+    args = SimpleNamespace(action="run", scheduled=False, lecture=["Calculus", "2026-10-31"], event=False)
+    with pytest.raises(RuntimeError):
+        cli.cmd_queue(args)
+    assert status() == "queued" and len(jobs.pending()) == 1
+
+    # another final pass is running: the window says so instead of starting one that only gives up
+    with jobs.QueueLock():
+        with pytest.raises(app_server.AppError, match="being made right now"):
+            app_server.finish_now(cfg, params)
+        with pytest.raises(SystemExit):
+            cli.cmd_queue(args)
+    assert status() == "queued" and len(started) == 1

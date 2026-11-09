@@ -269,11 +269,10 @@ They are automatic transcripts: names and technical terms may be misheard, so pr
 project files. Don't change any of these files, with one exception:
 
 The glossary _Glossaries/{course} (glossary).md makes future transcripts more accurate. Keep it up to date:
-if it has few terms, fill it from the project files; whenever you notice a name or technical term of this
-course that is missing, add it under "## Terms" as "- term"; for a misheard spelling you see in a
-transcript, add "- wrong → right" under "## Corrections". Leave "## Terms (added automatically)" to the tool
-(it rewrites that section after every lecture); to keep one of its terms first, move it up to "## Terms".
-Tell me briefly when you changed it."""
+whenever you notice a name or technical term of this course that is missing, add it under
+"## Terms (added automatically)" as "- term"; for a misheard spelling you see in a transcript, add
+"- wrong → right" under "## Corrections (added automatically)" (start that section at the end of the note if it
+isn't there). Never change "## Terms" or "## Corrections": they are mine. Tell me briefly when you changed it."""
 
 
 def cmd_project_instructions(args) -> None:
@@ -371,6 +370,20 @@ def cmd_queue(args) -> None:
         return
     if not items:
         return
+    if not lecture:
+        return run_queue(cfg, args, items)
+    # "being made" at once, also when started from a terminal (the app's finish_now marks it before starting this);
+    # anything that stops the pass before it begins (another one running, the model not loading) makes it wait again
+    mark_job_draft(cfg, items[0], "finalizing")
+    try:
+        run_queue(cfg, args, items, lecture=True)
+    except BaseException:
+        mark_job_draft(cfg, items[0], "queued")  # no-op once the job is done or failed (its file is gone then)
+        raise
+
+
+def run_queue(cfg, args, items: list[Path], lecture: bool = False) -> None:
+    """cmd_queue's work: `items` (just the one lecture's job), or with `lecture` False every pending job."""
     if args.scheduled:
         if cfg.require_ac_for_queue and not jobs.on_ac_power():
             return
@@ -815,8 +828,7 @@ def main() -> None:
     p.add_argument("--date", help="lecture date/time if the file's own timestamp is wrong (YYYY-MM-DD[THH:MM])")
     p.add_argument("--no-llm", action="store_true", help="skip AI structuring and summary (fully offline)")
     p.add_argument("--no-summary", action="store_true", help="structure with AI but don't write the summary")
-    p.add_argument("--slides", type=Path, help="lecture slides (PDF): stored in the lecture folder, used for spelling and "
-                                                "slide references")
+    p.add_argument("--slides", type=Path, help=argparse.SUPPRESS)  # dormant: Stenny doesn't use slides any more
     g = p.add_mutually_exclusive_group()
     g.add_argument("--now", action="store_true", help="full speed (normal priority)")
     g.add_argument("--later", action="store_true", help="queue it; runs on AC power / at night")
@@ -824,11 +836,11 @@ def main() -> None:
     p.set_defaults(func=cmd_add)
 
     p = sub.add_parser("refresh", help="redo only the AI step (structure, term fixes, summary) of a lecture, "
-                                       "e.g. after adding slides or editing the glossary")
+                                       "e.g. after editing the glossary")
     p.add_argument("course", help="course name or alias (or a talk's title, with --event)")
     p.add_argument("--event", action="store_true", help="COURSE is the title of a talk or event")
     p.add_argument("date", help="lecture folder name, e.g. 2026-10-15 or \"2026-10-15 (2)\"")
-    p.add_argument("--slides", type=Path, help="copy these slides (PDF) into the lecture folder first")
+    p.add_argument("--slides", type=Path, help=argparse.SUPPRESS)  # dormant, as for add
     p.add_argument("--no-llm", action="store_true", help="rebuild the transcript without AI (time sections)")
     p.add_argument("--no-summary", action="store_true", help="don't rewrite the summary")
     p.set_defaults(func=cmd_refresh)
@@ -839,7 +851,7 @@ def main() -> None:
     p.set_defaults(func=cmd_project_instructions)
 
     p = sub.add_parser("mcp", help="the connector for Claude: lets Claude Desktop read your lectures, summaries, "
-                       "slides and glossaries (a local MCP server on stdin/stdout)")
+                       "and glossaries (a local MCP server on stdin/stdout)")
     p.add_argument("--desktop-config", action="store_true",
                    help="print the entry for Claude Desktop's claude_desktop_config.json instead of serving")
     p.set_defaults(func=cmd_mcp)

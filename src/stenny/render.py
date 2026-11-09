@@ -184,9 +184,8 @@ def pause_marker(gap, backup_mic: str | None = None) -> str:
 
 
 AUDIO_ONLY = ("**Audio only:** this is what the microphone heard, not what was shown. Words like \"this\", "
-              "\"here\" or \"as you can see\" often point to slides or the board, which are not in the text. The "
-              "lecture may digress from the slides, and voices of people nearby or questions from the room can "
-              "appear without being marked as such.")
+              "\"here\" or \"as you can see\" often point to something shown in the room, which is not in the text, "
+              "and voices of people nearby or questions from the room can appear without being marked as such.")
 
 
 def transcript_md(lec: Lecture, paragraphs: list[dict], sections: list[dict]) -> str:

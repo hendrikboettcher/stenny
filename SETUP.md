@@ -291,7 +291,7 @@ If they want it, for each course, one at a time: in the Claude desktop app, **Pr
 
 ## 16. Obsidian
 
-Obsidian (free) shows the transcripts, topics and slides linked together, and the menu's *Open Transcript* opens the live draft there. The files stay plain text in the same folder; nothing moves. Ask "Set it up (Recommended)" / "Skip".
+Obsidian (free) shows the transcripts, summaries and topics linked together, and the menu's *Open Transcript* opens the live draft there. The files stay plain text in the same folder; nothing moves. Ask "Set it up (Recommended)" / "Skip".
 
 Check: `ls -d /Applications/Obsidian.app ~/Applications/Obsidian.app 2>/dev/null`. If it's missing, open https://obsidian.md/download and wait until they've dragged it to Applications. If the folder from step 5 isn't a vault yet, open Obsidian and have them add it. On first launch Obsidian may create a vault by itself and skip its start screen, and its command palette has no such command: then it's the vault name at the bottom left ▸ *Manage vaults…* ▸ *Open folder as vault* (⌘⇧G lets them paste the path).
 
