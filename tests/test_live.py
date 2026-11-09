@@ -4,6 +4,7 @@ import json
 import re
 import threading
 import time
+from contextlib import nullcontext
 from pathlib import Path
 
 import numpy as np
@@ -28,7 +29,10 @@ class FakeMic:
     A background clock advances simulated time (0.1 s per ~2 ms) whether or not it is recording, from the moment the
     session first starts it: how long setting up the session took in real time (long on a busy CI runner) never
     shows up as lecture time. It counts whole blocks, so 33 blocks are exactly 3.3 s (adding 0.1 up gives
-    3.3000000000000016)."""
+    3.3000000000000016).
+
+    follow(session) ties the clock to the session's loop (see there): it then never runs ahead of a session whose
+    thread isn't getting to run (Windows' scheduler on a CI runner)."""
 
     name, clock_rate, restartable = "fake mic", 1.0, True
     microphone = "Alex’s iPhone Microphone"
@@ -45,8 +49,23 @@ class FakeMic:
         self.lock = threading.Lock()
         self.started = threading.Event()  # the clock stands at 0 until the session starts the microphone
         self.closed = False
+        self.session, self.polls = None, 0  # follow()
         FakeMic.made.append(self)
         threading.Thread(target=self._clock, daemon=True).start()
+
+    def follow(self, s, monkeypatch):
+        """The session's stall timers run on this clock ("wall"): 25 ticks (50 ms) for a lost microphone in these
+        tests, so a session thread that doesn't get to run for 50 ms would see an outage that never happened. And a
+        tick between _poll's look at the file and its look at the clock would date the audio late. So, while it
+        records, each tick happens under the session's lock (never in the middle of its loop) and waits for its next
+        poll (at most a second, so a session that hangs still fails its test instead of hanging it)."""
+        poll = s._poll
+
+        def counted():
+            self.polls += 1  # under the session's lock
+            return poll()
+        monkeypatch.setattr(s, "_poll", counted)
+        self.session = s
 
     @property
     def t(self) -> float:
@@ -82,24 +101,35 @@ class FakeMic:
         while not self.closed:
             time.sleep(TICK_S)
             self._run_due()
-            with self.lock:
-                self.ticks += 1
-                for twin in self.twins:  # the backup keeps delivering through the main mic's gaps
-                    if twin.out:
-                        twin.out.write((self.rng.normal(0, 0.05, BLOCK) * 32767).astype(np.int16).tobytes())
-                        twin.out.flush()
-                if not self.running or (self.dropout and self.dropout[0] <= self.t < self.dropout[1]):
-                    continue
-                if self.warming:  # device not delivering audio yet (e.g. permission prompt)
-                    self.warming -= 1
-                    continue
-                if self.zeros and self.zeros[0] <= self.t < self.zeros[1]:
-                    block = np.zeros(BLOCK, np.int16)
-                else:
-                    quiet = (self.t % 4.0) > 3.5
-                    block = (self.rng.normal(0, 0.001 if quiet else 0.1, BLOCK) * 32767).astype(np.int16)
-                self.out.write(block.tobytes())
-                self.out.flush()
+            s = self.session
+            # the session's lock first, then the clock's: the order the session takes them in (start/stop)
+            with s.lock if s else nullcontext(), self.lock:
+                seen = self.polls
+                self._tick()
+            give_up = time.monotonic() + 1.0
+            while (s and not self.closed and s.state in ("recording", "paused") and self.polls == seen
+                   and time.monotonic() < give_up):
+                time.sleep(0.0005)
+
+    def _tick(self):
+        """One simulated 0.1 s (the caller holds the lock)."""
+        self.ticks += 1
+        for twin in self.twins:  # the backup keeps delivering through the main mic's gaps
+            if twin.out:
+                twin.out.write((self.rng.normal(0, 0.05, BLOCK) * 32767).astype(np.int16).tobytes())
+                twin.out.flush()
+        if not self.running or (self.dropout and self.dropout[0] <= self.t < self.dropout[1]):
+            return
+        if self.warming:  # device not delivering audio yet (e.g. permission prompt)
+            self.warming -= 1
+            return
+        if self.zeros and self.zeros[0] <= self.t < self.zeros[1]:
+            block = np.zeros(BLOCK, np.int16)
+        else:
+            quiet = (self.t % 4.0) > 3.5
+            block = (self.rng.normal(0, 0.001 if quiet else 0.1, BLOCK) * 32767).astype(np.int16)
+        self.out.write(block.tobytes())
+        self.out.flush()
 
     def start(self, path):
         with self.lock:
@@ -233,6 +263,7 @@ def test_pause_resume_timeline(tmp_path, monkeypatch):
     short_chunks(s, monkeypatch)
     monkeypatch.setattr(s, "now", lambda: mic.t)  # lecture clock = simulated time
     monkeypatch.setattr(s, "wall", lambda: mic.ticks * TICK_S)  # stall timers on the same clock
+    mic.follow(s, monkeypatch)
     monkeypatch.setattr(live_session, "POLL", 0.002)
 
     def script():
@@ -283,6 +314,7 @@ def test_microphone_dropout_keeps_session_and_marks_gap(tmp_path, monkeypatch):
     short_chunks(s, monkeypatch)
     monkeypatch.setattr(s, "now", lambda: mic.t)
     monkeypatch.setattr(s, "wall", lambda: mic.ticks * TICK_S)  # stall timers on the same clock
+    mic.follow(s, monkeypatch)
     # real seconds: one simulated 0.1 s block takes ~1 ms here
     monkeypatch.setattr(live_session, "STALL", 0.05)
     monkeypatch.setattr(live_session, "RETRY", 0.01)
@@ -313,6 +345,7 @@ def run_session(tmp_path, monkeypatch, mic, until=30.0, stall=0.05, backup=None,
     short_chunks(s, monkeypatch, on_power, lengths)
     monkeypatch.setattr(s, "now", lambda: mic.t)
     monkeypatch.setattr(s, "wall", lambda: mic.ticks * TICK_S)  # stall timers on the same clock
+    mic.follow(s, monkeypatch)
     monkeypatch.setattr(live_session, "STALL", stall)
     monkeypatch.setattr(live_session, "RETRY", 0.01)
     monkeypatch.setattr(live_session, "POLL", 0.002)
@@ -339,7 +372,7 @@ def test_delivery_hiccup_keeps_timestamps_on_the_clock(tmp_path, monkeypatch):
     s = run_session(tmp_path, monkeypatch, mic, stall=60)
     assert not s.pauses                                                    # no gap marker for a hiccup
     assert any(abs(t - 11.0) < 0.3 for _, t in s.spans[1:])               # timeline re-anchored at 11 s
-    assert abs(s.ended_at - mic.t) < 0.5                                  # end time matches the clock
+    assert abs(s.ended_at - 30.0) < 0.5        # end time matches the clock when stopped (it runs on after that)
 
 
 def test_recorder_that_never_delivers_is_restarted(tmp_path, monkeypatch):
@@ -605,6 +638,7 @@ def test_cancel_ends_without_a_transcript_and_trashes_the_recording(tmp_path, mo
     short_chunks(s, monkeypatch)
     monkeypatch.setattr(s, "now", lambda: mic.t)
     monkeypatch.setattr(s, "wall", lambda: mic.ticks * TICK_S)  # stall timers on the same clock
+    mic.follow(s, monkeypatch)
     monkeypatch.setattr(live_session, "POLL", 0.002)
     trashed = tmp_path / "Trash"
     trashed.mkdir()
