@@ -610,13 +610,15 @@ pub fn lecturer_agreed(app: &AppHandle, use_: &str, course: &str, event: bool) -
 
 /// Starts a recording of a course, or of a talk (`event`: its title). Runs off the main thread (dialogs).
 pub fn start(app: &AppHandle, course: &str, event: bool) -> Result<(), String> {
-    start_with(app, course, event, None)
+    start_with(app, course, event, None).map(|_| ())
 }
 
 /// `lang`: the language for this recording ("en", "de", "fr" or "mixed"), instead of the course's or talks' setting.
-pub fn start_with(app: &AppHandle, course: &str, event: bool, lang: Option<&str>) -> Result<(), String> {
+/// The menu, the calendar's notification, the talk window and the library window's Record buttons all start here, so
+/// they never behave differently. Returns the engine's status ("starting"), or None if the lecturer hasn't agreed.
+pub fn start_with(app: &AppHandle, course: &str, event: bool, lang: Option<&str>) -> Result<Option<Value>, String> {
     if !lecturer_agreed(app, "record", course, event) {
-        return Ok(());
+        return Ok(None);
     }
     let prefs = app.state::<MenuBar>().0.lock().unwrap().prefs.clone();
     let mut params = if event { json!({"event": course}) } else { json!({"course": course}) };
@@ -632,9 +634,9 @@ pub fn start_with(app: &AppHandle, course: &str, event: bool, lang: Option<&str>
         params["llm"] = json!(false);
     }
     let status = engine(app).call("start", params)?;
-    update(app, status, None);
+    update(app, status.clone(), None);
     wake(app);
-    Ok(())
+    Ok(Some(status))
 }
 
 /// "Cancel Recording…": the recording ends without a transcript and its files go to the Trash (Recycle Bin). Asked first, with
@@ -662,13 +664,32 @@ fn cancel_recording(app: &AppHandle) {
 }
 
 fn send(app: &AppHandle, cmd: &str) {
-    match engine(app).call("command", json!({"cmd": cmd})) {
-        Ok(status) => {
-            update(app, status, None);
-            wake(app);
-        }
-        Err(e) => notify(app, &e),
+    if let Err(e) = command(app, cmd) {
+        notify(app, &e);
     }
+}
+
+/// Pause/Resume ("toggle"), Stop, Cancel: the menu's items and the library window's activity bar. The new status.
+pub fn command(app: &AppHandle, cmd: &str) -> Result<Value, String> {
+    let status = engine(app).call("command", json!({"cmd": cmd}))?;
+    update(app, status.clone(), None);
+    wake(app);
+    Ok(status)
+}
+
+/// What the library window's activity bar shows: the recording's status and the calendar's lecture on now
+/// (`suggestion`, or null). With the menu bar, its last poll (one a second while recording), so the window adds no
+/// work; in a `--library` window, which has no menu bar, the engine is asked.
+pub fn window_status(app: &AppHandle) -> Value {
+    if app.tray_by_id(TRAY).is_some() {
+        let bar = app.state::<MenuBar>();
+        let st = bar.0.lock().unwrap();
+        let suggestion = st.suggestion.as_ref().map(|s| json!({"course": s.course, "range": s.range}));
+        let status = if st.status.is_null() { json!({"state": "idle"}) } else { st.status.clone() };
+        return json!({"status": status, "suggestion": suggestion});
+    }
+    let status = engine(app).call("status", json!({})).unwrap_or_else(|_| json!({"state": "idle"}));
+    json!({"status": status, "suggestion": null})
 }
 
 fn choose_microphone(app: &AppHandle, device: Option<String>) {

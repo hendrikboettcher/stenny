@@ -91,6 +91,40 @@ export const lecture = (e: Entry) =>
   engine<{ entry: Entry; summary: string | null; progress: string | null }>("lecture", where(e));
 export const makeCopy = (e: Entry, format: string, withSummary: boolean) =>
   engine<{ path: string }>("make_copy", { ...where(e), format, with_summary: withSummary });
+// The running recording, as the engine reports it (LiveSession.status in src/stenny/live/session.py; while a start
+// is under way {state: "starting", course}, else {state: "idle"}). The library window's activity bar shows it.
+export interface LiveStatus {
+  state: "idle" | "starting" | "recording" | "paused" | "stopping" | "stopped" | "cancelling" | "finalizing" | "done";
+  course?: string;
+  kind?: "lecture" | "event";
+  folder?: string;          // the recording's folder in the library ("2026-10-20")
+  number?: number;          // its lecture number, 0 for a talk
+  elapsed_s?: number;       // lecture time (pauses included), as the menu bar's clock
+  paused_s?: number;
+  draft?: boolean;          // live text switched on for this recording
+  transcribing?: boolean;   // and making it right now
+  warning?: string;         // low memory, low disk …
+  input_lost?: boolean;     // no audio from the microphone
+}
+export interface Activity {
+  status: LiveStatus;
+  suggestion: { course: string; range: string } | null; // the calendar's lecture on now (menu bar only)
+}
+// In the app the menu bar's own path (src-tauri/src/menubar.rs), so the window and the menu never behave differently;
+// in a browser during development straight to the engine (VITE_STENNY_TEST_FILE: record that file, not the microphone)
+export const recordingStatus = () =>
+  inApp ? invoke<Activity>("recording_status")
+    : engine<LiveStatus>("status").then((status) => ({ status, suggestion: null }) as Activity);
+// null: the lecturer hasn't agreed yet (asked first, once per course)
+export const startRecording = (course: string, event: boolean) => {
+  if (inApp) return invoke<LiveStatus | null>("start_recording", { course, event });
+  const file = import.meta.env.VITE_STENNY_TEST_FILE;
+  return engine<LiveStatus>("start", { [event ? "event" : "course"]: course, ...(file ? { file, llm: false } : {}) });
+};
+export const recordingCommand = (cmd: "toggle" | "stop") =>
+  inApp ? invoke<LiveStatus>("recording_command", { cmd }) : engine<LiveStatus>("command", { cmd });
+// "Record a Talk or Event": its own small window, as from the menu
+export const showTalkWindow = () => (inApp ? invoke<void>("show_talk") : Promise.resolve(console.log("talk window")));
 // A PDF from an HTML copy (stenny-agent on a Mac, WebView2 on Windows: make_pdf in src-tauri/src/lib.rs); in a browser the HTML stays
 export const makePdf = (html: string) => (inApp ? invoke<string>("make_pdf", { html }) : Promise.resolve(html));
 export const finishNow = (e: Entry) => engine<{ started: boolean }>("finish_now", where(e));

@@ -13,7 +13,8 @@
   import {
     library, lecture, makeCopy, makePdf, finishNow, openTranscript, reveal, shareFiles, lecturerAgreed,
     renameLecture, deleteLecture, renameCourse, addCourse, removeCourse, deleteCourse, copyText,
-    type Entry, type Library,
+    recordingStatus, startRecording, recordingCommand, showTalkWindow,
+    type Entry, type Library, type LiveStatus,
   } from "$lib/engine";
   import { t, tn, locale, languageName, trashName, revealLabel, type Key } from "$lib/i18n.svelte";
 
@@ -41,6 +42,14 @@
   }
   function goAway(_: Element) {
     return { duration: still() ? 0 : SWAP_MS, css: () => "z-index: 0; pointer-events: none;" };
+  }
+  // the activity bar comes and goes with the same fade, opening and closing its height so nothing jumps
+  function barMotion(node: Element) {
+    const height = (node as HTMLElement).offsetHeight;
+    return {
+      duration: still() ? 0 : SWAP_MS, easing: cubicInOut,
+      css: (t: number) => `opacity: ${t}; height: ${t * height}px; overflow: hidden;`,
+    };
   }
   let settingsOpen = $state(false); // the footer's Settings…: the window shows Settings instead (lib/Settings.svelte)
   let settingsSection = $state<"general" | "transcripts" | "claude">("general"); // where Settings opens
@@ -89,6 +98,11 @@
   let selectedKey = $derived(selected ? `${id(selected)}:${selected.status}` : "");
 
   const groupOf = (e: Entry): Group => ({ course: e.course, event: e.kind === "event" });
+  // shows this recording: its course or talk, and it selected (the window coming back, the activity bar's Show)
+  function select(e: Entry) {
+    group = groupOf(e);
+    selectedId = id(e);
+  }
   // what's recording now, else what's having its final transcript made (the newest of them)
   const running = (list: Entry[]) =>
     [...list].reverse().find((e) => e.status === "live") ?? [...list].reverse().find((e) => e.status === "finalizing");
@@ -122,8 +136,7 @@
     const all = [...groups.courses, ...groups.talks];
     const now = asked.show?.(next.entries) ?? (asked.cameBack ? running(next.entries) : undefined);
     if (now && all.some((g) => same(g, groupOf(now)))) {
-      group = groupOf(now);
-      selectedId = id(now);
+      select(now);
       return;
     }
     if (!group || !all.some((g) => same(g, group))) group = all[0] ?? null;
@@ -162,6 +175,138 @@
   function pick(g: Group) {
     group = g;
     selectedId = entries[0] ? id(entries[0]) : null;
+  }
+
+  // ---- What's running: the activity bar across the list and detail, the sidebar's red dot, the Record buttons.
+  // The status is the menu bar's (src-tauri/src/menubar.rs, window_status), looked at every second while something
+  // runs; starting, pausing and stopping go through the menu bar's own code too.
+  let live = $state<LiveStatus>({ state: "idle" });
+  let suggestion = $state<{ course: string; range: string } | null>(null);
+  let starting = $state<Group | null>(null); // a Record button was clicked: "Starting…" right away, before the engine
+  let follow = false;                        // ... and the new recording gets selected once it's in the library
+  let barBusy = $state(false);
+  let barError = $state<string | null>(null);
+  let barErrorTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const FINISHING = ["stopping", "stopped", "finalizing", "done"];
+  let liveGroup = $derived<Group | null>(
+    live.state !== "idle" && live.course ? { course: live.course, event: live.kind === "event" } : null,
+  );
+  // the course or talk that records (or starts to): its red dot in the sidebar
+  let recordingGroup = $derived(
+    liveGroup && ["starting", "recording", "paused"].includes(live.state) ? liveGroup : starting,
+  );
+  // only one recording at a time: the Record buttons are there while nothing records, starts or stops
+  let canRecord = $derived(live.state === "idle" && !starting);
+
+  type Bar =
+    | { kind: "starting" | "cancelling"; group: Group }
+    | { kind: "recording" | "paused" | "finishing"; group: Group; folder?: string; number?: number }
+    | { kind: "suggestion"; course: string; range: string };
+  let bar = $derived.by<Bar | null>(() => {
+    const s = live.state;
+    if (liveGroup && (s === "recording" || s === "paused")) return { kind: s, group: liveGroup, folder: live.folder, number: live.number };
+    if (liveGroup && s === "starting") return { kind: "starting", group: liveGroup };
+    if (starting) return { kind: "starting", group: starting };
+    if (liveGroup && s === "cancelling") return { kind: "cancelling", group: liveGroup };
+    if (liveGroup && FINISHING.includes(s)) return { kind: "finishing", group: liveGroup, folder: live.folder, number: live.number };
+    // a final pass from the queue (Finish Now, the night's run): the library says so
+    const making = data?.entries.find((e) => e.status === "finalizing");
+    if (making) return { kind: "finishing", group: groupOf(making), folder: making.folder, number: making.number };
+    // the calendar's lecture on now, while nothing runs (with the menu bar only)
+    if (suggestion && groups.courses.some((g) => g.course === suggestion!.course)) return { kind: "suggestion", ...suggestion };
+    return null;
+  });
+  // a recording by its course or talk and folder, in a library list (for reload's `show`, too)
+  const inLibrary = (g: Group, folder?: string) => (all: Entry[]) =>
+    folder ? all.find((e) => same(groupOf(e), g) && e.folder === folder) : undefined;
+  const barEntry = (g: Group, folder?: string) => inLibrary(g, folder)(data?.entries ?? []);
+  // "Data Engineering · Lecture 2" (its own title if it has one), a talk by its name
+  function barName(g: Group, folder?: string, n?: number) {
+    const e = barEntry(g, folder);
+    const which = e && !g.event ? rowTitle(e) : n ? t("lib.lectureN", { n }) : null;
+    return [g.course, which].filter(Boolean).join(" · ");
+  }
+  // the menu bar's clock: lecture time without the pauses
+  function clock(s: LiveStatus) {
+    const total = Math.max(0, Math.floor((s.elapsed_s ?? 0) - (s.paused_s ?? 0)));
+    return `${Math.floor(total / 3600)}:${String(Math.floor(total / 60) % 60).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+  }
+  function liveText(s: LiveStatus): { text: string; warn?: boolean } {
+    if (s.input_lost) return { text: t("menu.status.noAudio"), warn: true };
+    if (s.warning) return { text: s.warning, warn: true };
+    return { text: s.transcribing ? t("activity.liveOn") : s.draft ? t("activity.livePaused") : t("activity.recordOnly") };
+  }
+
+  // the next lecture's number, for "Record Lecture 6"
+  let nextNumber = $derived(Math.max(0, ...entries.filter((e) => e.kind === "lecture").map((e) => e.number)) + 1);
+
+  async function pollLive() {
+    try {
+      const a = await recordingStatus();
+      live = a.status?.state ? a.status : { state: "idle" };
+      suggestion = a.suggestion;
+    } catch {
+      // the engine is restarting: the next look will tell
+    }
+  }
+
+  // A new recording, a stopped one, a final transcript done: the library is read again so its row shows at once
+  let seenLive = "idle";
+  $effect(() => {
+    const key = `${live.state}/${live.course ?? ""}/${live.folder ?? ""}`;
+    if (key === seenLive) return;
+    seenLive = key;
+    untrack(() => {
+      // started here: the new recording is selected as soon as the library has it (in the app the menu bar's
+      // "recording" event does that too, see recordingChanged; a browser during development only has this)
+      const find = follow && liveGroup ? inLibrary(liveGroup, live.folder) : undefined;
+      reload({ show: find && ((all) => { const e = find(all); if (e) follow = false; return e; }) });
+    });
+  });
+
+  // "Show": that course and its recording, wherever the window is
+  async function showRecording(g: Group, folder?: string) {
+    const e = barEntry(g, folder);
+    if (e) return select(e);
+    if (folder) await reload({ show: inLibrary(g, folder) }); // just started: read the library, select it in one step
+    if (!barEntry(g, folder)) pick(g);  // still not there: the course, its newest recording
+  }
+
+  function showBarError(e: unknown) {
+    barError = String(e);
+    clearTimeout(barErrorTimer);
+    barErrorTimer = setTimeout(() => (barError = null), 6000);
+  }
+
+  // Record Lecture n: exactly as the menu's Start Lecture ▸ course (the lecturer's consent, the microphone, the language)
+  async function record(g: Group) {
+    if (!canRecord) return;
+    starting = g;
+    barError = null;
+    try {
+      const status = await startRecording(g.course, g.event);
+      if (status) {
+        live = status;
+        follow = true;
+      }
+    } catch (e) {
+      showBarError(e);
+    } finally {
+      starting = null;
+    }
+  }
+
+  // Pause/Resume and Stop, as the menu's items (Stop makes the final transcript)
+  async function control(cmd: "toggle" | "stop") {
+    barBusy = true;
+    try {
+      live = await recordingCommand(cmd);
+    } catch (e) {
+      showBarError(e);
+    } finally {
+      barBusy = false;
+    }
   }
 
   // The summary of the selected recording, or its text so far while it has no transcript yet (looked at again
@@ -222,6 +367,14 @@
   onMount(() => {
     lastSelection();
     reload({ cameBack: true });
+    // what's running: every second while something does (the clock), every three seconds otherwise
+    let closed = false;
+    let liveTimer: ReturnType<typeof setTimeout> | undefined;
+    const watch = async () => {
+      await pollLive();
+      if (!closed) liveTimer = setTimeout(watch, live.state !== "idle" || starting ? 1000 : 3000);
+    };
+    watch();
     const onFocus = () => reload();
     window.addEventListener("focus", onFocus);
     window.addEventListener("keydown", settingsShortcut);
@@ -233,6 +386,8 @@
       listen("library-shown", () => reload({ cameBack: true })).then((u) => unlisten.push(u));
     }
     return () => {
+      closed = true;
+      clearTimeout(liveTimer);
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("keydown", settingsShortcut);
       unlisten.forEach((u) => u());
@@ -451,18 +606,14 @@
     <nav>
       {#snippet row(g: Group)}
         <div class="group-row" class:active={same(g, group)} oncontextmenu={(ev) => showMenu(ev, { group: g })}>
-          <button class="group" onclick={() => pick(g)} title={g.course}>{g.course}</button>
+          <button class="group" onclick={() => pick(g)} title={g.course}>{g.course}{#if same(g, recordingGroup)}<span
+              class="rec-dot" class:paused={live.state === "paused"} role="img"
+              aria-label={live.state === "paused" ? t("activity.paused") : t("activity.recording")}></span>{/if}</button>
           <button class="more" aria-label={t("lib.optionsFor", { course: g.course })} title={t("lib.options")}
                   onclick={(ev) => showMenu(ev, { group: g })}>
             <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.25" /><circle cx="8" cy="8" r="1.25" /><circle cx="12.5" cy="8" r="1.25" /></svg>
           </button>
         </div>
-      {/snippet}
-      {#snippet section(title: string, list: Group[])}
-        {#if list.length}
-          <div class="kicker">{title}</div>
-          {#each list as g (g.course + g.event)}{@render row(g)}{/each}
-        {/if}
       {/snippet}
       <div class="kicker with-add">
         <span>{t("lib.courses")}</span>
@@ -474,7 +625,21 @@
       {#if data && !groups.courses.length}
         <button class="group quiet-add" onclick={() => open({ kind: "add" })}>{t("lib.addFirstCourse")}</button>
       {/if}
-      {@render section(t("common.talksEvents"), groups.talks)}
+      <!-- talks: recording one opens the small "Record a Talk or Event" window, as the menu's item does -->
+      {#if data && (groups.talks.length || canRecord)}
+        <div class="kicker with-add talks">
+          <span>{t("common.talksEvents")}</span>
+          {#if canRecord}
+            <button class="add" aria-label={t("lib.recordTalk")} title={t("lib.recordTalk")} onclick={showTalkWindow}>
+              <svg viewBox="0 0 16 16" aria-hidden="true"><circle class="ring" cx="8" cy="8" r="5.25" /><circle class="core" cx="8" cy="8" r="2.25" /></svg>
+            </button>
+          {/if}
+        </div>
+        {#each groups.talks as g (g.course + g.event)}{@render row(g)}{/each}
+        {#if !groups.talks.length}
+          <button class="group quiet-add" onclick={showTalkWindow}>{t("lib.recordTalk")}</button>
+        {/if}
+      {/if}
     </nav>
     <!-- "Finish setting up Stenny", until courses, the AI step and the connector work (lib/SetupChecklist.svelte) -->
     <SetupChecklist courses={data ? groups.courses.length : null} onaddcourse={() => open({ kind: "add" })}
@@ -500,9 +665,77 @@
     </footer>
   </aside>
 
+  <div class="content">
+  <!-- the window's title bar over the list and detail (the line between them runs through it) -->
+  <div class="topbar" data-tauri-drag-region><div data-tauri-drag-region></div></div>
+  <!-- what's running, whichever course is open: only while something runs, gone otherwise -->
+  {#if bar || barError}
+    <div class="activity {bar?.kind ?? 'error'}" transition:barMotion>
+      <div class="activity-row" data-tauri-drag-region>
+        {#if barError}
+          <span class="sign warn" aria-hidden="true"></span>
+          <span class="what warn selectable" title={barError}>{barError}</span>
+        {:else if bar?.kind === "suggestion"}
+          {@const s = bar}
+          <span class="sign hollow" aria-hidden="true"></span>
+          <span class="label">{t("activity.calendar")}</span>
+          <span class="what" title="{s.course}, {s.range}">{s.course}, {s.range}</span>
+          <span class="buttons">
+            <button class="bar-button" onclick={() => record({ course: s.course, event: false })}>{t("activity.record")}</button>
+          </span>
+        {:else if bar}
+          {@const b = bar}
+          {@const name = "folder" in b ? barName(b.group, b.folder, b.number) : b.group.course}
+          {#if b.kind === "finishing"}
+            <svg class="sign doc" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.8h5.2L12.5 5v9.2H4z M9 1.8V5.2h3.5 M6 8h4.5 M6 10.5h4.5" /></svg>
+            <span class="what" title="{t('activity.finalizing')} · {name}">{t("activity.finalizing")} · {name}</span>
+            <!-- how far it is (#37's progress.json, read with the library), when the engine has said -->
+            {@const pass = "folder" in b ? barEntry(b.group, b.folder)?.final_pass : null}
+            {#if pass}<span class="progress"><FinalPass {pass} inline /></span>{/if}
+          {:else}
+            <span class="sign {b.kind}" aria-hidden="true"></span>
+            <span class="label">{b.kind === "recording" ? t("activity.recording") : b.kind === "paused" ? t("activity.paused")
+              : b.kind === "cancelling" ? t("activity.cancelling") : t("common.starting")}</span>
+            {#if b.kind === "recording" || b.kind === "paused"}
+              {@const note = liveText(live)}
+              <span class="time">{clock(live)}</span>
+              <span class="what" title="{name} · {note.text}">{name} · <span class:warn={note.warn}>{note.text}</span></span>
+            {:else}
+              <span class="what" title={name}>{name}</span>
+            {/if}
+          {/if}
+          <span class="buttons">
+            {#if b.kind !== "starting" && b.kind !== "cancelling"}
+              <button class="bar-button" onclick={() => showRecording(b.group, "folder" in b ? b.folder : undefined)}>{t("activity.show")}</button>
+            {/if}
+            {#if b.kind === "recording" || b.kind === "paused"}
+              {@const toggle = b.kind === "paused" ? t("menu.resume") : t("menu.pause")}
+              <button class="bar-icon" disabled={barBusy} aria-label={toggle} title={toggle} onclick={() => control("toggle")}>
+                {#if b.kind === "paused"}
+                  <svg viewBox="0 0 16 16" aria-hidden="true"><path class="fill" d="M5 3.2v9.6l7.6-4.8z" /></svg>
+                {:else}
+                  <svg viewBox="0 0 16 16" aria-hidden="true"><path class="fill" d="M4.5 3h2.4v10H4.5zM9.1 3h2.4v10H9.1z" /></svg>
+                {/if}
+              </button>
+              <button class="bar-icon" disabled={barBusy} aria-label={t("menu.stop")} title={t("menu.stop")} onclick={() => control("stop")}>
+                <svg viewBox="0 0 16 16" aria-hidden="true"><rect class="fill" x="3.5" y="3.5" width="9" height="9" rx="1.5" /></svg>
+              </button>
+            {/if}
+          </span>
+        {/if}
+      </div>
+    </div>
+  {/if}
+  <div class="panes">
   <section class="list">
-    <div class="titlebar" data-tauri-drag-region></div>
     {#if group}
+      <!-- start a recording from here, the same way as from the menu bar; only one at a time -->
+      {#if canRecord}
+        <button class="record" onclick={() => (group!.event ? showTalkWindow() : record(group!))}>
+          <span class="dot" aria-hidden="true"></span>
+          {group.event ? t("lib.recordTalk") : t("lib.recordLecture", { n: nextNumber })}
+        </button>
+      {/if}
       <div class="kicker list-head">{tn("lib.recordings", entries.length)}</div>
       {#each entries as e (id(e))}
         <button class="row" class:active={id(e) === selectedId} onclick={() => (selectedId = id(e))}
@@ -520,7 +753,6 @@
   </section>
 
   <main class="detail">
-    <div class="titlebar" data-tauri-drag-region></div>
     <!-- deleting: an icon right after the other actions, like Mail's; it asks first, and it's the Trash -->
     {#snippet trashButton(e: Entry)}
       <button class="trash" aria-label={t("lib.trashButton", { trash: trashName() })}
@@ -632,13 +864,15 @@
     {:else if data && group}
       <div class="center">
         <p class="serif big">{t("lib.emptyCourse", { course: group.course })}</p>
-        <p class="quiet">{t("lib.emptyCourse.hint")}</p>
+        <p class="quiet">{t("lib.emptyCourse.hint", { button: t("lib.recordLecture", { n: nextNumber }) })}</p>
       </div>
     {:else if !data}
       <div class="center"><p class="quiet serif">{t("common.loading")}</p></div>
     {/if}
     <div class="bottombar" aria-hidden="true"></div>
   </main>
+  </div>
+  </div>
 </div>
 </div>
 {/if}
@@ -727,12 +961,14 @@
 <style>
   /* the library and Settings fill the window; both are there for a moment while one dissolves into the other */
   .view { position: fixed; inset: 0; background: var(--bg); }
-  .window { display: grid; grid-template-columns: 220px 290px minmax(0, 1fr); height: 100vh; }
+  .window { display: grid; grid-template-columns: 220px minmax(0, 1fr); height: 100vh; }
   .titlebar { height: var(--titlebar); flex: none; }
-  /* the scrolling columns keep a solid band under the window's title bar, like the sidebar's */
-  .list > .titlebar, .detail > .titlebar { position: sticky; top: 0; z-index: 5; background: var(--bg); }
-  .list > .titlebar { margin: 0 -10px; }
-  /* ... and at the bottom, so text never runs into the window's rounded corner */
+  /* the list and detail under one title bar (the line between them runs through it), the activity bar below it */
+  .content { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .topbar { display: grid; grid-template-columns: 290px 1fr; height: var(--titlebar); flex: none; }
+  .topbar > div { border-right: 1px solid var(--line); }
+  .panes { display: grid; grid-template-columns: 290px minmax(0, 1fr); flex: 1; min-height: 0; }
+  /* the scrolling columns keep a solid band at the bottom, so text never runs into the window's rounded corner */
   .bottombar { position: sticky; bottom: 0; height: 18px; flex: none; background: var(--bg); z-index: 5; }
   .list > .bottombar { margin: 0 -10px; }
 
@@ -787,9 +1023,56 @@
   /* no negative margin above: the list scrolls, and its edge would cut the top of the hover box off */
   .add { position: static; transform: none; width: 20px; height: 20px; margin: 0 -6px 0 0; flex: none; }
   .quiet-add { color: var(--muted); font-size: 14px; }
+  /* Talks & events' record button: a ring with a dot, where the courses have their + */
+  .talks .add svg .ring { stroke-width: 1.3; }
+  .talks .add svg .core { fill: currentColor; stroke: none; }
+  /* the course that records: a small red dot after its name (hollow and tan while paused) */
+  .rec-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--rec); margin-left: 7px; vertical-align: 2px; }
+  .rec-dot.paused { background: none; box-shadow: inset 0 0 0 1.5px var(--warn); }
+
+  /* The activity bar: what's running, across the list and detail. One line; long names end in "…", the time and
+     the buttons always stay. Calm: the only motion is the recording dot's slow pulse. */
+  .activity { flex: none; background: var(--bar); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .activity-row { display: flex; align-items: center; gap: 10px; height: 42px; padding: 0 12px 0 20px; white-space: nowrap; }
+  .activity .sign { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--rec); }
+  .activity .sign.recording { animation: pulse 2.4s ease-in-out infinite; }
+  .activity .sign.paused, .activity .sign.hollow { background: none; box-shadow: inset 0 0 0 1.5px var(--warn); }
+  .activity .sign.starting, .activity .sign.warn { background: var(--warn); }
+  .activity .sign.cancelling { background: var(--muted); }
+  .activity svg.sign { width: 16px; height: 16px; border-radius: 0; background: none; fill: none; stroke: var(--ink-2); stroke-width: 1.2; stroke-linejoin: round; }
+  .activity .label { flex: none; font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--rec); }
+  .activity.paused .label, .activity.starting .label { color: var(--warn); }
+  .activity.suggestion .label, .activity.cancelling .label { color: var(--muted); }
+  .activity .time { flex: none; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .activity .what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--ink-2); }
+  .activity .warn { color: var(--warn); }
+  .activity .progress { flex: none; }
+  .activity .buttons { flex: none; display: flex; align-items: center; gap: 6px; margin-left: auto; }
+  .bar-button { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 3px 12px; font-size: 12px; font-weight: 500; }
+  .bar-icon {
+    width: 28px; height: 28px; padding: 0; border-radius: 999px; border: 1px solid var(--line); background: var(--card);
+    display: grid; place-items: center; color: var(--ink-2);
+  }
+  .bar-icon svg { width: 12px; height: 12px; display: block; }
+  .bar-icon .fill { fill: currentColor; }
+  .bar-button:hover, .bar-icon:hover:not(:disabled) { border-color: color-mix(in srgb, var(--ink) 35%, var(--line)); color: var(--ink); }
+  .bar-icon:disabled { opacity: 0.55; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+  @media (prefers-reduced-motion: reduce) { .activity .sign.recording { animation: none; } }
+
+  /* Record Lecture n, at the top of a course's list */
+  .record {
+    display: flex; align-items: center; gap: 9px; width: 100%; margin: 0 0 16px; padding: 9px 12px; text-align: left;
+    border: 1px solid var(--line); background: var(--card); border-radius: 9px; font-weight: 500;
+  }
+  .record:hover { border-color: color-mix(in srgb, var(--rec) 40%, var(--line)); }
+  .record .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--rec); flex: none; }
 
   /* List */
   .list { border-right: 1px solid var(--line); overflow-y: auto; padding: 0 10px; }  /* the bottom band is its end space */
+  /* below the activity bar, a little room before the list and the recording begin */
+  .activity + .panes .list { padding-top: 14px; }
+  .activity + .panes article { padding-top: 18px; }
   .list-head { padding: 0 12px 10px; }
   .row {
     display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 2px 8px; width: 100%; text-align: left;
@@ -893,7 +1176,7 @@
   .summary :global(.ts) { font-family: var(--sans); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; margin-left: 2px; }
   .summary :global(strong) { font-weight: 560; }
 
-  .center { height: calc(100% - var(--titlebar) - 18px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; padding: 0 40px; }
+  .center { height: calc(100% - 18px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; padding: 0 40px; }
   .big { font-size: 20px; margin: 0; }
   .center p { margin: 0; }
 </style>

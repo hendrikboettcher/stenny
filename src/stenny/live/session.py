@@ -764,6 +764,8 @@ class LiveSession:
                 if self.state == "paused" and self.pauses else 0.0, "input_lost": self.stalled or self.silent,
                 "transcript": str(self.transcript_path), "note": self.final_note, "warning": self.warning,
                 "kind": self.course.kind,
+                # which recording in the library this is: the window's activity bar names and selects it
+                "folder": self.folder.name, "number": self.number,
                 "backup": self.backup.source.device if self.backup else None,
                 # None until the system's input device is named (name_microphone): the menu waits for it
                 "microphone": d if (d := getattr(self.source, "device", None)) != "default" else None,

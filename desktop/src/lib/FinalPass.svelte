@@ -1,12 +1,13 @@
 <script lang="ts">
   // How far a lecture's final pass is (src/stenny/progress.py, polled with the library every 5 s): in the Finishing
-  // banner a bar with the percentage and the three steps underneath, in the list's row only a thin bar. Calm on
+  // banner a bar with the percentage and the three steps underneath, in the list's row only a thin bar, in the
+  // window's activity bar (#17) a short bar with "46 % · about 9 min left" on one line. Calm on
   // purpose: the bar glides from one reading to the next (no pulsing, no stripes), and the time left shows only
   // once the engine has measured Whisper's speed.
   import type { FinalPass } from "$lib/engine";
   import { t, locale, type Key } from "$lib/i18n.svelte";
 
-  let { pass, compact = false }: { pass: FinalPass; compact?: boolean } = $props();
+  let { pass, compact = false, inline = false }: { pass: FinalPass; compact?: boolean; inline?: boolean } = $props();
 
   const STEPS = ["transcribing", "tidying", "saving"] as const;
   // never "100 %" while it still works
@@ -39,6 +40,14 @@
 
 {#if compact}
   <span class="track thin" aria-hidden="true"><span class="fill" style="transform: scaleX({fraction})"></span></span>
+{:else if inline}
+  <span class="inline">
+    <span class="track short" role="progressbar" aria-label={t("lib.pass.aria", { percent })}
+          aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(fraction * 100)}>
+      <span class="fill" style="transform: scaleX({fraction})"></span>
+    </span>
+    <span class="percent">{percent}{#if left}{" · "}{left}{/if}</span>
+  </span>
 {:else}
   <div class="pass">
     <div class="line">
@@ -72,6 +81,9 @@
     position: relative; flex: 1; height: 5px; border-radius: 999px; overflow: hidden;
     background: color-mix(in srgb, var(--ink) 10%, transparent);
   }
+  .inline { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+  .track.short { flex: none; width: 72px; height: 4px; }
+  .inline .percent { min-width: 0; text-align: left; }
   .track.thin { display: block; height: 3px; flex: none; grid-column: 1 / -1; margin-top: 6px; }
   .fill {
     position: absolute; inset: 0; border-radius: inherit; background: var(--warn);
