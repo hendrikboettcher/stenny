@@ -8,6 +8,7 @@
   import Dialog from "$lib/Dialog.svelte";
   import Settings from "$lib/Settings.svelte";
   import SetupChecklist from "$lib/SetupChecklist.svelte";
+  import FinalPass from "$lib/FinalPass.svelte";
   import { renderMarkdown } from "$lib/markdown";
   import {
     library, lecture, makeCopy, makePdf, finishNow, openTranscript, reveal, shareFiles, lecturerAgreed,
@@ -461,6 +462,7 @@
           <span class="row-title serif">{rowTitle(e)}</span>
           {#if isDraft(e)}<span class="status {e.status}">{statusLabel(e.status)}</span>{/if}
           <span class="row-detail">{rowDetail(e)}</span>
+          {#if e.status === "finalizing" && e.final_pass}<FinalPass pass={e.final_pass} compact />{/if}
         </button>
       {:else}
         <p class="empty">{t("lib.noRecordings")}</p>
@@ -509,6 +511,7 @@
               <span class="status {selected.status}">{statusLabel(selected.status)}</span>
               {selected.draft_note ?? t("lib.comesLater")}
             </p>
+            {#if selected.status === "finalizing" && selected.final_pass}<FinalPass pass={selected.final_pass} />{/if}
             {#if selected.status === "queued"}
               <button class="pill small" onclick={finish} disabled={busy === "finish"}>
                 {busy === "finish" ? t("common.starting") : t("lib.finishNow")}

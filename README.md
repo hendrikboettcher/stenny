@@ -85,7 +85,7 @@ See `config.example.toml` for every setting.
 
 **Pause:** press **⌘⇧Ü** (the default; choose your own with `[app] pause_shortcut` in the config). While paused, the microphone is really off and nothing is recorded.
 
-**Stop:** click the dot ▸ *Stop & Make Final Transcript*. On power, the whole recording is transcribed again at full quality (a 3-hour lecture takes about 20–25 minutes) and replaces the draft. On battery it waits until you plug in.
+**Stop:** click the dot ▸ *Stop & Make Final Transcript*. On power, the whole recording is transcribed again at full quality (a 3-hour lecture takes about 20–25 minutes) and replaces the draft. On battery it waits until you plug in. Meanwhile Stenny's window shows the lecture as *Finishing* with a progress bar: *Transcribing* (how far into the lecture it has got), *Tidying up* (the clean transcript and the optional AI step), *Saving*, and, once it has measured the speed, about how long is left. A pass that was interrupted picks its bar up where it stopped.
 
 **Keep the lid open while recording.** A closed MacBook on battery sleeps and records nothing.
 
@@ -183,6 +183,7 @@ Stenny's own files, out of sight (`stenny where` lists them):
 ~/Library/Application Support/Stenny/     Windows: %APPDATA%\Stenny (config) and %LOCALAPPDATA%\Stenny (the rest)
 ├── config.toml, consent.json
 ├── Recordings/Calculus/                  audio (.opus, ~14 MB per hour), segments.json, raw Whisper output
+│                                         (and, while a final pass runs, its .progress.json for the window)
 ├── Recordings/Talks/                     the same for talks
 └── Queue/                                final passes waiting (e.g. on battery)
 ~/Library/Logs/Stenny/                    stenny.log, live.log, queue.log (Windows: %LOCALAPPDATA%\Stenny\Logs)
