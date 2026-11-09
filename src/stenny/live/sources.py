@@ -168,11 +168,13 @@ class MicSource(FfmpegSource):
 
 
 def find_recorder() -> str | None:
-    """The native recorder: $STENNY_REC (the app passes its own copy), Stenny.app's, or a development build
+    """The native recorder: $STENNY_REC (the app passes its own copy), the installed app's (Stenny.app, or next to
+    Stenny.exe on Windows), or a development build
     (app/Sources/stenny-rec on macOS, desktop/stenny-rec on Windows)."""
     repo = Path(__file__).resolve().parents[3]
     if _windows():
-        candidates = [os.environ.get("STENNY_REC"), str(repo / "desktop/stenny-rec/target/release/stenny-rec.exe")]
+        candidates = [os.environ.get("STENNY_REC"), bundled("stenny-rec"),  # next to the installed Stenny.exe
+                      str(repo / "desktop/stenny-rec/target/release/stenny-rec.exe")]
         return next((c for c in candidates if c and os.path.isfile(c)), None)
     candidates = [os.environ.get("STENNY_REC"), bundled("stenny-rec"), str(repo / "app/.build/release/stenny-rec")]
     return next((c for c in candidates if c and os.access(c, os.X_OK)), None)

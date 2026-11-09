@@ -201,6 +201,24 @@ def assert_final_pass_reuses(s):
     return made
 
 
+def drive(s, script, *args):
+    """Runs the test's script beside the recording (s.run()). If the script fails (a timeout, an assertion), the
+    recording is stopped and the error raised here: without that the session would record forever and the test
+    run hang instead of failing."""
+    failed = []
+
+    def guarded():
+        try:
+            script(*args)
+        except BaseException as e:  # noqa: BLE001 — raised again in the test's thread
+            failed.append(e)
+            s.command("stop")
+    threading.Thread(target=guarded, daemon=True).start()
+    s.run()
+    if failed:
+        raise failed[0]
+
+
 def wait_until(cond, timeout=10):
     end = time.time() + timeout
     while not cond() and time.time() < end:
@@ -222,8 +240,7 @@ def test_pause_resume_timeline(tmp_path, monkeypatch):
         mic.at(19, lambda: s.command("toggle"))            # resume at 19 s
         mic.at(36, lambda: s.command("stop"))
 
-    threading.Thread(target=script, daemon=True).start()
-    s.run()
+    drive(s, script)
 
     level = s.command("level")
     assert level["ok"] and set(level) == {"ok", "state", "input_lost", "level_db"}
@@ -274,8 +291,7 @@ def test_microphone_dropout_keeps_session_and_marks_gap(tmp_path, monkeypatch):
     def script():
         mic.at(30, lambda: s.command("stop"))
 
-    threading.Thread(target=script, daemon=True).start()
-    s.run()
+    drive(s, script)
 
     gaps = [p for p in s.pauses if p[2] == "no input"]
     assert len(gaps) == 1, s.pauses
@@ -301,8 +317,7 @@ def run_session(tmp_path, monkeypatch, mic, until=30.0, stall=0.05, backup=None,
     monkeypatch.setattr(live_session, "RETRY", 0.01)
     monkeypatch.setattr(live_session, "POLL", 0.002)
     script = script or (lambda s: mic.at(until, lambda: s.command("stop")))
-    threading.Thread(target=script, args=(s,), daemon=True).start()
-    s.run()
+    drive(s, script, s)
     return s
 
 
@@ -598,8 +613,7 @@ def test_cancel_ends_without_a_transcript_and_trashes_the_recording(tmp_path, mo
     def script():
         mic.at(8, lambda: s.command("cancel"))
 
-    threading.Thread(target=script, daemon=True).start()
-    s.run()
+    drive(s, script)
     assert s.cancelled and s.state == "cancelling" and s.recorded > 0
     queued = []
     monkeypatch.setattr(jobs, "enqueue", lambda *a, **k: queued.append(a))
