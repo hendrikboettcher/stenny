@@ -33,7 +33,7 @@ def status(cfg, params: dict) -> dict:
     proc = _started.get("process")
     if proc is not None:
         if proc.poll() is None:
-            return {"ok": True, "state": "starting", "course": _started["course"]}
+            return {"ok": True, "state": "starting", "course": _started["course"], "kind": _started["kind"]}
         _started.clear()
         if proc.returncode:  # it ended before its socket came up: say why
             return {"ok": True, "state": "idle", "error": last_log_line() or f"exit status {proc.returncode}"}
@@ -88,8 +88,9 @@ def start(cfg, params: dict) -> dict:
     env = {**os.environ, "STENNY_LANGUAGE": i18n.language()}
     proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True, env=env)
     log.close()
-    _started.update(process=proc, course=event or course)
-    return {"ok": True, "state": "starting", "course": event or course}
+    kind = "event" if event else "lecture"  # as the session's status says it (a talk can share a course's name)
+    _started.update(process=proc, course=event or course, kind=kind)
+    return {"ok": True, "state": "starting", "course": event or course, "kind": kind}
 
 
 def command(cfg, params: dict) -> dict:

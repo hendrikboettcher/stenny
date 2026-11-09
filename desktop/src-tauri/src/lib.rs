@@ -176,9 +176,40 @@ async fn start_talk(app: AppHandle, title: String, language: Option<String>) -> 
     if title.is_empty() {
         return Err(tr!("talk.noTitle"));
     }
-    tauri::async_runtime::spawn_blocking(move || menubar::start_with(&app, &title, true, language.as_deref()))
+    tauri::async_runtime::spawn_blocking(move || menubar::start_with(&app, &title, true, language.as_deref()).map(|_| ()))
         .await
         .map_err(|e| e.to_string())?
+}
+
+/// The library window's Record buttons: a course (or a talk) starts exactly as from the menu (the lecturer's
+/// consent, the chosen microphone, the course's language). The engine's status ("starting"), or null if the
+/// lecturer hasn't agreed yet.
+#[tauri::command]
+async fn start_recording(app: AppHandle, course: String, event: bool) -> Result<Option<Value>, String> {
+    tauri::async_runtime::spawn_blocking(move || menubar::start_with(&app, &course, event, None))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// The activity bar's Pause/Resume ("toggle") and Stop, as the menu's items do.
+#[tauri::command]
+async fn recording_command(app: AppHandle, cmd: String) -> Result<Value, String> {
+    if !matches!(cmd.as_str(), "toggle" | "stop") {
+        return Err(format!("unknown command {cmd}"));
+    }
+    tauri::async_runtime::spawn_blocking(move || menubar::command(&app, &cmd)).await.map_err(|e| e.to_string())?
+}
+
+/// What the activity bar shows: {status, suggestion} (menubar.rs, window_status).
+#[tauri::command]
+async fn recording_status(app: AppHandle) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || menubar::window_status(&app)).await.map_err(|e| e.to_string())
+}
+
+/// Talks & events' record button: the "Record a talk" window, as the menu's Record a Talk or Event….
+#[tauri::command]
+fn show_talk(app: AppHandle) {
+    show_window(&app, "talk");
 }
 
 fn urlencode(s: &str) -> String {
@@ -354,7 +385,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(Arc::new(Engine::default()))
         .manage(MenuBar::default())
-        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, share_files, copy_text, check_updates, microphone_pref, set_microphone_pref, login_item, apply_shortcut, ui_language, set_ui_language, courses_changed])
+        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, share_files, copy_text, check_updates, microphone_pref, set_microphone_pref, login_item, apply_shortcut, ui_language, set_ui_language, courses_changed, start_recording, recording_command, recording_status, show_talk])
         .setup(move |app| {
             if !library_only {
                 // A Dock app with the menu bar icon next to it. Info.plist keeps LSUIElement for the helpers in the

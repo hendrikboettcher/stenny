@@ -36,7 +36,7 @@ def test_start_runs_stenny_live_and_reports_starting_then_why_it_failed(home, mo
     assert reply["state"] == "starting"
     assert FakeProcess.last.args[2:] == ["stenny", "live", "--course", "Calculus", "--device", "USB Mic",
                                           "--no-draft", "--no-llm"]
-    assert app_live.status(None, {}) == {"ok": True, "state": "starting", "course": "Calculus"}
+    assert app_live.status(None, {}) == {"ok": True, "state": "starting", "course": "Calculus", "kind": "lecture"}
     with pytest.raises(app_live.LiveError, match="already running"):
         app_live.start(None, {"course": "Calculus"})
 

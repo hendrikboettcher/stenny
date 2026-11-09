@@ -206,6 +206,8 @@ def test_pause_resume_timeline(tmp_path, monkeypatch):
 
     level = s.command("level")
     assert level["ok"] and set(level) == {"ok", "state", "input_lost", "level_db"}
+    status = s.status()  # the window's activity bar finds the recording in the library by these
+    assert (status["course"], status["kind"], status["folder"], status["number"]) == ("Calculus", "lecture", s.folder.name, 1)
     (p_start, p_end, reason), = s.pauses
     assert reason == "paused"
     # the test thread reacts a little after the simulated clock passes each mark

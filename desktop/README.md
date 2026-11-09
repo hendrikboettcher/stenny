@@ -26,6 +26,14 @@ Without `--library` it is the menu bar app (src-tauri/src/menubar.rs): the class
 the calendar's lecture with its "Record this lecture?" notification, and the pause shortcut, the last two through
 `stenny-agent` (app/Sources/stenny-agent), which runs inside the bundle so the permissions are Stenny's.
 `STENNY_TEST_FILE=<audio>` records that file instead of the microphone (with `STENNY_HOME` on a test copy).
+The library window shows what's running in an activity bar across the list and detail (whichever course is open):
+recording or paused with the menu bar's clock, the course · lecture and whether live text is on, Show (selects it),
+Pause/Resume and Stop; then "Making the final transcript" (the live process's final pass, or one from the queue);
+the calendar's lecture with a Record button while nothing runs. The recording course gets a red dot in the sidebar. A
+course's list starts with "Record Lecture n", Talks & events with a record button (the "Record a talk" window). The
+window never records by itself: it goes through the menu bar's own code (`start_recording`, `recording_command`,
+`recording_status` in src-tauri/src/lib.rs → menubar.rs `start_with`, `command`, `window_status`), so the lecturer's
+consent, the microphone and the language work as from the menu; the status is the menu bar's last poll, no extra work.
 The library window's footer opens Settings… in the same window (also ⌘, or Stenny ▸ Settings…; Ctrl+, on Windows) (src/lib/Settings.svelte, Escape goes back): general (language, open at login, the pause shortcut,
 where the files are), recording (microphone, backup microphone, live draft, keeping audio), the AI step (Claude Code,
 Anthropic API or Off, each with what it does and costs, and a bar under the chosen one when it isn't ready: install
