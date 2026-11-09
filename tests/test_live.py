@@ -336,7 +336,8 @@ def test_backup_microphone_records_through_main_gaps_but_not_pauses(tmp_path, mo
     s = run_session(tmp_path, monkeypatch, mic, backup=backup, script=script)
     assert [p[2] for p in s.pauses] == ["no input", "paused"]
     b = s.backup
-    assert len(b.spans) == 2 and b.spans[0][1] < 0.3                  # started with the main mic
+    # started with the main mic: within a few 100 ms blocks (a slow Windows CI runner needed 3)
+    assert len(b.spans) == 2 and b.spans[0][1] <= 0.5 + EPS
     (p0, p1, _) = s.pauses[1]
     assert abs(b.spans[1][1] - p1) < 0.3                               # off while paused, back on resume
     recorded = b.written / SAMPLE_RATE
