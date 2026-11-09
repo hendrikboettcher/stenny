@@ -25,6 +25,10 @@ class NoSession(Exception):
 def send(cmd: str, path: Path = SOCKET, timeout: float = 10.0, **extra) -> dict:
     if not path.exists():
         raise NoSession("No live session is running.")
+    if not hasattr(socket, "AF_UNIX"):
+        # Windows' Python has no Unix sockets, so a socket file (an old install's, which migrate.py asks about) is
+        # never a running recording there; Windows gets its own channel, a named pipe (#2)
+        raise NoSession("No live session is running.")
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
         s.settimeout(timeout)
         try:
