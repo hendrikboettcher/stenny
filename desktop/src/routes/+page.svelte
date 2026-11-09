@@ -83,7 +83,15 @@
   // what the detail view depends on: a reload every few seconds gives new objects, but the same key
   let selectedKey = $derived(selected ? `${id(selected)}:${selected.status}` : "");
 
-  async function reload() {
+  const groupOf = (e: Entry): Group => ({ course: e.course, event: e.kind === "event" });
+  // what's recording now, else what's having its final transcript made (the newest of them)
+  const running = (list: Entry[]) =>
+    [...list].reverse().find((e) => e.status === "live") ?? [...list].reverse().find((e) => e.status === "finalizing");
+
+  // `cameBack`: the window has just come back (opened, reloaded with ⌘R, shown again from the Dock or the menu
+  // bar). Then a running recording is what it shows, so its text is right there. Otherwise the selection stays
+  // (the refresh every few seconds never takes it away while someone is clicking around).
+  async function reload(cameBack = false) {
     try {
       data = await library();
       failed = null;
@@ -92,9 +100,32 @@
       return;
     }
     const all = [...groups.courses, ...groups.talks];
+    const now = cameBack ? running(data.entries) : undefined;
+    if (now && all.some((g) => same(g, groupOf(now)))) {
+      group = groupOf(now);
+      selectedId = id(now);
+      return;
+    }
     if (!group || !all.some((g) => same(g, group))) group = all[0] ?? null;
     if (!selected) selectedId = entries[0] ? id(entries[0]) : null;
   }
+
+  // The selection outlives the window (⌘R, quitting): it opens where it was when nothing records.
+  const SELECTION = "selection";
+  function lastSelection() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(SELECTION) ?? "null");
+      if (typeof saved?.group?.course === "string") {
+        group = { course: saved.group.course, event: !!saved.group.event };
+        selectedId = typeof saved.selectedId === "string" ? saved.selectedId : null;
+      }
+    } catch {}
+  }
+  $effect(() => {
+    const saved = JSON.stringify({ group, selectedId });
+    if (!group) return;
+    try { localStorage.setItem(SELECTION, saved); } catch {}
+  });
 
   function pick(g: Group) {
     group = g;
@@ -147,16 +178,21 @@
   }
 
   onMount(() => {
-    reload();
+    lastSelection();
+    reload(true);
     const onFocus = () => reload();
     window.addEventListener("focus", onFocus);
     window.addEventListener("keydown", settingsShortcut);
-    let unlisten: (() => void) | undefined;
-    if ("__TAURI_INTERNALS__" in window) listen("open-settings", () => openSettings()).then((u) => (unlisten = u));
+    const unlisten: (() => void)[] = [];
+    if ("__TAURI_INTERNALS__" in window) {
+      listen("open-settings", () => openSettings()).then((u) => unlisten.push(u));
+      // shown again from the Dock, Spotlight or the menu bar (src-tauri/src/lib.rs, `present`)
+      listen("library-shown", () => reload(true)).then((u) => unlisten.push(u));
+    }
     return () => {
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("keydown", settingsShortcut);
-      unlisten?.();
+      unlisten.forEach((u) => u());
     };
   });
 
@@ -537,7 +573,7 @@
       <div class="center">
         <p class="serif big">{t("lib.readFailed")}</p>
         <p class="quiet selectable">{failed}</p>
-        <button class="pill" onclick={reload}>{t("lib.tryAgain")}</button>
+        <button class="pill" onclick={() => reload()}>{t("lib.tryAgain")}</button>
       </div>
     {:else if data && group}
       <div class="center">

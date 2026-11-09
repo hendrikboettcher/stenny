@@ -22,6 +22,11 @@ whatever that config's `folder` says), `STENNY_CONFIG` names another config. The
 asks the engine (`settings`, `preferences`; src/stenny/paths.py). When the engine starts it moves an older install
 (`~/Lectures Data`) into today's places and starts a config if there is none (src/stenny/migrate.py, `on_start`).
 Rust comes from rustup (`~/.cargo/bin`).
+⌘R / Ctrl+R and View ▸ Reload (on Windows in each window's menu bar) reload only the window's page
+(src-tauri/src/lib.rs, `reload`; routes/+layout.svelte catches the key in every window). The library opens on a
+running recording, or one whose final transcript is being made, whenever it comes back: loaded (start, ⌘R), or
+shown again from the Dock, Spotlight or the menu bar (the "library-shown" event). Otherwise it keeps the last
+selection (localStorage); the refresh every few seconds never changes it.
 
 Without `--library` it is the menu bar app (src-tauri/src/menubar.rs): the classic menu, the clock next to the icon,
 the calendar's lecture with its "Record this lecture?" notification, and the pause shortcut, the last two through
