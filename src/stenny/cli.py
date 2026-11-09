@@ -96,12 +96,21 @@ def cmd_where(args) -> None:
 def cmd_download_model(args) -> None:
     """Download the Whisper model now (with progress), instead of silently during the first transcription."""
     from .config import Config
+    from .engines import resolve
     try:
-        model = config_mod.load().model
+        cfg = config_mod.load()
+        model, engine = cfg.model, cfg.engine
     except ConfigError:
-        model = Config.model
+        model, engine = Config.model, Config.engine
     if Path(model).expanduser().exists():
         print(f"The model is a local folder, nothing to download: {model}")
+        return
+    if resolve(engine) == "faster-whisper":  # Windows: CTranslate2's version of the model, in Stenny's Models folder
+        from .engines import faster_engine
+        where = paths.models_dir() or Path("~/.cache/huggingface")
+        print(f"Downloading Whisper {faster_engine.model_name(model)} (about 1.6 GB for large-v3-turbo) to "
+              f"{where} …")
+        print(f"Done: {faster_engine.download(model)}")
         return
     from huggingface_hub import snapshot_download
     print(f"Downloading {model} (about 1.6 GB for large-v3-turbo) to ~/.cache/huggingface …")
@@ -777,6 +786,7 @@ def cmd_update(args) -> None:
         if args.check:
             print(json.dumps(update.check()))
             return
+        update.supported()
         if is_running():
             sys.exit("A recording or its final transcript is running. Update when it's finished.")
         result = update.check()

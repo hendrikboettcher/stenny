@@ -45,6 +45,7 @@ src/stenny/
   course_files.py generated _Course Files/<Course> (overview).md (links only: each lecture's text exists once, in
                   its folder) and _Topics/<topic>.md; renumbers lectures, sets previous/next links
   share.py        the library (every lecture and talk, for Stenny's window) and clean copies to share
+  word.py         Word copies (.docx) without textutil, for Windows: share.py's blocks as a few XML parts in a zip
   connector.py    what Claude may read through the connector, as clean text (no paths, no microphones): courses,
                   lectures, transcripts in parts, summaries, search, glossary; two writes, both to the glossary's automatic
                   sections (`suggest_glossary_terms`, `suggest_glossary_corrections`: taken as given if guard.check_term /
@@ -83,9 +84,11 @@ app/              Swift menu bar app (SwiftPM + build.sh): starts `stenny live`,
                   build-ffmpeg.sh: the LGPL ffmpeg/ffprobe bundled there; install.sh: installs the built app;
                   release.sh: the release zip, which holds the signed app at app/build.noindex/Stenny.app
 desktop/          the new app (in development, replaces app/): Tauri 2 + Svelte 5/TypeScript, stenny.eu style; talks to
-                  the engine only through `stenny app-server` (src-tauri/src/engine.rs); see desktop/README.md
+                  the engine only through `stenny app-server` (src-tauri/src/engine.rs); see desktop/README.md.
+                  Windows installer: tauri.windows.conf.json (per-user NSIS + MSI), scripts/ffmpeg-windows.sh
 connector/        the Claude Desktop extension (.mcpb): manifest.json, server/index.js (finds the installed `stenny`
-                  and runs `stenny mcp`), build.sh → dist/Stenny.mcpb (icon from app/make-icon.swift)
+                  and runs `stenny mcp`, also `stenny.exe` on Windows), build.sh → dist/Stenny.mcpb (icon.png committed,
+                  drawn by app/make-icon.swift: `build.sh --icon`)
 tests/            pytest, no model downloads needed
 bench/            engine benchmark scripts
 ```
@@ -131,7 +134,8 @@ uv run stenny add <audio> --course "<name>" [--lang fr] [--no-llm]
 uv run stenny refresh "<course>" <YYYY-MM-DD[ (n)]>   # AI step again (glossary edits), no Whisper
 uv run stenny courses                 # list configured courses
 uv run stenny mcp                     # the connector for Claude (MCP over stdio); --desktop-config: its config entry
-connector/build.sh                     # dist/Stenny.mcpb, the one-click Claude Desktop extension
+connector/build.sh                     # dist/Stenny.mcpb, the one-click Claude Desktop extension (macOS or Git Bash)
+desktop/scripts/ffmpeg-windows.sh      # the pinned, checksummed LGPL ffmpeg/ffprobe for the Windows installer
 uv run python bench/run_bench.py       # engine benchmark
 uv run stenny live --course "<name>" --file sample.m4a --speed 3   # test live mode without a microphone
 app/build.sh                           # build + install the menu bar app (--no-install: only build)

@@ -36,9 +36,14 @@ function configured(command) {
 }
 
 function candidates() {
-  const out = [path.join(os.homedir(), ".local", "bin", exe)]; // `uv tool install` (Stenny's setup)
+  // `uv tool install` (Stenny's setup): ~/.local/bin on macOS and on Windows (%USERPROFILE%\.local\bin), unless uv
+  // was told to use another folder
+  const out = [process.env.UV_TOOL_BIN_DIR, process.env.XDG_BIN_HOME, path.join(os.homedir(), ".local", "bin")]
+    .filter(Boolean)
+    .map((dir) => path.join(dir, exe));
   for (const dir of (process.env.PATH || "").split(path.delimiter)) {
-    if (dir) out.push(path.join(dir, exe));
+    const clean = dir.trim().replace(/^"(.*)"$/, "$1"); // Windows' PATH may put a folder in quotes
+    if (clean) out.push(path.join(clean, exe));
   }
   const installed = [...new Set(out)].filter((c) => fs.existsSync(c));
   // the copy the config names, if any, goes first
@@ -101,8 +106,11 @@ const command = found.find(hasConnector);
 if (!command) {
   explain(
     found.length
-      ? `The Stenny installed here (${found[0]}) is older than the Claude connector. Update Stenny (in Stenny's ` +
-          "window, or `stenny update` in Terminal), then turn the Stenny extension off and on in Claude's Settings."
+      ? `The Stenny installed here (${found[0]}) is older than the Claude connector. Update Stenny (` +
+          (windows
+            ? "ask Claude Code to update it, as SETUP.md says"
+            : "in Stenny's window, or `stenny update` in Terminal") +
+          "), then turn the Stenny extension off and on in Claude's Settings."
       : "Stenny isn't installed on this computer (no `stenny` command found). Install it first: https://stenny.eu"
   );
 } else {
