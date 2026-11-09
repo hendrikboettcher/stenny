@@ -63,7 +63,10 @@ src/stenny/
   app_live.py     the app's recording methods (status, start → `stenny live` in its own process, pause/resume/stop,
                   microphone, devices, match_courses, recover) and the consent answers (consent.json next to config.toml)
   pipeline.py     audio → segments → paragraphs → files; `postprocess` (text + AI step) and `refresh` (AI step
-                  again from segments.json, no re-transcription)
+                  again from segments.json, no re-transcription); a final pass keeps the lecture "finalizing" until
+                  its audio is saved, then writes it final (also when something after the transcript fails)
+  progress.py     how far a final pass is (<folder>.progress.json in Recordings/): written by `process`, read by
+                  `app_server.library` (`final_pass` on a finalizing entry) for the window's bar; cheap, never fatal
   llm/            backends (claude_code, anthropic_api, its key from keychain.py) + guard (no invented content) + guard (no invented content)
   keychain.py     the Anthropic API key in the system keychain (macOS: /usr/bin/security, Windows: keyring), never config.toml
   claude_setup.py what Settings checks and sets up for Claude, no tokens spent: is the AI step's option ready (Claude Code
