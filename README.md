@@ -90,11 +90,11 @@ See `config.example.toml` for every setting.
 
 ## Daily use
 
-**Start:** click Stenny's stick figure in the menu bar ▸ *Start Lecture* ▸ your course. If your calendar has the lecture, Stenny offers it at the top of the menu from 10 minutes before, and a notification asks *Record this lecture?* with a **Start Recording** button. It never starts by itself.
+**Start:** click Stenny's stick figure in the menu bar ▸ *Start Lecture* ▸ your course. If your calendar has the lecture, Stenny offers it at the top of the menu from 10 minutes before, and a notification asks *Record this lecture?* with a **Start Recording** button. It never starts by itself. (On Windows, Stenny can't read the calendar yet: start lectures from its icon in the notification area.)
 
 **While recording:** the stick figure turns into a dot with the time; click it for the menu. The live draft appears in the transcript file about 10 seconds behind the lecturer (*Open Transcript*). The open menu shows a level meter: green is fine, orange means the microphone is too far away.
 
-**Pause:** press **⌘⇧Ü** (the default; choose your own with `[app] pause_shortcut` in the config). While paused, the microphone is really off and nothing is recorded.
+**Pause:** press **⌘⇧Ü** (the default; choose your own in *Settings… ▸ General* or with `[app] pause_shortcut` in the config; on Windows ⌘ is Ctrl, so the default is **Ctrl+Shift+Ü**, or Ctrl+Shift with the key right of P on a keyboard without Ü). While paused, the microphone is really off and nothing is recorded.
 
 **Stop:** click the dot ▸ *Stop & Make Final Transcript*. On power, the whole recording is transcribed again at full quality (a 3-hour lecture takes about 20–25 minutes) and replaces the draft. On battery it waits until you plug in. Meanwhile Stenny's window shows the lecture as *Finishing* with a progress bar: *Transcribing* (how far into the lecture it has got), *Tidying up* (the clean transcript and the optional AI step), *Saving*, and, once it has measured the speed, about how long is left. A pass that was interrupted picks its bar up where it stopped.
 

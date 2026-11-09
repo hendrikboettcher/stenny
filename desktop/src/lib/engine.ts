@@ -80,7 +80,7 @@ export const lecture = (e: Entry) =>
   engine<{ entry: Entry; summary: string | null; progress: string | null }>("lecture", where(e));
 export const makeCopy = (e: Entry, format: string, withSummary: boolean) =>
   engine<{ path: string }>("make_copy", { ...where(e), format, with_summary: withSummary });
-// A PDF from an HTML copy (stenny-agent, see make_pdf in src-tauri/src/lib.rs); in a browser the HTML stays
+// A PDF from an HTML copy (stenny-agent on a Mac, WebView2 on Windows: make_pdf in src-tauri/src/lib.rs); in a browser the HTML stays
 export const makePdf = (html: string) => (inApp ? invoke<string>("make_pdf", { html }) : Promise.resolve(html));
 export const finishNow = (e: Entry) => engine<{ started: boolean }>("finish_now", where(e));
 export const openTranscript = (path: string) => (inApp ? invoke("open_transcript", { path }) : console.log("open", path));

@@ -115,13 +115,15 @@ jobs:
       # The bundle's helpers (stenny-agent, stenny-rec, ffmpeg) and the connector are built by their own scripts
       # (scripts/helpers.sh, connector/build.sh on a Mac; scripts/ffmpeg-windows.sh, connector/build.sh and
       # scripts/stenny-rec.sh on Windows, the recorder checked in its own job). Compiling only needs the files to exist.
+      # stenny-agent is macOS's only (tauri.macos.conf.json); on Windows the app does its work itself.
       - name: Placeholders for the bundled helpers
         shell: bash
         run: |
           triple=$(rustc -vV | sed -n 's/^host: //p')
           ext=""; [[ "$triple" == *windows* ]] && ext=".exe"
+          agent=""; [[ "$triple" == *apple* ]] && agent="stenny-agent"
           mkdir -p src-tauri/binaries src-tauri/resources
-          for b in stenny-agent stenny-rec ffmpeg ffprobe; do touch "src-tauri/binaries/$b-$triple$ext"; done
+          for b in $agent stenny-rec ffmpeg ffprobe; do touch "src-tauri/binaries/$b-$triple$ext"; done
           touch src-tauri/resources/Stenny.mcpb src-tauri/resources/ffmpeg-license.txt
       - name: Compile
         working-directory: desktop/src-tauri
@@ -131,7 +133,8 @@ jobs:
   # both systems; they are kept as the run's artifacts for a week, unsigned, NOT for handing out. On the Mac the Swift
   # helpers and the connector are the real ones (scripts/helpers.sh); ffmpeg/ffprobe are placeholders (the LGPL build,
   # app/build-ffmpeg.sh, takes too long here). On Windows ffmpeg/ffprobe (a pinned LGPL build, scripts/ffmpeg-windows.sh),
-  # the connector (connector/build.sh) and stenny-rec (scripts/stenny-rec.sh) are the real ones.
+  # the connector (connector/build.sh) and stenny-rec (scripts/stenny-rec.sh) are the real ones; stenny-agent is macOS's
+  # only (on Windows the app does its work itself).
   installers:
     name: Installer (${{ matrix.os }})
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
@@ -178,8 +181,9 @@ jobs:
         run: |
           triple=$(rustc -vV | sed -n 's/^host: //p')
           ext=""; [[ "$triple" == *windows* ]] && ext=".exe"
+          agent=""; [[ "$triple" == *apple* ]] && agent="stenny-agent"
           mkdir -p src-tauri/binaries src-tauri/resources
-          for b in stenny-agent stenny-rec ffmpeg ffprobe; do
+          for b in $agent stenny-rec ffmpeg ffprobe; do
             f="src-tauri/binaries/$b-$triple$ext"; [[ -e "$f" ]] || touch "$f"
           done
           [[ -e src-tauri/resources/Stenny.mcpb ]] || touch src-tauri/resources/Stenny.mcpb
