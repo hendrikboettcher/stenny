@@ -71,7 +71,7 @@ open -a Claude Stenny.mcpb
 
 See `config.example.toml` for every setting.
 
-**The AI step** (section headings linked to the slides, checked fixes for misheard terms, topics, the summary) runs one of three ways, chosen in *Settings… ▸ Transcripts & AI*, which also says whether the chosen one works and how to fix it:
+**The AI step** (section headings, checked fixes for misheard terms, topics, the summary) runs one of three ways, chosen in *Settings… ▸ Transcripts & AI*, which also says whether the chosen one works and how to fix it:
 
 - **Claude Code** (default): your Claude subscription, no extra cost. Needs the `claude` command, which the Claude desktop app doesn't install: `curl -fsSL https://claude.ai/install.sh | bash`, then `claude auth login` once (Settings has a *Sign in…* button for that).
 - **Anthropic API**: pay as you go with your own key, about $0.01 per lecture. Paste the key in Settings, or run `stenny api-key`: Stenny checks it with Anthropic (a free call) and keeps it in the macOS Keychain (Windows: Credential Manager), never in config.toml. `ANTHROPIC_API_KEY` still works and wins when it's set.
@@ -99,7 +99,6 @@ See `config.example.toml` for every setting.
 
 **Other things you can do:**
 - **Use your iPhone as the microphone** (*Microphone ▸*, via Continuity) and put it closer to the lecturer. The Mac's own microphone records as a backup and fills the gaps when you use the phone.
-- **Add the slides** (a PDF dropped into the lecture folder, or `--slides deck.pdf`): better spelling of names and terms, and headings that link to the slide pages.
 - **Talks and events** that aren't courses: *Start Lecture ▸ Other…*. They go to the `Talks` folder in your Stenny folder.
 - **Recordings from elsewhere** (Voice Memos, a file): `stenny add recording.m4a --course "Calculus"`.
 
@@ -109,8 +108,7 @@ See `config.example.toml` for every setting.
 stenny add recording.m4a --course calc            # transcribe a file (low priority)
 stenny add recording.m4a --course calc --now      # full speed
 stenny add recording.m4a --course calc --later    # queue it: runs on power / at night
-stenny add recording.m4a --course calc --slides "Week 4.pdf"
-stenny refresh calc 2026-10-15                    # redo only the AI step (e.g. after adding slides)
+stenny refresh calc 2026-10-15                    # redo only the AI step (e.g. after editing the glossary)
 
 stenny live --course calc                         # record without the menu bar app
 stenny toggle | pause | resume | stop | status
@@ -139,15 +137,16 @@ gets these tools:
 - `list_courses`, `list_lectures`: your courses, and each lecture with its date, topics and section headings
 - `search_lectures`: where something was said (lecture, date, timestamp, snippet). Automatic transcripts misspell
   terms, so a word that occurs nowhere is searched in its closest transcribed spelling ("dendrogram" → "dendogram")
-- `get_transcript` (in parts of about 10k tokens; `at="1:05:30"` jumps to a passage), `get_summary`,
-  `get_slides_text`, `get_glossary`
-- `suggest_glossary_terms`: the one tool that writes. It adds terms to the glossary's "Terms (added
-  automatically)" section only if they are on the slides or were transcribed the same way twice (the same check as
-  after every lecture). Corrections and your own terms stay yours to edit.
+- `get_transcript` (in parts of about 10k tokens; `at="1:05:30"` jumps to a passage), `get_summary`, `get_glossary`
+- `suggest_glossary_corrections` and `suggest_glossary_terms`: the only tools that write, and only to a course's
+  glossary. When Claude sees a name or term misheard, it adds `wrong → right` (applied word for word to new
+  transcripts), or a correctly spelled term for Whisper's prompt. They're taken as Claude gives them, as long as
+  they're the shape of a spelling (a few words, not a common word like "the"), and go into the glossary's
+  "(added automatically)" sections. Your own terms and corrections are never changed and always win.
 
 Everything Claude gets is clean text, like a shared copy: no paths on your Mac, no microphone names. The connector
-also tells Claude how to study with Stenny (cite as "Lecture 3 [0:12:30]", check terms against the glossary and the
-slides), and offers a *Study a course* prompt.
+also tells Claude how to study with Stenny (cite as "Lecture 3 [0:12:30]", check terms against the glossary), and
+offers a *Study a course* prompt.
 
 To add it, open Stenny's *Settings… ▸ Use with Claude* and click **Install…** (it also shows whether Claude has it,
 and adds it to Claude Code with one more click). Or double-click `Stenny.mcpb` in Stenny's folder (it comes with the
@@ -176,13 +175,12 @@ its chats read the newest transcripts, cite them and keep the course glossary up
 │   ├── Calculus (all lectures).md       every final transcript of the course, with contents
 │   └── Calculus (summaries).md          every summary
 ├── _Glossaries/
-│   └── Calculus (glossary).md           terms + corrections for this course (partly filled automatically)
+│   └── Calculus (glossary).md           correct spellings for this course (fills itself)
 ├── _Topics/                             one note per topic, linking the lectures that cover it
 ├── Calculus/
 │   └── 2026-10-15/
 │       ├── Calculus 2026-10-15.md            clean transcript: frontmatter, sections, [h:mm:ss] per paragraph
-│       ├── Calculus 2026-10-15 (summary).md  AI summary with timestamps (optional)
-│       └── Calculus 2026-10-15 (slides).pdf  the slides (optional)
+│       └── Calculus 2026-10-15 (summary).md  AI summary with timestamps (optional)
 └── Talks/                               talks and events (so no course can be called "Talks")
 
 Stenny's own files, out of sight (`stenny where` lists them):
@@ -209,14 +207,18 @@ Each `[courses."Name"]` table in the config has a `language`:
 - `"auto"`: one language per lecture, detected among `languages`;
 - `"mixed"`: detected per short piece (4–12 s) among `languages`, for lectures that switch language. With a fixed language, Whisper tends to *translate* other-language passages instead of transcribing them.
 
-Each course also gets a glossary note (`_Glossaries/<Course> (glossary).md`). Its terms go into Whisper's prompt, and `wrong → right` corrections are applied word for word. It fills itself over time: terms that are on the slides, or were transcribed the same way twice, are added automatically.
+Each course also gets a glossary note (`_Glossaries/<Course> (glossary).md`): Stenny's list of correct spellings for the course. Its terms go into Whisper's prompt, and `wrong → right` corrections are applied word for word to new transcripts. You don't have to keep it; it fills itself from things that cost you nothing:
+- **Your fixes.** When you correct a misheard name or term in a transcript in Stenny's window, Stenny asks once: *Always write "Bolzano-Weierstrass" like this in Data Analytics?* **Yes** adds the correction and the term to your own sections, so every lecture from now on gets it right; **Only here** leaves the glossary alone. Fixing ordinary words or rewording asks nothing.
+- **Claude**, through Stenny's connector: corrections and terms it adds when it notices a misheard name, in the "(added automatically)" sections. Yours always win.
+
+Stenny doesn't add terms from the transcripts by themselves any more: that mostly fed Whisper's own spelling of a misheard name back to it. Terms added that way earlier stay until you delete them; a correction removes a wrong one.
 
 ## How cleanup works (and why nothing is invented)
 
 1. Audio is cut into chunks of at most 28 s at quiet moments and transcribed with the course glossary as Whisper's prompt.
 2. Likely hallucinations (silence, glossary echoes, loops) are left out of the transcript but kept, marked ⚠, in the raw output.
 3. Segments become paragraphs at pauses; glossary corrections are applied.
-4. Optional AI step: the model sees numbered paragraphs and the slide text and returns only a JSON edit list: section headings (with slide pages), term fixes, topics and glossary terms. A term fix is applied only if it points to a glossary term or to words found exactly on the slides, and a final word-level diff must show only those changes. Otherwise the AI's edits are discarded.
+4. Optional AI step: the model sees numbered paragraphs and returns only a JSON edit list: section headings, term fixes and topics. A term fix is applied only if it points to a glossary term (never to a spelling the model thinks of itself), and a final word-level diff must show only those changes. Otherwise the AI's edits are discarded.
 5. The summary is the only free-form AI text, in its own clearly labelled file.
 
 ## Limits
