@@ -11,7 +11,20 @@
   let ready = $state(false);
   const inApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
+  // ⌘R (Ctrl+R on Windows) loads this window again, like View ▸ Reload (src-tauri/src/lib.rs, `reload`): only the
+  // page; recordings and final passes run in their own processes and go on. Caught here so it's the same in every
+  // window, on both systems and in a browser during development.
+  const onWindows = typeof navigator !== "undefined" && /Windows/.test(navigator.userAgent);
+  function reloadKey(e: KeyboardEvent) {
+    if (e.key.toLowerCase() === "r" && (onWindows ? e.ctrlKey : e.metaKey) && !e.altKey && !e.shiftKey) {
+      e.preventDefault();
+      if (inApp) invoke("reload_window").catch(() => location.reload());
+      else location.reload();
+    }
+  }
+
   onMount(() => {
+    window.addEventListener("keydown", reloadKey);
     let unlisten: (() => void) | undefined;
     const known = inApp
       ? invoke<string>("ui_language")
@@ -19,7 +32,10 @@
     known.then(setLanguage, () => setLanguage(navigator.language.slice(0, 2))).finally(() => (ready = true));
     // changed in Settings (in any window): every window follows at once
     if (inApp) listen<string>("language", (e) => setLanguage(e.payload)).then((u) => (unlisten = u));
-    return () => unlisten?.();
+    return () => {
+      window.removeEventListener("keydown", reloadKey);
+      unlisten?.();
+    };
   });
 </script>
 
