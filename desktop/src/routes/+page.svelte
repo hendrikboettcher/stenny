@@ -8,6 +8,7 @@
   import Dialog from "$lib/Dialog.svelte";
   import Settings from "$lib/Settings.svelte";
   import SetupChecklist from "$lib/SetupChecklist.svelte";
+  import FinalPass from "$lib/FinalPass.svelte";
   import { renderMarkdown } from "$lib/markdown";
   import {
     library, lecture, makeCopy, makePdf, finishNow, openTranscript, reveal, shareFiles, lecturerAgreed,
@@ -671,6 +672,9 @@
           {#if b.kind === "finishing"}
             <svg class="sign doc" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.8h5.2L12.5 5v9.2H4z M9 1.8V5.2h3.5 M6 8h4.5 M6 10.5h4.5" /></svg>
             <span class="what" title="{t('activity.finalizing')} · {name}">{t("activity.finalizing")} · {name}</span>
+            <!-- how far it is (#37's progress.json, read with the library), when the engine has said -->
+            {@const pass = "folder" in b ? barEntry(b.group, b.folder)?.final_pass : null}
+            {#if pass}<span class="progress"><FinalPass {pass} inline /></span>{/if}
           {:else}
             <span class="sign {b.kind}" aria-hidden="true"></span>
             <span class="label">{b.kind === "recording" ? t("activity.recording") : b.kind === "paused" ? t("activity.paused")
@@ -722,6 +726,7 @@
           <span class="row-title serif">{rowTitle(e)}</span>
           {#if isDraft(e)}<span class="status {e.status}">{statusLabel(e.status)}</span>{/if}
           <span class="row-detail">{rowDetail(e)}</span>
+          {#if e.status === "finalizing" && e.final_pass}<FinalPass pass={e.final_pass} compact />{/if}
         </button>
       {:else}
         <p class="empty">{t("lib.noRecordings")}</p>
@@ -769,6 +774,7 @@
               <span class="status {selected.status}">{statusLabel(selected.status)}</span>
               {selected.draft_note ?? t("lib.comesLater")}
             </p>
+            {#if selected.status === "finalizing" && selected.final_pass}<FinalPass pass={selected.final_pass} />{/if}
             {#if selected.status === "queued"}
               <button class="pill small" onclick={finish} disabled={busy === "finish"}>
                 {busy === "finish" ? t("common.starting") : t("lib.finishNow")}
@@ -1020,6 +1026,7 @@
   .activity .time { flex: none; font-weight: 600; font-variant-numeric: tabular-nums; }
   .activity .what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--ink-2); }
   .activity .warn { color: var(--warn); }
+  .activity .progress { flex: none; }
   .activity .buttons { flex: none; display: flex; align-items: center; gap: 6px; margin-left: auto; }
   .bar-button { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 3px 12px; font-size: 12px; font-weight: 500; }
   .bar-icon {

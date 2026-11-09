@@ -17,6 +17,16 @@ export interface Entry {
   draft_note: string | null; // a live draft: where its final transcript is
   transcript: string;
   summary: string | null;
+  final_pass?: FinalPass | null; // "finalizing": how far it is (null before it reports anything)
+}
+
+// How far a final pass is (src/stenny/progress.py): the banner, the list's row and the activity bar read the same
+export interface FinalPass {
+  step: "transcribing" | "tidying" | "saving";
+  fraction: number;       // 0…1 of the whole pass
+  at: number;             // lecture seconds transcribed so far
+  of: number;             // the lecture's length in seconds
+  left_s: number | null;  // seconds of transcribing left, once the speed is known
 }
 
 export interface Library {
