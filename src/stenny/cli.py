@@ -509,8 +509,48 @@ def cmd_live(args) -> None:
         server.close()
 
 
+def _windows_recorders() -> list[tuple[int, str]]:
+    """Windows: (process id, command line) of each process whose command line names stenny-rec, through CIM (what
+    Task Manager shows; wmic is gone from current Windows)."""
+    script = ("[Console]::OutputEncoding = [Text.Encoding]::UTF8; "
+              "@(Get-CimInstance Win32_Process -Filter \"CommandLine LIKE '%stenny-rec%'\" | "
+              "Select-Object ProcessId, CommandLine) | ConvertTo-Json -Compress")
+    try:
+        out = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script], capture_output=True,
+                             text=True, encoding="utf-8", errors="replace", timeout=60,
+                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
+        found = json.loads(out or "[]")
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return []
+    found = found if isinstance(found, list) else [found]
+    return [(int(p["ProcessId"]), p.get("CommandLine") or "") for p in found if isinstance(p, dict)]
+
+
+def _end_windows_process(pid: int) -> None:
+    """An orphaned recorder's stdin is closed, so it can't be asked to stop: end it (what it wrote is on disk)."""
+    import ctypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.restype = ctypes.c_void_p
+    handle = kernel32.OpenProcess(0x0001 | 0x00100000, False, pid)  # PROCESS_TERMINATE | SYNCHRONIZE
+    if not handle:
+        return
+    try:
+        kernel32.TerminateProcess(ctypes.c_void_p(handle), 1)
+        kernel32.WaitForSingleObject(ctypes.c_void_p(handle), 3000)
+    finally:
+        kernel32.CloseHandle(ctypes.c_void_p(handle))
+
+
 def stop_orphan_recorders(*recordings: Path) -> None:
     """Recorders still writing to these files although the session that started them is gone."""
+    if sys.platform == "win32":
+        # Python started them, so their command lines quote the path the way list2cmdline does
+        needles = [f"--out {subprocess.list2cmdline([str(r)])} " for r in recordings]
+        for pid, command in _windows_recorders():
+            if any(n in f"{command} " for n in needles):
+                _end_windows_process(pid)
+        return
     out = subprocess.run(["ps", "-axo", "pid=,command="], capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
     for line in out.splitlines():
         pid, _, command = line.strip().partition(" ")

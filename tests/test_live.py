@@ -498,6 +498,7 @@ def test_virtual_devices_are_not_offered_as_microphones(monkeypatch):
 """
     listing = ("AVFoundation audio devices:\n[x] [0] Microsoft Teams Audio\n"
                "[x] [1] Alex's iPhone Microphone\n[x] [2] Built-in Microphone\n")
+    monkeypatch.setattr(sources.sys, "platform", "darwin")  # macOS's way; Windows' is in test_recorder.py
     monkeypatch.setattr(sources.subprocess, "run", lambda cmd, **kw: SimpleNamespace(
         stdout=profile if cmd[0] == "system_profiler" else "", stderr=listing))
     assert sources.input_devices() == ["Alex's iPhone Microphone", "Built-in Microphone"]

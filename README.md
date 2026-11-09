@@ -245,6 +245,8 @@ At the default low priority Stenny runs at about 8× realtime. While recording, 
 
 **Windows (in development, #2):** the same model runs through faster-whisper (an NVIDIA GPU when CUDA is installed, else the CPU, int8), with the same decoding as on the Mac. Through Stenny's own chunked pipeline on the same clips, the two engines match: on six one-minute lecture-style clips in English, German and French (synthetic speech, clean and with room echo and noise), the word error rate was the same on five and differed by one word on the sixth. On a Mac's CPU faster-whisper runs at about 1.4× realtime, so a CPU-only Windows PC needs about as long as the lecture, or longer; an NVIDIA GPU is much faster. Not yet measured on a Windows PC. `[transcription] engine` picks one by hand (`auto`, `mlx`, `faster-whisper`).
 
+**Recording on Windows (in development, #2):** the microphone is recorded by `stenny-rec.exe` (desktop/stenny-rec), the Windows twin of the Mac's recorder: WASAPI in shared mode, event-driven with a one-second buffer, Windows' own resampler for 16 kHz mono, and the same file, pause (the microphone is off) and backup microphone as on the Mac. `stenny devices` and Settings list the microphones through it, without the virtual ones apps install (Microsoft Teams Audio, virtual cables); the backup microphone's "auto" takes the PC's own microphone. If Windows blocks the microphone, turn on *Settings ▸ Privacy & security ▸ Microphone ▸ Let desktop apps access your microphone*. Not yet tried with a real microphone on a Windows PC.
+
 ## Development
 
 ```bash
@@ -254,6 +256,8 @@ stenny course add "Name" -l en        # or the + next to Courses in Stenny's win
 app/make-cert.sh                       # once: a signing certificate, so macOS remembers permissions across builds
 app/build.sh                           # build the app and install it (needs Apple's Command Line Tools; --no-install: only build)
 app/release.sh                         # dist/Stenny.zip for a release (--publish: also tag and upload it)
+(cd desktop/stenny-rec && cargo test)  # the Windows microphone recorder's tests (run on a Mac too)
+bash desktop/scripts/stenny-rec.sh     # on Windows (Git Bash): build stenny-rec.exe for the app's bundle
 uv run python bench/run_bench.py --help
 ```
 

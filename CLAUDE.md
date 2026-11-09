@@ -9,7 +9,9 @@ The new app (`desktop/`, Tauri) is the way there: **everything new must work on 
 feature gets its Windows counterpart in the same change (e.g. Share…: macOS's share menu in `macos.rs`, Windows'
 Share panel in `windows_share.rs`), file paths and labels handle both ("Show in Finder" / "Show in Explorer"), and
 whatever couldn't be tested on Windows is said so. Still Mac-only, each needing a Windows version: transcription
-(mlx-whisper, Metal; faster-whisper is there for Windows but not yet tried on a PC), the Swift helpers `stenny-rec` (microphone) and `stenny-agent` (pause shortcut, calendar,
+(mlx-whisper, Metal; faster-whisper is there for Windows but not yet tried on a PC), the microphone recorder
+(`stenny-rec`; its WASAPI twin `stenny-rec.exe` in `desktop/stenny-rec` is there but not yet tried with a real
+microphone), the Swift helper `stenny-agent` (pause shortcut, calendar,
 lecture notifications, open at login, PDF for Share…), and the old Swift app in `app/`.
 
 ## Goals (in priority order)
@@ -76,6 +78,9 @@ app/              Swift menu bar app (SwiftPM + build.sh): starts `stenny live`,
                   release.sh: the release zip, which holds the signed app at app/build.noindex/Stenny.app
 desktop/          the new app (in development, replaces app/): Tauri 2 + Svelte 5/TypeScript, stenny.eu style; talks to
                   the engine only through `stenny app-server` (src-tauri/src/engine.rs); see desktop/README.md
+desktop/stenny-rec/  `stenny-rec.exe`, the microphone recorder on Windows (Rust, WASAPI): the Swift stenny-rec's
+                  command line, file (16 kHz mono s16le, appended) and exit codes; stops on `stop` on stdin (Windows
+                  has no SIGTERM), `--list-json` for the engine's device list; scripts/stenny-rec.sh bundles it
 connector/        the Claude Desktop extension (.mcpb): manifest.json, server/index.js (finds the installed `stenny`
                   and runs `stenny mcp`), build.sh → dist/Stenny.mcpb (icon from app/make-icon.swift)
 tests/            pytest, no model downloads needed
@@ -93,7 +98,7 @@ Stenny folder (`folder` in config.toml, default `~/Documents/Stenny`, may be ins
 - **Only what you or Claude read goes into the Stenny folder** (transcripts, summaries, glossaries, course files, topic notes). Everything else lives in the system's app-data places, and only `paths.py` knows them: config.toml + consent.json in `~/Library/Application Support/Stenny/` (Windows `%APPDATA%\Stenny\`); `Recordings/<Course>/` (audio, segments.json, sessions, raw output) and `Queue/` in `~/Library/Application Support/Stenny/` (Windows `%LOCALAPPDATA%\Stenny\`, or `data_dir` in the config); logs in `~/Library/Logs/Stenny/` (Windows `%LOCALAPPDATA%\Stenny\Logs\`); shared copies in the caches folder. `STENNY_HOME` puts them all in one folder (tests, development). Never upload audio anywhere.
 - **No hardcoded personal paths, names or courses in code, tests or docs.** Everything comes from the config; examples stay neutral.
 - Heavy commands must respect the priority settings (`nice`/`taskpolicy`) unless the user passes `--now`.
-- **Microphone capture goes through `stenny-rec` (AVAudioEngine), never through Python** and not through ffmpeg's avfoundation input, which silently dropped ~1 s every ~8 s. Check every change to live mode with `stenny check`.
+- **Microphone capture goes through `stenny-rec` (AVAudioEngine; on Windows `stenny-rec.exe`, WASAPI), never through Python** and not through ffmpeg's avfoundation input, which silently dropped ~1 s every ~8 s (nor ffmpeg's Windows inputs). The two recorders speak the same command line; change both together. Check every change to live mode with `stenny check`.
 - **The backup microphone only fills "no input" gaps** of the main one (final pass, `fill_from_backup`); never mix it into audio the main microphone delivered. It stops on pause like the main one. Its text is marked `backup` in segments and paragraphs.
 - **Pause means the microphone is off:** while paused, the audio source is stopped; never record or buffer paused audio.
 - **The recording comes first (`resources.py`):** low memory costs the live draft, low disk the backup microphone, and a final pass waits for memory like it waits for power. A process that dies mustn't lose a lecture: `stenny recover` queues its final pass, and Stenny starts recording again without the draft.
@@ -122,6 +127,7 @@ connector/build.sh                     # dist/Stenny.mcpb, the one-click Claude 
 uv run python bench/run_bench.py       # engine benchmark
 uv run stenny live --course "<name>" --file sample.m4a --speed 3   # test live mode without a microphone
 app/build.sh                           # build + install the menu bar app (--no-install: only build)
+(cd desktop/stenny-rec && cargo test)  # the Windows recorder's tests (also on a Mac); desktop/scripts/stenny-rec.sh builds it on Windows
 uv run stenny course add "<name>" -l en  # or `course hide`; config.toml stays as text, comments intact
 uv run stenny recover                  # queue the final pass of recordings whose process died
 uv run stenny where                    # where the Stenny folder, config, recordings and logs are (--json)
