@@ -40,8 +40,10 @@ fn stenny_command() -> PathBuf {
 fn start() -> Result<Running, String> {
     let exe = stenny_command();
     let mut command = Command::new(&exe);
-    // the recorder bundled with this app (Contents/MacOS), not another Stenny's; `stenny live` reads $STENNY_REC
-    if let Some(rec) = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join("stenny-rec"))) {
+    // the recorder bundled with this app (Contents/MacOS; next to Stenny.exe on Windows: stenny-rec.exe, WASAPI),
+    // not another Stenny's; `stenny live` reads $STENNY_REC
+    let recorder = if cfg!(windows) { "stenny-rec.exe" } else { "stenny-rec" };
+    if let Some(rec) = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join(recorder))) {
         if rec.exists() && std::env::var_os("STENNY_REC").is_none() {
             command.env("STENNY_REC", rec);
         }
