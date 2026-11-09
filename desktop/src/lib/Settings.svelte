@@ -10,7 +10,7 @@
   import Figure from "$lib/Figure.svelte";
   import Dialog from "$lib/Dialog.svelte";
   import { addCourse, bringBack, deleteCourse, engine, library, removeCourse, reveal, type AiStatus, type ConnectorStatus } from "$lib/engine";
-  import { t, tn, setLanguage, languageName, trashName, revealLabel } from "$lib/i18n.svelte";
+  import { t, tn, setLanguage, languageName, trashName, revealLabel, onWindows } from "$lib/i18n.svelte";
 
   interface Settings {
     keep_audio: boolean;
@@ -55,6 +55,7 @@
   let login = $state<string | null>(null); // "on" | "off" | "approval" | null: not available (no agent)
   let recording = $state(false);         // the shortcut field is listening
   let shortcutNote = $state<string | null>(null);
+  let shortcutLabel = $state<string | null>(null); // Windows: as registered, e.g. "Strg+Umschalt+[" without a Ü key
 
   // Past courses: removed from the list (hidden in the config) or only left as recordings. Brought back, or
   // deleted with everything Stenny saved for them (manage.delete_course, to the Trash or Recycle Bin).
@@ -320,6 +321,7 @@
     if (inApp) {
       invoke<string | null>("microphone_pref").then((m) => (microphone = m ?? "")).catch(() => {});
       invoke<string | null>("login_item", { on: null }).then((l) => (login = l)).catch(() => {});
+      invoke<string | null>("pause_shortcut_label").then((l) => (shortcutLabel = l)).catch(() => {});
     }
     return () => {
       gone = true;
@@ -351,7 +353,10 @@
   async function setUiLanguage(value: string) {
     if (!(await set("app.language", value)) || !s) return;
     setLanguage(s.ui_language);
-    if (inApp) invoke("set_ui_language", { language: s.ui_language }).catch(() => {});
+    if (inApp) invoke("set_ui_language", { language: s.ui_language })
+      .then(() => invoke<string | null>("pause_shortcut_label")) // "Ctrl" or "Strg" on Windows
+      .then((l) => (shortcutLabel = l))
+      .catch(() => {});
   }
 
   async function setMicrophone(device: string) {
@@ -413,15 +418,24 @@
     return list.includes(code) ? list.filter((c) => c !== code) : [...list, code];
   }
 
-  // The pause shortcut: press it in the field. Written as config.toml wants it: "cmd+shift+ü".
+  // The pause shortcut: press it in the field. Written as config.toml wants it: "cmd+shift+ü". On Windows ⌘ (cmd)
+  // is Ctrl and ⌥ (opt) is Alt, and it's written the Windows way: "Strg+Umschalt+Ü" (menubar.rs, windows_agent.rs).
   const SYMBOLS: Record<string, string> = { cmd: "⌘", ctrl: "⌃", opt: "⌥", shift: "⇧" };
   function pretty(shortcut: string) {
     const parts = shortcut.split("+");
     const key = shortcut.endsWith("++") ? "+" : parts.pop()!;
     const mods = parts.filter(Boolean).map((m) => ({ command: "cmd", control: "ctrl", option: "opt", alt: "opt" })[m] ?? m);
+    const k = key === "space" ? t("settings.shortcut.space") : key.toUpperCase();
+    if (onWindows) {
+      const names = [
+        (mods.includes("cmd") || mods.includes("ctrl")) && t("key.ctrl"),
+        mods.includes("opt") && t("key.alt"),
+        mods.includes("shift") && t("key.shift"),
+      ].filter(Boolean);
+      return [...names, k].join("+");
+    }
     const order = ["ctrl", "opt", "shift", "cmd"]; // the order macOS shows them in
     mods.sort((a, b) => order.indexOf(a) - order.indexOf(b));
-    const k = key === "space" ? t("settings.shortcut.space") : /^f\d+$/.test(key) ? key.toUpperCase() : key.toUpperCase();
     return mods.map((m) => SYMBOLS[m] ?? m).join("") + k;
   }
 
@@ -434,7 +448,10 @@
     e.preventDefault();
     if (e.key === "Escape") { recording = false; return; }
     if (["Meta", "Control", "Alt", "Shift", "CapsLock", "Fn"].includes(e.key)) return;
-    const mods = [e.metaKey && "cmd", e.ctrlKey && "ctrl", e.altKey && "opt", e.shiftKey && "shift"].filter(Boolean);
+    // Windows: Ctrl and Alt; the Windows key's shortcuts are the system's own
+    const mods = onWindows
+      ? [e.ctrlKey && "ctrl", e.altKey && "opt", e.shiftKey && "shift"].filter(Boolean)
+      : [e.metaKey && "cmd", e.ctrlKey && "ctrl", e.altKey && "opt", e.shiftKey && "shift"].filter(Boolean);
     if (!mods.some((m) => m !== "shift")) {
       shortcutNote = t("settings.shortcut.needsModifier");
       return;
@@ -453,6 +470,7 @@
       if (inApp) {
         const problem = await invoke<string | null>("apply_shortcut").catch((err) => String(err));
         if (problem) shortcutNote = t("settings.shortcut.notYet", { problem });
+        shortcutLabel = await invoke<string | null>("pause_shortcut_label").catch(() => null);
       }
     }
   }
@@ -598,10 +616,19 @@
               </div>
               <button class="shortcut" class:listening={recording}
                       onclick={() => { recording = !recording; shortcutNote = null; }}>
-                {recording ? t("settings.shortcut.press") : pretty(s.app.pause_shortcut)}
+                {recording ? t("settings.shortcut.press") : (shortcutLabel ?? pretty(s.app.pause_shortcut))}
               </button>
             </div>
             {#if shortcutNote}<p class="note">{shortcutNote}</p>{/if}
+            {#if onWindows}
+              <!-- the calendar and its "Record this lecture?" notification are macOS's only for now (windows_agent.rs) -->
+              <div class="row">
+                <div class="what">
+                  <div class="name">{t("settings.reminders")}</div>
+                  <div class="hint">{t("settings.reminders.unavailable")}</div>
+                </div>
+              </div>
+            {/if}
           </div>
 
           <h2>{t("settings.places")}</h2>

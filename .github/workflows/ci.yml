@@ -72,14 +72,16 @@ jobs:
       - name: Build the interface
         run: npm run build
       # The bundle's helpers (stenny-agent, stenny-rec, ffmpeg) and the connector are built by their own scripts
-      # (scripts/helpers.sh, connector/build.sh), on a Mac. Compiling only needs the files to exist.
+      # (scripts/helpers.sh, connector/build.sh), on a Mac. Compiling only needs the files to exist. stenny-agent is
+      # macOS's only (tauri.macos.conf.json); on Windows the app does its work itself.
       - name: Placeholders for the bundled helpers
         shell: bash
         run: |
           triple=$(rustc -vV | sed -n 's/^host: //p')
           ext=""; [[ "$triple" == *windows* ]] && ext=".exe"
+          agent=""; [[ "$triple" == *apple* ]] && agent="stenny-agent"
           mkdir -p src-tauri/binaries src-tauri/resources
-          for b in stenny-agent stenny-rec ffmpeg ffprobe; do touch "src-tauri/binaries/$b-$triple$ext"; done
+          for b in $agent stenny-rec ffmpeg ffprobe; do touch "src-tauri/binaries/$b-$triple$ext"; done
           touch src-tauri/resources/Stenny.mcpb
       - name: Compile
         working-directory: desktop/src-tauri
@@ -88,8 +90,8 @@ jobs:
   # Full tier only. Builds the installers (macOS: .app + .dmg, Windows: .msi + setup .exe) to prove bundling works on
   # both systems; they are kept as the run's artifacts for a week, unsigned, NOT for handing out. On the Mac the Swift
   # helpers and the connector are the real ones (scripts/helpers.sh); ffmpeg/ffprobe are placeholders (the LGPL build,
-  # app/build-ffmpeg.sh, takes too long here). On Windows every helper is still a placeholder: stenny-agent and
-  # stenny-rec have no Windows version yet (#2), so the Windows installer is a bundling check, not a working app.
+  # app/build-ffmpeg.sh, takes too long here). On Windows every helper is still a placeholder: stenny-rec has no
+  # Windows version yet (#2), so the Windows installer is a bundling check, not a working app.
   installers:
     name: Installer (${{ matrix.os }})
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
@@ -123,8 +125,9 @@ jobs:
         run: |
           triple=$(rustc -vV | sed -n 's/^host: //p')
           ext=""; [[ "$triple" == *windows* ]] && ext=".exe"
+          agent=""; [[ "$triple" == *apple* ]] && agent="stenny-agent"
           mkdir -p src-tauri/binaries src-tauri/resources
-          for b in stenny-agent stenny-rec ffmpeg ffprobe; do
+          for b in $agent stenny-rec ffmpeg ffprobe; do
             f="src-tauri/binaries/$b-$triple$ext"; [[ -e "$f" ]] || touch "$f"
           done
           [[ -e src-tauri/resources/Stenny.mcpb ]] || touch src-tauri/resources/Stenny.mcpb

@@ -9,8 +9,9 @@ The new app (`desktop/`, Tauri) is the way there: **everything new must work on 
 feature gets its Windows counterpart in the same change (e.g. Share…: macOS's share menu in `macos.rs`, Windows'
 Share panel in `windows_share.rs`), file paths and labels handle both ("Show in Finder" / "Show in Explorer"), and
 whatever couldn't be tested on Windows is said so. Still Mac-only, each needing a Windows version: transcription
-(mlx-whisper, Metal; faster-whisper is there for Windows but not yet tried on a PC), the Swift helpers `stenny-rec` (microphone) and `stenny-agent` (pause shortcut, calendar,
-lecture notifications, open at login, PDF for Share…), and the old Swift app in `app/`.
+(mlx-whisper, Metal; faster-whisper is there for Windows but not yet tried on a PC), the Swift helper `stenny-rec` (microphone), the calendar
+and its lecture notifications (`stenny-agent`; on Windows the app does the agent's other work itself: pause shortcut, open at
+login, PDF for Share… in `windows_agent.rs` / `windows_pdf.rs`, not yet tried on a PC), and the old Swift app in `app/`.
 
 ## Goals (in priority order)
 1. **Nothing from the lecture is lost.** The raw Whisper output is always kept as its own file. Post-processing may structure the text but must never invent, drop or paraphrase content.

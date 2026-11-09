@@ -149,6 +149,8 @@ pause_shortcut = "ctrl+opt+p"
 
 Format: modifiers `cmd`, `shift`, `ctrl`, `opt`, joined with `+`, then one key as printed on their keyboard (or `space`, `f1`–`f20`). At least one of cmd/ctrl/opt.
 
+On Windows `cmd` means Ctrl and `opt` means Alt (Settings shows it as *Ctrl+Shift+Ü*); without a Ü key the default takes the key right of P. Ask there with "Ctrl+Shift+Ü (Recommended)" for a German layout, else "Ctrl+Alt+P (Recommended)" (`ctrl+opt+p`).
+
 **Check:** `stenny app-settings` prints their shortcut and `"error": null`.
 
 ## 7. Open Stenny and allow access
@@ -274,6 +276,8 @@ Tell the user: **Stenny works now.** Two short parts are left.
 ## 14. Calendar
 
 Say in a sentence or two: Stenny offers lectures from the calendar on this Mac, from 10 minutes before they start, and never starts by itself. If the timetable isn't in the Mac's Calendar, that part won't work, but recording from the menu still does. Don't teach how to subscribe to or use a calendar.
+
+On Windows, skip this step: Stenny can't read the calendar there yet (Settings ▸ General says so). Say in one line that they start lectures from Stenny's icon in the notification area.
 
 **Check, without asking anything:** for each lecture-like title in `calendar-titles.json`, run `stenny match-course "<title>"`. If one of their courses doesn't match its events, add a word that's in the titles to that course as `calendar = ["<word>"]` and check again. Only tell the user the result, in one line. If there are no titles, skip this.
 
