@@ -40,14 +40,15 @@ def listing(monkeypatch, windows):
 def test_windows_microphones_come_from_the_recorder(listing):
     assert sources.input_devices() == ["Microphone Array (Intel® Smart Sound Technology)", "Headset (Alex's AirPods)"]
     assert sources.default_input_device() == "Headset (Alex's AirPods)"
-    assert sources.builtin_input_device() == "Microphone Array (Intel® Smart Sound Technology)"
-    assert sources.virtual_devices() == {"Microphone (Microsoft Teams Audio)"}
+    assert sources.audio_devices() == {"default": "Headset (Alex's AirPods)",
+                                       "builtin": "Microphone Array (Intel® Smart Sound Technology)",
+                                       "virtual": {"Microphone (Microsoft Teams Audio)"}}
     assert all(cmd[1:] == ["--list-json"] for cmd in listing)
 
 
 def test_backup_auto_is_the_computers_own_microphone_on_windows(listing):
-    main = sources.make_mic(None)
-    assert isinstance(main, sources.NativeMicSource) and main.device == "Headset (Alex's AirPods)"
+    main = sources.make_mic(None)  # the system's input, named after its first audio (cli.cmd_live)
+    assert isinstance(main, sources.NativeMicSource) and main.device == "default"
     backup = sources.make_backup("auto", main)
     assert backup.device == "Microphone Array (Intel® Smart Sound Technology)"
     # the built-in one as the main microphone: no backup of itself

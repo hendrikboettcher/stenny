@@ -507,13 +507,22 @@ def cmd_live(args) -> None:
     from .engines import get_engine
     from .live.control import ControlServer, is_running
     from .live.session import LiveSession
-    from .live.sources import FileSource, make_backup, make_mic
+    from .live.sources import FileSource, audio_devices, make_backup, make_mic
     from .pipeline import log
 
     if is_running():
         sys.exit("A live session is already running. Use `stenny status` / `stenny stop`.")
+    # The microphone comes first: nothing here asks the system about its devices (system_profiler takes a third
+    # of a second or more, each time). The system's input device records as "default" and is named afterwards,
+    # and the backup microphone joins a moment after the main one (after_start).
     source = FileSource(args.file, args.speed) if args.file else make_mic(args.device or cfg.live_device, cfg.live_recorder)
-    backup = None if args.file else make_backup(args.backup or cfg.live_backup, source)
+
+    def after_start(session) -> None:
+        devices = audio_devices()
+        session.name_microphone(devices["default"])
+        if backup := make_backup(args.backup or cfg.live_backup, source, devices):
+            session.attach_backup(backup)
+
     recover_sessions(cfg)
     cfg.data_dir.mkdir(parents=True, exist_ok=True)
     if (free := resources.free_disk(cfg.data_dir)) < resources.DISK_TO_START:
@@ -521,13 +530,12 @@ def cmd_live(args) -> None:
         sys.exit(f"Only {free / resources.GB:.1f} GB free on this {computer}. A lecture needs about "
                  f"{resources.DISK_TO_START / resources.GB:.1f} GB, so free some space first.")
     engine = get_engine(cfg.model, cfg.engine)
-    session = LiveSession(cfg, course, source, engine, lang=args.lang, draft=cfg.live_draft and not args.no_draft,
-                          backup=backup)
+    session = LiveSession(cfg, course, source, engine, lang=args.lang, draft=cfg.live_draft and not args.no_draft)
     server = ControlServer(session)
     jobs.keep_awake()  # on battery macOS idle-sleeps after a few minutes; closing the lid still sleeps
     try:
         log("Controls: `stenny pause` / `stenny resume` / `stenny toggle` / `stenny stop` (or Stenny, ⌘⇧Ü)")
-        session.run()
+        session.run(after_start=None if args.file else after_start)
         if session.cancelled:
             discard(session, cfg)
         else:
@@ -750,9 +758,10 @@ def cmd_check(args) -> None:
 
 
 def cmd_devices(args) -> None:
-    from .live.sources import default_input_device, input_devices
+    from .live.sources import audio_devices, input_devices
 
-    devices, default = input_devices(), default_input_device()
+    known = audio_devices()
+    devices, default = input_devices(known), known["default"]
     if args.json:  # for Stenny
         print(json.dumps({"devices": devices, "default": default}, ensure_ascii=False))
         return

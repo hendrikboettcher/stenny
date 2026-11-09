@@ -49,60 +49,53 @@ def windows_devices() -> list[dict]:
     return [d for d in devices if isinstance(d, dict) and d.get("name")] if isinstance(devices, list) else []
 
 
-def default_input_device() -> str | None:
-    """Name of the current default input device (macOS: System Settings → Sound → Input; Windows: Settings →
-    System → Sound → Input)."""
+def audio_devices() -> dict:
+    """What the system says about its audio devices, from one look (system_profiler takes a third of a second or
+    more, so it's asked once, and only after the microphone started): "default", the current input device
+    (System Settings → Sound → Input); "builtin", the Mac's own microphone ("MacBook Air Microphone"); "virtual",
+    the devices apps install for themselves (Microsoft Teams Audio), which hear no room. None and an empty set
+    where it can't tell. On Windows from stenny-rec.exe's --list-json (desktop/stenny-rec/src/devices.rs): its
+    default, built-in and virtual flags."""
     if _windows():
-        return next((d["name"] for d in windows_devices() if d.get("default")), None)
-    out = subprocess.run(["system_profiler", "SPAudioDataType"], capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
-    current = None
-    for line in out.splitlines():
-        if m := re.match(r"^ {8}(\S.*):$", line):
-            current = m.group(1)
-        elif "Default Input Device: Yes" in line:
-            return current
-    return None
-
-
-def builtin_input_device() -> str | None:
-    """Name of the computer's own microphone: the Mac's (Transport: Built-in), e.g. "MacBook Air Microphone"; on
-    Windows a microphone on the computer's own audio bus (stenny-rec.exe's guess, desktop/stenny-rec/src/devices.rs)."""
-    if _windows():
-        return next((d["name"] for d in windows_devices() if d.get("builtin") and not d.get("virtual")), None)
-    out = subprocess.run(["system_profiler", "SPAudioDataType"], capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
+        listed = windows_devices()
+        return {"default": next((d["name"] for d in listed if d.get("default")), None),
+                "builtin": next((d["name"] for d in listed if d.get("builtin") and not d.get("virtual")), None),
+                "virtual": {d["name"] for d in listed if d.get("virtual")}}
+    try:
+        out = subprocess.run(["system_profiler", "SPAudioDataType"], capture_output=True, text=True, encoding="utf-8",
+                             errors="replace").stdout
+    except OSError:
+        out = ""
+    found = {"default": None, "builtin": None, "virtual": set()}
     current, has_input = None, False
     for line in out.splitlines():
         if m := re.match(r"^ {8}(\S.*):$", line):
             current, has_input = m.group(1), False
         elif "Input Channels:" in line:
             has_input = True
+        elif "Default Input Device: Yes" in line:
+            found["default"] = found["default"] or current
         elif "Transport: Built-in" in line and has_input:
-            return current
-    return None
-
-
-def virtual_devices() -> set[str]:
-    """Audio devices apps install for themselves (Microsoft Teams Audio): they hear no room."""
-    if _windows():
-        return {d["name"] for d in windows_devices() if d.get("virtual")}
-    out = subprocess.run(["system_profiler", "SPAudioDataType"], capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
-    current, virtual = None, set()
-    for line in out.splitlines():
-        if m := re.match(r"^ {8}(\S.*):$", line):
-            current = m.group(1)
+            found["builtin"] = found["builtin"] or current
         elif "Transport: Virtual" in line:
-            virtual.add(current)
-    return virtual
+            found["virtual"].add(current)
+    return found
 
 
-def input_devices() -> list[str]:
-    """Real microphones only. A virtual device can still be used by naming it: `[live] device` in the config."""
+def default_input_device() -> str | None:
+    """Name of the system's current input device (System Settings → Sound → Input)."""
+    return audio_devices()["default"]
+
+
+def input_devices(devices: dict | None = None) -> list[str]:
+    """Real microphones only (`devices`: audio_devices(), if already known). A virtual device can still be used by
+    naming it: `[live] device` in the config."""
     if _windows():
         return [d["name"] for d in windows_devices() if not d.get("virtual")]
     p = subprocess.run([tool("ffmpeg"), "-hide_banner", "-f", "avfoundation", "-list_devices", "true", "-i", ""],
                        capture_output=True, text=True, encoding="utf-8", errors="replace")
     text = p.stderr.split("audio devices:", 1)[-1]
-    virtual = virtual_devices()
+    virtual = (devices or audio_devices())["virtual"]
     return [d for d in re.findall(r"\[\d+\] (.+)", text) if d not in virtual]
 
 
@@ -162,8 +155,10 @@ class MicSource(FfmpegSource):
     restartable = True  # e.g. an iPhone (Continuity) microphone that goes out of range
 
     def __init__(self, device: str | None = None):
+        """`device`: a microphone's name, or None for the system's input device ("default"). That one is named
+        only after the recording started (LiveSession.name_microphone): asking the system takes too long to wait for."""
         super().__init__()
-        self.device = device or default_input_device() or "default"
+        self.device = device or "default"
         self.name = f"mic ({self.device})"
         self.microphone = None if self.device == "default" else self.device
 
@@ -261,14 +256,16 @@ class FileSource(FfmpegSource):
         super().stop()
 
 
-def make_backup(setting: str, main: MicSource) -> MicSource | None:
+def make_backup(setting: str, main: MicSource, devices: dict | None = None) -> MicSource | None:
     """A second microphone recorded alongside the main one, so the final pass can fill the main one's
     gaps (an iPhone stops sending audio while it is in use). `setting`: "auto" (the computer's built-in
-    microphone, unless that is already the main one), "off", or a device name. Native recorder only."""
+    microphone, unless that is already the main one), "off", or a device name. Native recorder only.
+    `devices`: audio_devices(), if already known."""
     if setting == "off" or not isinstance(main, NativeMicSource):
         return None
-    name = builtin_input_device() if setting == "auto" else setting
-    primary = main.device if main.device != "default" else default_input_device()
+    devices = devices or audio_devices()
+    name = devices["builtin"] if setting == "auto" else setting
+    primary = main.device if main.device != "default" else devices["default"]
     if not name or name == primary:
         return None
     return NativeMicSource(name, main.recorder)
