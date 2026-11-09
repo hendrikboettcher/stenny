@@ -24,6 +24,7 @@ class FakeKernel32:
     def __init__(self):
         self.priority, self.awake = [], []
         self.ac, self.load, self.avail, self.total, self.answers = 1, 40, 6 * resources.GB, 16 * resources.GB, True
+        self.flag, self.battery = 128, 255  # no battery: a desktop PC
 
     def GetCurrentProcess(self):
         return 2 ** 64 - 1  # the pseudo handle, as c_void_p returns it
@@ -34,7 +35,7 @@ class FakeKernel32:
         return 1
 
     def GetSystemPowerStatus(self, ref):
-        ref._obj.ACLineStatus = self.ac
+        ref._obj.ACLineStatus, ref._obj.BatteryFlag, ref._obj.BatteryLifePercent = self.ac, self.flag, self.battery
         return int(self.answers)
 
     def GlobalMemoryStatusEx(self, ref):
@@ -100,6 +101,18 @@ def test_ac_power(win):
     assert jobs.on_ac_power()
     win.ac, win.answers = 0, False  # Windows didn't answer
     assert jobs.on_ac_power()
+
+
+def test_power_and_battery(win):
+    assert jobs.power() == jobs.Power(True, None)                     # a desktop PC: no battery
+    win.ac, win.flag, win.battery = 0, 0, 82
+    assert jobs.power() == jobs.Power(False, 82)                      # a laptop on battery
+    win.ac, win.battery = 1, 15
+    assert jobs.power() == jobs.Power(True, 15)
+    win.battery = 255                                                 # Windows doesn't know the charge
+    assert jobs.power() == jobs.Power(True, None)
+    win.answers = False
+    assert jobs.power() == jobs.Power(True, None)
 
 
 def test_keep_awake_holds_from_a_thread_of_its_own(win):

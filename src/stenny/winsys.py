@@ -57,12 +57,18 @@ def set_priority(mode: str) -> None:
         k.SetPriorityClass(me, IDLE_PRIORITY_CLASS)
 
 
-def on_ac_power() -> bool:
-    """Plugged in, or a PC without a battery. Unknown (255) counts as plugged in, as on the Mac."""
+def power() -> tuple[bool, int | None]:
+    """(plugged in, battery percent). A PC without a battery, or unknown (255), counts as plugged in, as on the Mac;
+    the percent is None without a battery (BatteryFlag 128) or when Windows doesn't know it (255)."""
     status = SYSTEM_POWER_STATUS()
     if not kernel32().GetSystemPowerStatus(ctypes.byref(status)):
-        return True
-    return status.ACLineStatus != 0
+        return True, None
+    no_battery = status.BatteryFlag == 128 or status.BatteryLifePercent == 255
+    return status.ACLineStatus != 0, None if no_battery else status.BatteryLifePercent
+
+
+def on_ac_power() -> bool:
+    return power()[0]
 
 
 def memory() -> MEMORYSTATUSEX | None:

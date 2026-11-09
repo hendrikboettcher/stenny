@@ -2,6 +2,7 @@
 
 import json
 import re
+import subprocess
 import threading
 import time
 from contextlib import nullcontext
@@ -204,14 +205,13 @@ class SkippingEngine(FakeEngine):
         return [{"start": 0.0, "end": dur, "text": " mot" * int(dur * 3), "avg_logprob": -0.1}]
 
 
-def short_chunks(s, monkeypatch, on_power=True, lengths=(5.0, 3.0)):
+def short_chunks(s, monkeypatch, power=jobs.Power(True, None), lengths=(5.0, 3.0)):
     """Chunks of 3-5 s instead of 18-28 s, so a recording of a few simulated seconds has some. The session takes
     the final pass's chunk lengths, so the final pass in assert_final_pass_reuses gets the same."""
     s.max_len, s.min_len = lengths
     monkeypatch.setattr(pipeline, "chunk_lengths", lambda course, lang=None: lengths)
-    s.on_power = on_power
-    monkeypatch.setattr(jobs, "on_ac_power", lambda: s.on_power_now)
-    s.on_power_now = on_power
+    s.power_now = power  # plugged in, or on battery at some percent: set it to plug in or drain the battery
+    monkeypatch.setattr(jobs, "power", lambda: s.power_now)
 
 
 def assert_final_pass_reuses(s):
@@ -337,12 +337,12 @@ def test_microphone_dropout_keeps_session_and_marks_gap(tmp_path, monkeypatch):
     assert re.search(r"No audio from the microphone 0:00:0[78]–", draft)  # 7.9–8.2 s, printed whole
 
 
-def run_session(tmp_path, monkeypatch, mic, until=30.0, stall=0.05, backup=None, script=None, on_power=True,
+def run_session(tmp_path, monkeypatch, mic, until=30.0, stall=0.05, backup=None, script=None, power=jobs.Power(True, None),
                 engine=None, lengths=(5.0, 3.0)):
     (tmp_path / "vault" / "Areas").mkdir(parents=True, exist_ok=True)
     cfg = Config(folder=tmp_path / "vault" / "Areas/Lectures", data_dir=tmp_path / "audio")
     s = LiveSession(cfg, Course("Calculus", language="fr"), mic, engine or FakeEngine(), backup=backup)
-    short_chunks(s, monkeypatch, on_power, lengths)
+    short_chunks(s, monkeypatch, power, lengths)
     monkeypatch.setattr(s, "now", lambda: mic.t)
     monkeypatch.setattr(s, "wall", lambda: mic.ticks * TICK_S)  # stall timers on the same clock
     mic.follow(s, monkeypatch)
@@ -483,20 +483,55 @@ def test_the_second_look_is_done_during_the_recording_too(tmp_path, monkeypatch)
     assert sum(1 for k in made if k[3] != "chunk") >= 4
 
 
-def test_on_battery_it_only_records_and_catches_up_when_plugged_in(tmp_path, monkeypatch):
+def test_on_battery_it_transcribes_while_recording(tmp_path, monkeypatch):
     mic = FakeMic()
 
     def script(s):
-        wait_until(lambda: mic.t >= 20)
-        s.seen = len(s.cache.chunks), s.status()["transcribing"]
-        s.on_power_now = True                         # plugged in
-        monkeypatch.setattr(live_session, "POWER_CHECK", 0.0)
-        mic.at(40, lambda: s.command("stop"))
+        wait_until(lambda: mic.t >= 20 and s.cache.chunks)
+        s.seen = s.status()["transcribing"], s.status()["warning"]
+        mic.at(30, lambda: s.command("stop"))
 
-    s = run_session(tmp_path, monkeypatch, mic, script=script, on_power=False)
-    assert s.seen == (0, False)                       # on battery: nothing transcribed, the recording goes on
-    assert min(seg["start"] for seg in s.segments) < 1.0   # plugged in: it caught up from the start
+    s = run_session(tmp_path, monkeypatch, mic, script=script, power=jobs.Power(False, 80))
+    assert s.seen == (True, "")                       # the switch is on: a live draft on battery too
+    assert min(seg["start"] for seg in s.segments) < 1.0
     assert_final_pass_reuses(s)
+
+
+def test_a_low_battery_pauses_transcription_never_the_recording_until_plugged_in(tmp_path, monkeypatch):
+    monkeypatch.setattr(live_session, "POWER_CHECK", 0.0)
+    mic = FakeMic()
+
+    def script(s):
+        wait_until(lambda: mic.t >= 10 and s.cache.chunks)
+        s.power_now = jobs.Power(False, live_session.BATTERY_LOW - 1)   # the battery runs low
+        wait_until(lambda: s.battery_low)
+        before = len(s.segments)
+        wait_until(lambda: mic.t >= 25)
+        s.seen = before, len(s.segments), s.recorded, s.status()["transcribing"], s.status()["warning"]
+        s.power_now = jobs.Power(True, live_session.BATTERY_LOW - 1)    # plugged in
+        wait_until(lambda: not s.battery_low)
+        mic.at(45, lambda: s.command("stop"))
+
+    s = run_session(tmp_path, monkeypatch, mic, script=script, power=jobs.Power(False, 60))
+    before, during, recorded, transcribing, warning = s.seen
+    assert during - before <= 2                       # at most what was on its way when the battery ran low
+    assert recorded / SAMPLE_RATE >= 24               # the recording went on
+    assert not transcribing and warning.startswith("Battery is low")
+    assert len(s.segments) > during and not s.warning  # plugged in: it caught up
+    assert_final_pass_reuses(s)
+
+
+def test_power_is_read_on_macos_and_windows(monkeypatch):
+    out = "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=23003235)\t82%; discharging; 6:12 remaining present: true\n"
+    monkeypatch.setattr(jobs.sys, "platform", "darwin")
+    monkeypatch.setattr(jobs.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, out, ""))
+    assert jobs.power() == jobs.Power(False, 82)
+    monkeypatch.setattr(jobs.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, "Now drawing from 'AC Power'\n", ""))
+    assert jobs.power() == jobs.Power(True, None)    # a Mac without a battery
+    def missing(*a, **k):
+        raise FileNotFoundError("pmset")
+    monkeypatch.setattr(jobs.subprocess, "run", missing)
+    assert jobs.power() == jobs.Power(True, None)    # unknown counts as plugged in
 
 
 class SwitchableMic(FakeMic):

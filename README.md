@@ -92,7 +92,7 @@ See `config.example.toml` for every setting.
 
 **Start:** click Stenny's stick figure in the menu bar ▸ *Start Lecture* ▸ your course. If your calendar has the lecture, Stenny offers it at the top of the menu from 10 minutes before, and a notification asks *Record this lecture?* with a **Start Recording** button. It never starts by itself. (On Windows, Stenny can't read the calendar yet: start lectures from its icon in the notification area.)
 
-**While recording:** the stick figure turns into a dot with the time; click it for the menu. The live draft appears in the transcript file about 10 seconds behind the lecturer (*Open Transcript*). The open menu shows a level meter: green is fine, orange means the microphone is too far away.
+**While recording:** the stick figure turns into a dot with the time; click it for the menu. With *Transcribe while recording* on (Settings ▸ Recording, the default), the text so far appears in Stenny's window as the lecture goes on, plugged in or on battery. Below 20 % battery it pauses and says so; the recording goes on, and the final transcript has everything. The open menu shows a level meter: green is fine, orange means the microphone is too far away.
 
 **Pause:** press **⌘⇧Ü** (the default; choose your own in *Settings… ▸ General* or with `[app] pause_shortcut` in the config; on Windows ⌘ is Ctrl, so the default is **Ctrl+Shift+Ü**, or Ctrl+Shift with the key right of P on a keyboard without Ü). While paused, the microphone is really off and nothing is recorded.
 

@@ -18,15 +18,47 @@ from . import app_live, i18n, settings, share
 from . import config as config_mod
 from .config import ConfigError
 from .i18n import tr
+from .textproc import fmt_hms
 
 
 class AppError(Exception):
     """A message for the person using the app (shown as it is)."""
 
 
+def _with_live(entries: list[dict]) -> list[dict]:
+    """The running recording's entry, while it records: its length from the session itself, as the menu bar's timer
+    shows it (pauses left out; the placeholder's `duration` is only written now and then), and `live`, what the
+    window needs between two looks: whether the length is counting up, whether the text so far is being
+    transcribed, and a warning (low battery or memory, a full disk) while one applies."""
+    if not any(e["status"] == "live" for e in entries):
+        return entries
+    try:
+        st = app_live.control.send("status", timeout=3)
+    except (app_live.control.NoSession, OSError, ValueError):
+        return entries
+    if st.get("state") not in ("starting", "recording", "paused") or not st.get("transcript"):
+        return entries
+    running = Path(st["transcript"])
+    for e in entries:
+        if e["status"] == "live" and _same_file(Path(e["transcript"]), running):
+            length = max(0.0, float(st.get("elapsed_s") or 0) - float(st.get("paused_s") or 0))
+            e["duration"] = fmt_hms(length)
+            e["live"] = {"length_s": round(length, 1), "counting": st["state"] == "recording" and not st.get("input_lost"),
+                         "draft": bool(st.get("draft")), "transcribing": bool(st.get("transcribing")),
+                         "warning": st.get("warning") or ""}
+    return entries
+
+
+def _same_file(a: Path, b: Path) -> bool:
+    try:
+        return a == b or a.resolve() == b.resolve()
+    except OSError:
+        return False
+
+
 def _entry(cfg, params: dict) -> dict:
     try:
-        return share.find(cfg, params["course"], params["folder"], event=bool(params.get("event")))
+        return _with_live([share.find(cfg, params["course"], params["folder"], event=bool(params.get("event")))])[0]
     except KeyError as e:
         raise AppError(tr("Missing '{name}'.", name=e.args[0])) from None
     except share.ShareError as e:
@@ -35,8 +67,9 @@ def _entry(cfg, params: dict) -> dict:
 
 def library(cfg, params: dict) -> dict:
     """Every lecture and talk (oldest first within a course) and the courses in the config. A lecture whose final
-    pass runs has `final_pass`: how far it is (progress.read), or None before it reports anything."""
-    entries = share.library(cfg)
+    pass runs has `final_pass`: how far it is (progress.read), or None before it reports anything; the recording
+    that runs now has `live` (_with_live)."""
+    entries = _with_live(share.library(cfg))
     for entry in entries:
         if entry["status"] == "finalizing":
             entry["final_pass"] = final_pass(cfg, entry)

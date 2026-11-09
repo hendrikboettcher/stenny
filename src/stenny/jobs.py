@@ -4,12 +4,14 @@ On Windows the same functions use Windows' own calls (winsys.py) and Task Schedu
 import json
 import os
 import plistlib
+import re
 import shutil
 import subprocess
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import NamedTuple
 from xml.sax.saxutils import escape
 
 from . import paths, winsys
@@ -53,11 +55,30 @@ def lower_own_priority(mode: str) -> None:
         subprocess.run(["taskpolicy", "-b", "-p", str(os.getpid())], capture_output=True)
 
 
-def on_ac_power() -> bool:
+class Power(NamedTuple):
+    plugged_in: bool
+    battery: int | None  # percent charged; None without a battery (a desktop) or when it can't be read
+
+
+def power() -> Power:
+    """Whether the computer is plugged in, and how full its battery is. Unknown counts as plugged in, so a desktop
+    (or a check that fails) never holds work back."""
     if sys.platform == "win32":
-        return winsys.on_ac_power()
-    out = subprocess.run(["pmset", "-g", "ps"], capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
-    return "AC Power" in out.splitlines()[0] if out else True
+        return Power(*winsys.power())
+    try:
+        out = subprocess.run(["pmset", "-g", "ps"], capture_output=True, text=True, encoding="utf-8",
+                             errors="replace", timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return Power(True, None)
+    lines = out.splitlines()
+    if not lines:
+        return Power(True, None)
+    m = re.search(r"\t(\d+)%;", out)  # " -InternalBattery-0 (id=…)\t82%; discharging; …"
+    return Power("AC Power" in lines[0], int(m.group(1)) if m else None)
+
+
+def on_ac_power() -> bool:
+    return power().plugged_in
 
 
 def unplugged_check(every_s: float = 20):
