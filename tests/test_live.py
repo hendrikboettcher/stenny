@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from stenny import jobs, pipeline, resources
 from stenny.config import Config, Course
@@ -25,11 +26,14 @@ TICK_S = 0.002  # real seconds per simulated block (0.1 s): slow enough that a b
 
 class FakeMic:
     """Writes speech-like noise to the recording file like ffmpeg does, with a 0.5 s pause every 4 s.
-    A background clock advances simulated time (0.1 s per ~2 ms) whether or not it is recording. It counts whole
-    blocks, so 33 blocks are exactly 3.3 s (adding 0.1 up gives 3.3000000000000016)."""
+    A background clock advances simulated time (0.1 s per ~2 ms) whether or not it is recording, from the moment the
+    session first starts it: how long setting up the session took in real time (long on a busy CI runner) never
+    shows up as lecture time. It counts whole blocks, so 33 blocks are exactly 3.3 s (adding 0.1 up gives
+    3.3000000000000016)."""
 
     name, clock_rate, restartable = "fake mic", 1.0, True
     microphone = "Alex’s iPhone Microphone"
+    made = []  # every FakeMic of the running test: their clocks stop when it ends (stop_clocks)
 
     def __init__(self, startup_blocks=0, dropout=None, zeros=None):
         self.ticks, self.running, self.rng, self.out = 0, False, np.random.default_rng(0), None
@@ -40,6 +44,9 @@ class FakeMic:
         self.finished = False
         self.twins = []         # FakeBackup microphones hearing the same room on the same clock
         self.lock = threading.Lock()
+        self.started = threading.Event()  # the clock stands at 0 until the session starts the microphone
+        self.closed = False
+        FakeMic.made.append(self)
         threading.Thread(target=self._clock, daemon=True).start()
 
     @property
@@ -72,7 +79,8 @@ class FakeMic:
             done.set()
 
     def _clock(self):
-        while True:
+        self.started.wait()
+        while not self.closed:
             time.sleep(TICK_S)
             self._run_due()
             with self.lock:
@@ -98,6 +106,7 @@ class FakeMic:
         with self.lock:
             self.out = open(path, "ab")
             self.running, self.warming = True, self.startup_blocks
+        self.started.set()
 
     def stop(self):
         with self.lock:
@@ -108,6 +117,18 @@ class FakeMic:
 
     def error(self):
         return ""
+
+
+@pytest.fixture(autouse=True)
+def stop_clocks():
+    """A clock left ticking every 2 ms after its test would compete with the next tests' sessions for Python's
+    lock (14 of them by the end of this file), enough on a Windows runner to delay a session's loop past what
+    the assertions allow."""
+    yield
+    for mic in FakeMic.made:
+        mic.closed = True
+        mic.started.set()  # a clock still waiting for its start ends too
+    FakeMic.made.clear()
 
 
 class FakeBackup:
@@ -472,7 +493,8 @@ def test_low_memory_pauses_transcription_but_never_the_recording(tmp_path, monke
         wait_until(lambda: s.draft_paused and s.warning)
         s.engine.release = lambda: released.append(True)
         before = len(s.segments)
-        wait_until(lambda: mic.t >= 25)
+        # the session reads what the clock wrote a little later (much later on a busy runner): wait for both
+        wait_until(lambda: mic.t >= 25 and s.recorded >= 24 * SAMPLE_RATE)
         s.seen = before, len(s.segments), s.recorded
         state["pressure"] = 1
         wait_until(lambda: not s.draft_paused)
@@ -498,7 +520,8 @@ def test_low_disk_stops_the_backup_and_a_full_disk_ends_cleanly(tmp_path, monkey
         state["disk"] = resources.DISK_LOW - 1
         wait_until(lambda: s.disk_low)
         assert s.warning == "Disk almost full" and not s.backup.running
-        wait_until(lambda: mic.t >= 14)
+        # the session reads what the clock wrote a little later (much later on a busy runner): wait for both
+        wait_until(lambda: mic.t >= 14 and s.recorded >= 13 * SAMPLE_RATE)
         state["disk"] = resources.DISK_FULL - 1
 
     s = run_session(tmp_path, monkeypatch, mic, backup=backup, script=script)

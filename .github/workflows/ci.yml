@@ -36,9 +36,11 @@ jobs:
       - name: ffmpeg (macOS)
         if: runner.os == 'macOS'
         run: brew install ffmpeg
+      # Chocolatey is on the runner; setup-ffmpeg asked GitHub's API for the latest release and failed whenever
+      # that didn't answer ("Cannot get latest release"), which kept main red
       - name: ffmpeg (Windows)
         if: runner.os == 'Windows'
-        uses: FedericoCarboni/setup-ffmpeg@v3
+        run: choco install ffmpeg --no-progress -y
       - name: Install
         run: uv sync --locked --group dev
       - name: Tests
