@@ -406,7 +406,8 @@ class LiveSession:
             on_power = jobs.on_ac_power()
             if on_power != self.on_power and self.draft and self.power_checked > float("-inf"):
                 log("Plugged in: transcribing during the recording" if on_power else
-                    "On battery: recording only, the transcript catches up when the Mac is plugged in")
+                    "On battery: recording only, the transcript catches up when the "
+                    f"{'PC' if sys.platform == 'win32' else 'Mac'} is plugged in")
             self.on_power, self.power_checked = on_power, time.monotonic()
         return self.draft and self.on_power and not self.draft_paused
 
