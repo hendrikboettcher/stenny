@@ -244,6 +244,58 @@ def setup_status(cfg, params: dict) -> dict:
             "connector": claude_setup.connector_status(cfg)}
 
 
+def _glossary_course(cfg, params: dict) -> str | None:
+    """The course whose glossary a lecture's edit can teach, or None for a talk (talks have no glossary)."""
+    if params.get("event"):
+        return None
+    try:
+        course = cfg.course(params["course"])
+        return None if course.is_event else course.name
+    except KeyError as e:
+        raise AppError(tr("Missing '{name}'.", name=e.args[0])) from None
+    except ConfigError:
+        return params["course"]  # a past course, no longer in the config: its glossary note is still there
+
+
+def spelling_suggestions(cfg, params: dict) -> dict:
+    """After the student changed a passage of a transcript (`before` → `after`): the changes that look like a misheard
+    name or term (guard.spelling_changes), for "Always write it like this?". Fixing ordinary words or rewording asks
+    nothing, and neither does a spelling the course's glossary already corrects."""
+    from .glossary import Glossary
+    from .llm.guard import spelling_changes
+
+    course = _glossary_course(cfg, params)
+    if not course:
+        return {"suggestions": []}
+    glossary = Glossary.load(cfg.vault_for().glossary_path(course))
+    known = set(glossary.own_corrections)
+    changes = spelling_changes(str(params.get("before") or ""), str(params.get("after") or ""))
+    return {"suggestions": [{"wrong": w, "right": r} for w, r in changes if (w, r) not in known]}
+
+
+def always_spell(cfg, params: dict) -> dict:
+    """The student's answer "Yes" to "Always write it like this?": `wrong → right` in the course glossary's own
+    Corrections and `right` in its Terms (glossary.add_correction), so every lecture transcribed from now on (Whisper's
+    prompt and the AI step) gets it right. Makes the glossary note if the course has none yet."""
+    from .glossary import TEMPLATE, add_correction
+    from .llm.guard import check_correction, clean_entry
+
+    course = _glossary_course(cfg, params)
+    if not course:
+        raise AppError(tr("Talks have no glossary."))
+    try:
+        wrong, right = clean_entry(params["wrong"]), clean_entry(params["right"])
+    except KeyError as e:
+        raise AppError(tr("Missing '{name}'.", name=e.args[0])) from None
+    if check_correction(wrong, right):
+        raise AppError(tr("Stenny can only remember the spelling of a name or term, a few words long."))
+    vault = cfg.vault_for()
+    path = vault.glossary_path(course)
+    old = path.read_text(encoding="utf-8") if path.exists() else TEMPLATE.format(course=course)
+    vault.write(path, add_correction(old, wrong, right))
+    return {"course": course, "wrong": wrong, "right": right}
+
+
 def ping(cfg, params: dict) -> dict:
     return {"version": package_version("stenny")}
 
@@ -256,7 +308,8 @@ METHODS = {"ping": ping, "library": library, "lecture": lecture, "make_copy": ma
            "claude_sign_in": claude_sign_in, "connector_status": connector_status,
            "install_connector": install_connector, "add_to_claude_code": add_to_claude_code,
            "open_claude": open_claude, "remove_from_claude_code": remove_from_claude_code,
-           "setup_status": setup_status, **app_live.METHODS}
+           "setup_status": setup_status, "spelling_suggestions": spelling_suggestions, "always_spell": always_spell,
+           **app_live.METHODS}
 
 
 def handle(cfg, request: dict) -> dict:
