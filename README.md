@@ -91,7 +91,7 @@ See `config.example.toml` for every setting.
 
 **Keep the lid open while recording.** A closed MacBook on battery sleeps and records nothing.
 
-**Your lectures:** Stenny's menu ▸ *Open Stenny…* opens a window with your courses, each course's lectures (newest first) and the selected lecture's summary, with *Open Transcript* and *Show in Finder*. Click a lecture's title to rename it (a talk's renames the talk); the trash icon after its buttons moves it to the Trash (the Recycle Bin on Windows), after asking. Add a course with the **+** next to *Courses* (or *Add Course* in *Settings… ▸ Courses*); right-click a course, or use its ⋯ there, to remove or delete it. Removing deletes nothing: the course moves to *Past courses* in *Settings… ▸ Courses*, where *Bring Back* restores it and *Delete…* moves it and all its lectures to the Trash (the Recycle Bin on Windows).
+**Your lectures:** Stenny's menu ▸ *Open Stenny…* opens a window with your courses, each course's lectures (newest first) and the selected lecture's summary, with *Open Transcript* and *Show in Finder*. Click a lecture's title to rename it (a talk's renames the talk); the trash icon after its buttons moves it to the Trash (the Recycle Bin on Windows), after asking. Add a course with the **+** next to *Courses* (or *Add Course* in *Settings… ▸ Courses*); right-click a course, or use its ⋯ there, to remove or delete it. Removing deletes nothing: the course moves to *Past courses* in *Settings… ▸ Courses*, where *Bring Back* restores it and *Delete…* moves it and all its lectures to the Trash (the Recycle Bin on Windows). While a lecture records or its final transcript is being made, the window opens on it, with the text so far; otherwise where you left it. **⌘R** (Ctrl+R on Windows) or *View ▸ Reload* reloads the window if it ever looks stuck; a recording and a final transcript in progress go on untouched.
 
 **Finish setting up Stenny:** until the three things that make Stenny really useful work (at least one course, the AI step, the connector in Claude), a small card at the bottom of the window's sidebar shows how many are done. Click it for the steps, each with its action right there (*Add a course…*, *Sign in…*, *Install…*); a step counts as done when it really works, checked again whenever the window comes back to the front. Choosing *Off* for the AI step counts as done. The × hides the card until Stenny opens again; after a few times it also offers *Don't show this again*. Once everything works it says *You're all set* and is gone for good (`[app] setup_checklist = false`). Settings stays the full place for all of it.
 
@@ -123,7 +123,7 @@ stenny mcp --desktop-config                       # the connector for Claude Des
 stenny api-key [status | remove]                  # the Anthropic API key, in the system keychain
 stenny match-course "VL Calculus (Room 1.01)"     # which course a calendar event belongs to
 stenny queue list | run                           # waiting final passes (run --lecture COURSE FOLDER: just that one, now)
-stenny schedule install                           # run the queue every 10 min when plugged in (launchd)
+stenny schedule install                           # run the queue every 10 min when plugged in (launchd; Windows: Task Scheduler)
 ```
 
 ## Studying with Claude
@@ -171,9 +171,7 @@ its chats read the newest transcripts, cite them and keep the course glossary up
 ```
 ~/Documents/Stenny/                      your Stenny folder: everything you or Claude read (any folder, e.g. in a vault)
 ├── _Course Files/                       generated after every lecture, don't edit
-│   ├── Calculus (overview).md           every lecture with links and topics
-│   ├── Calculus (all lectures).md       every final transcript of the course, with contents
-│   └── Calculus (summaries).md          every summary
+│   └── Calculus (overview).md           every lecture with links to its transcript and summary, and its topics
 ├── _Glossaries/
 │   └── Calculus (glossary).md           correct spellings for this course (fills itself)
 ├── _Topics/                             one note per topic, linking the lectures that cover it
@@ -197,6 +195,9 @@ Time Machine backs up `~/Library`, so the recordings are in your Mac's backups. 
 up AppData: copy `%LOCALAPPDATA%\Stenny\Recordings` yourself if you want the audio backed up (`data_dir` in the
 config moves it elsewhere). Older installs kept everything in `~/Lectures Data` and talks in
 `<vault>/Recordings`; Stenny moves them on its first start (`stenny migrate --dry-run` shows what it does).
+Earlier versions also wrote each course's transcripts and summaries a second time into `_Course Files/`
+(`(all lectures)`, `(summaries)`); Stenny moves those copies to the Trash (the Recycle Bin on Windows) when it starts.
+Every lecture keeps its own transcript and summary.
 
 Stenny never writes outside the Stenny folder (if it is in your vault, nowhere else in the vault). Each folder holds either only folders or only files. A 1-hour lecture is about 11k tokens, so a semester of one course fits comfortably in a Claude project.
 
@@ -248,6 +249,8 @@ German and English, measured the same way without a glossary (LibriVox recording
 At the default low priority Stenny runs at about 8× realtime. While recording, live mode uses about 2.5 GB of RAM and around 6 % of one CPU core.
 
 **Windows (in development, #2):** the same model runs through faster-whisper (an NVIDIA GPU when CUDA is installed, else the CPU, int8), with the same decoding as on the Mac. Through Stenny's own chunked pipeline on the same clips, the two engines match: on six one-minute lecture-style clips in English, German and French (synthetic speech, clean and with room echo and noise), the word error rate was the same on five and differed by one word on the sixth. On a Mac's CPU faster-whisper runs at about 1.4× realtime, so a CPU-only Windows PC needs about as long as the lecture, or longer; an NVIDIA GPU is much faster. Not yet measured on a Windows PC. `[transcription] engine` picks one by hand (`auto`, `mlx`, `faster-whisper`).
+
+**Background work on Windows (in development, #2):** `low` priority is Windows' below-normal priority class, `background` the idle class (programs Stenny starts, such as ffmpeg, inherit both). While Stenny records or makes a final transcript, the PC doesn't go to sleep when idle (closing a laptop's lid still sleeps). Memory counts as low from 90 % in use: the live text pauses, and a final transcript waits. `stenny schedule install` adds the task *Stenny Queue* to Task Scheduler, for your user and without admin rights: every 10 minutes while you're signed in, without a window; whether it waits for power or the night is read from the config each time, as on the Mac. Tested on GitHub's Windows runners, not yet on a Windows PC.
 
 ## Development
 

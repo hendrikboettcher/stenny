@@ -1,6 +1,7 @@
 """A recording without its transcript yet says where the transcript is: waiting (for power, if the Mac is on battery),
 or being made. Its file in the vault is a placeholder without text (Stenny 0.4's live drafts had a rough text)."""
 import json
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -23,8 +24,9 @@ def draft(status="live", paragraphs=PARAGRAPHS) -> str:
 def test_the_placeholder_says_its_transcript_waits_for_power():
     queued = set_draft_state(draft(paragraphs=[]), "queued", "battery")
     assert 'status: "queued"\nwaiting: "battery"\n' in queued
-    assert "> **No transcript yet.** The recording is finished; its transcript is made once the Mac is plugged in." \
-        in queued
+    computer = "PC" if sys.platform == "win32" else "Mac"
+    assert f"> **No transcript yet.** The recording is finished; its transcript is made once the {computer} is " \
+        "plugged in." in queued
     assert queued.count("No transcript yet") == 1
 
     making = set_draft_state(queued, "finalizing")
@@ -110,7 +112,8 @@ def test_the_window_and_claude_get_the_same_sentence(cfg, monkeypatch):
     StoppedSession(cfg)
     cli.mark_draft(cfg.folder / "Calculus/2026-10-31/Calculus 2026-10-31.md", "queued", "battery")
     [entry] = share.library(cfg)
-    assert entry["status"] == "queued" and "once the Mac is plugged in" in entry["draft_note"]
+    computer = "PC" if sys.platform == "win32" else "Mac"
+    assert entry["status"] == "queued" and f"once the {computer} is plugged in" in entry["draft_note"]
     assert _status_note(entry) == f" [not transcribed yet. {entry['draft_note']}]"
 
 
