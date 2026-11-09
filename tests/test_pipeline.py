@@ -299,18 +299,14 @@ def test_lecture_names_numbers_and_course_files(setup):
                 '---\nstatus: "live"\n---\n# draft\n')
 
     from stenny import course_files
-    course_files.rebuild(vault, "Calculus")
-    all_md = vault.course_file("Calculus", "all lectures").read_text(encoding="utf-8")
-    fm = parse_frontmatter(all_md)
-    assert fm["kind"] == "course-file" and fm["lectures"] == 2 and fm["duration"] == "0:02:20"
-    assert "- **Lecture 1** (2026-10-15, 0:01:10): Introduction" in all_md and "**Lecture 3**" not in all_md
-    assert all_md.index("## Lecture 1 – 2026-10-15") < all_md.index("## Lecture 2 – 2026-10-22")
-    assert "### [0:00:00] Introduction" in all_md and "\n# Calculus – Lecture" not in all_md  # one level deeper
-    assert "transcript `Calculus 2026-10-15.md`" in all_md and all_md.count("\ncourse:") == 1     # one frontmatter
-    assert "[[" not in all_md and "[[" not in vault.course_file("Calculus", "summaries").read_text(encoding="utf-8")  # only the overview links
-    assert "**[0:00:00]** Phrase" in all_md
-    summaries = vault.course_file("Calculus", "summaries").read_text(encoding="utf-8")
-    assert summaries.count("### Overview") == 2 and "## Lecture 2 – 2026-10-22" in summaries
+    written = course_files.rebuild(vault, "Calculus")
+    # only the overview: each lecture's transcript and summary exist once, in its folder
+    assert [p.name for p in written] == ["Calculus (overview).md"]
+    assert sorted(p.name for p in (cfg.folder / "_Course Files").iterdir()) == ["Calculus (overview).md"]
+    hub = vault.course_overview("Calculus").read_text(encoding="utf-8")
+    assert hub.index("**Lecture 1** – 2026-10-15") < hub.index("**Lecture 2** – 2026-10-22")
+    assert "**Lecture 3** – 2026-10-29" in hub and "live draft" in hub
+    assert "Phrase" not in hub                                       # no lecture text in it
     assert vault.violations() == []
 
 
@@ -335,8 +331,6 @@ def test_transcripts_say_they_are_audio_only(setup):
     from stenny.vault import Vault
     transcript = lf(info["folder"]).read_text(encoding="utf-8")
     assert f"> {AUDIO_ONLY}" in transcript
-    all_md = cfg.vault_for().course_file("Calculus", "all lectures").read_text(encoding="utf-8")
-    assert all_md.count("**Audio only:**") == 1                     # once at the top, not per lecture
 
 
 class TopicLLM(FakeLLM):
@@ -395,7 +389,7 @@ def test_topics_glossary_and_links_between_lectures(setup, monkeypatch):
     hub = (cfg.folder / "_Course Files" / "Calculus (overview).md").read_text(encoding="utf-8")
     assert "[[Calculus 2026-10-15|transcript]] · [[Calculus 2026-10-15 (summary)|summary]]" in hub
     assert "[[_Glossaries/Calculus (glossary)|Calculus (glossary)]]" in hub and "Topics: Riemann, suites" in hub
-    assert "[[Calculus (all lectures)]]" in hub
+    assert "all lectures" not in hub and "(summaries)" not in hub
     assert Glossary.load(gloss).auto_terms == ["Phrase", "Lebesgue"]
     assert cfg.vault_for().violations() == []
 

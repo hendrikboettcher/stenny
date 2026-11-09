@@ -169,9 +169,7 @@ its chats read the newest transcripts, cite them and keep the course glossary up
 ```
 ~/Documents/Stenny/                      your Stenny folder: everything you or Claude read (any folder, e.g. in a vault)
 ├── _Course Files/                       generated after every lecture, don't edit
-│   ├── Calculus (overview).md           every lecture with links and topics
-│   ├── Calculus (all lectures).md       every final transcript of the course, with contents
-│   └── Calculus (summaries).md          every summary
+│   └── Calculus (overview).md           every lecture with links to its transcript and summary, and its topics
 ├── _Glossaries/
 │   └── Calculus (glossary).md           correct spellings for this course (fills itself)
 ├── _Topics/                             one note per topic, linking the lectures that cover it
@@ -195,6 +193,9 @@ Time Machine backs up `~/Library`, so the recordings are in your Mac's backups. 
 up AppData: copy `%LOCALAPPDATA%\Stenny\Recordings` yourself if you want the audio backed up (`data_dir` in the
 config moves it elsewhere). Older installs kept everything in `~/Lectures Data` and talks in
 `<vault>/Recordings`; Stenny moves them on its first start (`stenny migrate --dry-run` shows what it does).
+Earlier versions also wrote each course's transcripts and summaries a second time into `_Course Files/`
+(`(all lectures)`, `(summaries)`); Stenny moves those copies to the Trash (the Recycle Bin on Windows) when it starts.
+Every lecture keeps its own transcript and summary.
 
 Stenny never writes outside the Stenny folder (if it is in your vault, nowhere else in the vault). Each folder holds either only folders or only files. A 1-hour lecture is about 11k tokens, so a semester of one course fits comfortably in a Claude project.
 
