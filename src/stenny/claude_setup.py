@@ -140,17 +140,35 @@ def claude_sign_in(cfg) -> dict:
 
 # ---- the connector --------------------------------------------------------------------------------------------
 
+def _local_appdata() -> Path:
+    return Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData/Local")
+
+
+def _claude_packages() -> list[Path]:
+    """Windows: Claude Desktop installed as an app package (MSIX), e.g. %LOCALAPPDATA%\\Packages\\Claude_<id>."""
+    return sorted((_local_appdata() / "Packages").glob("Claude_*"))
+
+
 def claude_data_dir() -> Path:
-    """Where Claude Desktop keeps its settings and extensions."""
+    """Where Claude Desktop keeps its settings and extensions. On Windows %APPDATA%\\Claude; the app package
+    (MSIX) keeps it in its own folder instead (…\\Packages\\Claude_<id>\\LocalCache\\Roaming\\Claude)."""
     if sys.platform == "win32":
-        return Path(os.environ.get("APPDATA") or Path.home() / "AppData/Roaming") / "Claude"
+        roaming = Path(os.environ.get("APPDATA") or Path.home() / "AppData/Roaming") / "Claude"
+        packaged = [p / "LocalCache/Roaming/Claude" for p in _claude_packages()]
+        return roaming if roaming.is_dir() else next((p for p in packaged if p.is_dir()), roaming)
     return Path.home() / "Library/Application Support/Claude"
+
+
+def claude_desktop_exe() -> Path | None:
+    """Windows: the Claude app's own launcher (the installer from claude.ai/download puts it in %LOCALAPPDATA%)."""
+    local = _local_appdata()
+    return next((p for p in (local / "AnthropicClaude/claude.exe", local / "Programs/Claude/Claude.exe")
+                 if p.is_file()), None)
 
 
 def claude_desktop_installed() -> bool:
     if sys.platform == "win32":
-        local = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData/Local")
-        apps = [local / "AnthropicClaude", local / "Programs/Claude"]
+        apps = [_local_appdata() / "AnthropicClaude", _local_appdata() / "Programs/Claude", *_claude_packages()]
     else:
         apps = [Path("/Applications/Claude.app"), Path.home() / "Applications/Claude.app"]
     return any(a.exists() for a in apps) or claude_data_dir().is_dir()
@@ -221,7 +239,10 @@ def install_connector(cfg) -> dict:
     if not claude_desktop_installed():
         raise SetupError(tr("The Claude desktop app isn't installed. Get it at claude.ai/download, then try again."))
     if sys.platform == "win32":
-        os.startfile(file)  # noqa: S606 — Claude Desktop registers .mcpb
+        try:
+            os.startfile(file)  # noqa: S606 — Claude Desktop registers .mcpb
+        except OSError as e:
+            raise SetupError(tr("Claude couldn't open the connector: {error}", error=e)) from None
     else:
         p = subprocess.run(["open", "-a", "Claude", str(file)], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15)
         if p.returncode != 0:
@@ -252,7 +273,11 @@ def open_claude(cfg) -> dict:
     if not claude_desktop_installed():
         raise SetupError(tr("The Claude desktop app isn't installed. Get it at claude.ai/download, then try again."))
     if sys.platform == "win32":
-        os.startfile("claude://")  # noqa: S606 — the Claude app registers claude://
+        # its launcher if it's there, else claude://, which the app registers (also the app package's way in)
+        try:
+            os.startfile(claude_desktop_exe() or "claude://")  # noqa: S606
+        except OSError as e:
+            raise SetupError(tr("Couldn't open Claude: {error}", error=e)) from None
         return {"opened": True}
     p = subprocess.run(["open", "-a", "Claude"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15)
     if p.returncode != 0:

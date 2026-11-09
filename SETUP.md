@@ -249,6 +249,8 @@ On battery or when memory is low, final transcripts wait. Install the small back
 stenny schedule install
 ```
 
+On Windows the same command adds the task *Stenny Queue* to Task Scheduler (for this user, no admin rights, no window). If it says `Task Scheduler: … Access is denied`, tell the user and go on: final transcripts then wait until `stenny queue run`.
+
 Tell the user in one sentence. They can remove it any time by asking in this chat.
 
 ## 13. Let Claude read the transcripts
