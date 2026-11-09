@@ -258,6 +258,8 @@ At the default low priority Stenny runs at about 8× realtime. While recording, 
 
 **Background work on Windows (in development, #2):** `low` priority is Windows' below-normal priority class, `background` the idle class plus Windows' background mode (low disk and memory priority too). While Stenny records or makes a final transcript, the PC doesn't go to sleep when idle (closing a laptop's lid still sleeps). Memory counts as low from 90 % in use: the live text pauses, and a final transcript waits. `stenny schedule install` adds the task *Stenny Queue* to Task Scheduler, for your user and without admin rights: every 10 minutes while you're signed in, without a window; whether it waits for power or the night is read from the config each time, as on the Mac. Tested on GitHub's Windows runners, not yet on a Windows PC.
 
+**Recording on Windows (in development, #2):** the microphone is recorded by `stenny-rec.exe` (desktop/stenny-rec), the Windows twin of the Mac's recorder: WASAPI in shared mode, event-driven with a one-second buffer, Windows' own resampler for 16 kHz mono, and the same file, pause (the microphone is off) and backup microphone as on the Mac. `stenny devices` and Settings list the microphones through it, without the virtual ones apps install (Microsoft Teams Audio, virtual cables); the backup microphone's "auto" takes the PC's own microphone. If Windows blocks the microphone, turn on *Settings ▸ Privacy & security ▸ Microphone ▸ Let desktop apps access your microphone*. Not yet tried with a real microphone on a Windows PC.
+
 ## Development
 
 ```bash
@@ -269,6 +271,8 @@ app/build.sh                           # build the app and install it (needs App
 app/release.sh                         # dist/Stenny.zip for a release (--publish: also tag and upload it)
 connector/build.sh                     # dist/Stenny.mcpb, the connector (macOS or Git Bash on Windows; --icon: redraw its icon)
 desktop/scripts/ffmpeg-windows.sh      # the pinned LGPL ffmpeg/ffprobe for the Windows installer (CI does this)
+(cd desktop/stenny-rec && cargo test)  # the Windows microphone recorder's tests (run on a Mac too)
+bash desktop/scripts/stenny-rec.sh     # on Windows (Git Bash): build stenny-rec.exe for the app's bundle
 uv run python bench/run_bench.py --help
 ```
 
