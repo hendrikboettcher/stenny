@@ -95,15 +95,27 @@ def make_copy(cfg, params: dict) -> dict:
 
 def finish_now(cfg, params: dict) -> dict:
     """Starts a waiting lecture's final pass in its own process (`stenny queue run --lecture`), so the server stays
-    free; the library shows "finalizing" once it runs and "final" when it's done."""
-    from .cli import lecture_job
+    free. The draft says "finalizing" before this returns: the process needs a few seconds to start and load the
+    model, and the window shouldn't show the button again meanwhile. If the pass can't start after all, the
+    process puts it back to "queued" (cli.cmd_queue)."""
+    from . import jobs
+    from .cli import lecture_job, mark_job_draft
     entry = _entry(cfg, params)
     event = entry["kind"] == "event"
-    if not lecture_job(cfg, entry["course"], entry["folder"], event=event):
+    job = lecture_job(cfg, entry["course"], entry["folder"], event=event)
+    if not job:
         raise AppError(tr("This lecture has no final transcript waiting."))
+    with jobs.QueueLock() as free:  # another final pass running: say so now, the new process would only give up
+        if free is None:
+            raise AppError(tr("A transcript is being made right now. Try again when it's done."))
+    mark_job_draft(cfg, job, "finalizing")
     args = [sys.executable, "-m", "stenny", "queue", "run", "--lecture", entry["course"], entry["folder"]]
-    subprocess.Popen(args + (["--event"] if event else []), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                     stderr=subprocess.DEVNULL, start_new_session=True)
+    try:
+        subprocess.Popen(args + (["--event"] if event else []), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
+        mark_job_draft(cfg, job, "queued")
+        raise
     return {"started": True}
 
 

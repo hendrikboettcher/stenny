@@ -23,7 +23,8 @@ class NoSession(Exception):
 
 
 def send(cmd: str, path: Path = SOCKET, timeout: float = 10.0, **extra) -> dict:
-    if not path.exists():
+    # Python on Windows has no Unix sockets, so no live session listens there (a stale file is no session either)
+    if not path.exists() or not hasattr(socket, "AF_UNIX"):
         raise NoSession("No live session is running.")
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
         s.settimeout(timeout)
