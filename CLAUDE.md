@@ -42,8 +42,8 @@ src/stenny/
                   corrections; fills itself from the student's fixes ("Always write it like this?" → their own sections)
                   and from Claude (connector → the "(added automatically)" sections, never over the student's)
   slides.py       dormant (#20): a lecture's slides PDF; nothing new may rely on it or point users to it
-  course_files.py generated _Course Files/<Course> (overview|all lectures|summaries).md and _Topics/<topic>.md;
-                  renumbers lectures, sets previous/next links
+  course_files.py generated _Course Files/<Course> (overview).md (links only: each lecture's text exists once, in
+                  its folder) and _Topics/<topic>.md; renumbers lectures, sets previous/next links
   share.py        the library (every lecture and talk, for Stenny's window) and clean copies to share
   word.py         Word copies (.docx) without textutil, for Windows: share.py's blocks as a few XML parts in a zip
   connector.py    what Claude may read through the connector, as clean text (no paths, no microphones): courses,
