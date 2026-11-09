@@ -15,6 +15,9 @@ From `~/Lectures Data/` (the layout until 0.4):
 8. ~/Lectures Data is deleted once it's empty. Anything Stenny doesn't know stays there, and it says so.
 On the same disk every move is a rename; across disks it's copy, check, then delete.
 
+And at every start, whatever the layout (`drop_course_copies`): the `(all lectures)` and `(summaries)` copies that
+earlier versions wrote into `_Course Files/` go to the Trash (the Recycle Bin on Windows).
+
 And from the layout before that (~/.config/lecture/, ~/Lectures Audio/, ~/.local/share/lecture/, raw output and
 glossaries named differently in the vault), first into ~/Lectures Data/ as it was, then on as above.
 """
@@ -32,7 +35,8 @@ from . import courses, jobs, paths
 from .config import EXAMPLE, ConfigError, folder_of, load
 from .live import control
 from .settings import _table, set_line
-from .vault import GLOSSARY_DIR, TALKS_DIR, LectureFiles, Vault, safe_name
+from .render import parse_frontmatter
+from .vault import COURSE_FILES_DIR, GLOSSARY_DIR, TALKS_DIR, LectureFiles, Vault, safe_name
 
 
 class MigrateError(Exception):
@@ -458,6 +462,48 @@ def _from_lectures_data(m: Mover) -> None:
             m.rmdir_empty(d)
 
 
+# ---------------------------------------------------------------- the per-course copies
+
+COPIES = ("all lectures", "summaries")  # `content` of the copies earlier versions wrote; the overview stays
+
+
+def course_copies(folder: Path) -> list[Path]:
+    """`_Course Files/<Course> (all lectures).md` and `(summaries).md`: every transcript or summary of a course a
+    second time. Only files Stenny generated (frontmatter `kind: course-file` with one of COPIES as `content`),
+    never one the user made or renamed that way."""
+    found = []
+    for kind in COPIES:
+        for f in sorted((folder / COURSE_FILES_DIR).glob(f"* ({kind}).md")):
+            try:
+                fm = parse_frontmatter(f.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if f.is_file() and fm.get("kind") == "course-file" and fm.get("content") == kind:
+                found.append(f)
+    return found
+
+
+def drop_course_copies(dry_run: bool = False, log=print) -> int:
+    """The copies to the Trash (the Recycle Bin on Windows): each lecture's own transcript and summary are the
+    one place of its text. Quick when there are none, so it runs at every start."""
+    from .config import config_path
+    try:
+        folder = load(config_path()).folder if config_path().exists() else None
+    except (ConfigError, OSError, ValueError):
+        folder = None
+    copies = course_copies(folder) if folder and (folder / COURSE_FILES_DIR).is_dir() else []
+    if not copies:
+        return 0
+    bin_name = "Recycle Bin" if sys.platform == "win32" else "Trash"
+    for f in copies:
+        log(f"{'would: ' if dry_run else ''}move {_tilde(f)} to the {bin_name} (a copy of the course's transcripts or "
+            "summaries; each lecture keeps its own)")
+    if not dry_run:
+        from .manage import trash
+        trash(copies)
+    return len(copies)
+
+
 def migrate(dry_run: bool = False, log=print) -> int:
     if reason := busy():
         if not dry_run:
@@ -470,6 +516,7 @@ def migrate(dry_run: bool = False, log=print) -> int:
     try:
         _earliest(m)
         _from_lectures_data(m)
+        m.actions += drop_course_copies(dry_run, log)
     finally:
         if not dry_run:
             lock.__exit__(None, None, None)
@@ -498,7 +545,8 @@ def default_config(path: Path) -> Path:
 
 def on_start(log=lambda message: print(message, file=sys.stderr)) -> None:
     """When Stenny's app starts: move an older install (unless a recording or final pass is running: then at the
-    next start), and with no config at all, start one with the default folder."""
+    next start), drop the per-course copies earlier versions wrote, and with no config at all, start one with the
+    default folder."""
     from .config import config_path
     if needed():
         try:
@@ -508,6 +556,10 @@ def on_start(log=lambda message: print(message, file=sys.stderr)) -> None:
                 migrate(log=lambda message: log("migrate: " + message))
         except (MigrateError, OSError, ValueError) as e:
             log(f"migrate: {e}")
+    try:
+        drop_course_copies(log=lambda message: log("migrate: " + message))
+    except Exception as e:  # never in the way of starting (ManageError, OSError …): it tries again next time
+        log(f"migrate: {e}")
     if not config_path().exists():
         try:
             default_config(config_path())

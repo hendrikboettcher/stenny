@@ -199,9 +199,9 @@ class Vault:
         old = self.root / GLOSSARY_DIR / f"{safe_name(course)}.md"
         return old if old.exists() and not new.exists() else new
 
-    def course_file(self, course: str, kind: str) -> Path:
-        """Generated per-course files: kind "overview", "all lectures" or "summaries"."""
-        return self.root / COURSE_FILES_DIR / f"{safe_name(course)} ({kind}).md"
+    def course_overview(self, course: str) -> Path:
+        """`_Course Files/<Course> (overview).md`, the course's generated hub (course_files.py)."""
+        return self.root / COURSE_FILES_DIR / f"{safe_name(course)} (overview).md"
 
     def topic_path(self, topic: str) -> Path:
         return self.root / TOPICS_DIR / f"{safe_name(topic)}.md"

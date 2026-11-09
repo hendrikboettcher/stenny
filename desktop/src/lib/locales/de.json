@@ -339,6 +339,7 @@
   "app.copy": "Kopieren",
   "app.paste": "Einsetzen",
   "app.selectAll": "Alles auswählen",
+  "app.reload": "Neu laden",
   "app.fullscreen": "Vollbildmodus aktivieren",
   "app.minimize": "Im Dock ablegen",
   "app.zoom": "Zoomen",

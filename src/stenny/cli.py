@@ -265,13 +265,14 @@ def cmd_match_course(args) -> None:
         print(f"{m['title']} → {m['course'] or '(no course)'}")
 
 
-PROJECT_TEXT = """Lecture transcripts for this course are on my Mac, readable with the Filesystem connector, in
+PROJECT_TEXT = """Lecture transcripts for this course are on my computer, readable with the Filesystem connector, in
 {root}
 
-- All lectures in one file: _Course Files/{course} (all lectures).md (table of contents at the top)
-- All summaries: _Course Files/{course} (summaries).md
-- Overview (every lecture with its topics): _Course Files/{course} (overview).md
-- Single lectures: {course}/<date>/{course} <date>.md
+- Overview (every lecture with links to its transcript and summary, and its topics): _Course Files/{course} (overview).md
+- Each lecture: {course}/<date>/{course} <date>.md, its AI summary next to it as {course} <date> (summary).md
+
+Start with the overview and the summaries; the transcripts are the source for details. (With Stenny's own
+connector installed, use its tools instead: they read the same files.)
 
 Read them whenever a question is explicitly about what was said in the lectures, and cite as "Lecture N [h:mm:ss]".
 They are automatic transcripts: names and technical terms may be misheard, so prefer the spellings in the
@@ -333,7 +334,8 @@ def cmd_api_key(args) -> None:
 
 
 def cmd_course_files(args) -> None:
-    """Rebuild the generated per-course files (normally done after every final pass)."""
+    """Rebuild the generated course files: overview, previous/next links, topic notes (normally done after
+    every final pass)."""
     cfg = load_config()
     from .course_files import rebuild
     from .vault import Vault
@@ -916,7 +918,8 @@ def main() -> None:
     p.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
     p.set_defaults(func=cmd_match_course)
 
-    p = sub.add_parser("course-files", help="rebuild the per-course files in _Course Files/ (all lectures, summaries)")
+    p = sub.add_parser("course-files", help="rebuild each course's overview in _Course Files/, the lectures' "
+                                         "previous/next links and the topic notes")
     p.add_argument("--course", help="only this course (default: all configured courses)")
     p.set_defaults(func=cmd_course_files)
 
