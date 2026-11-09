@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from stenny import jobs, pipeline, resources
 from stenny.config import Config, Course
@@ -31,6 +32,7 @@ class FakeMic:
 
     name, clock_rate, restartable = "fake mic", 1.0, True
     microphone = "Alex’s iPhone Microphone"
+    made = []  # every FakeMic of the running test: their clocks stop when it ends (stop_clocks)
 
     def __init__(self, startup_blocks=0, dropout=None, zeros=None):
         self.ticks, self.running, self.rng, self.out = 0, False, np.random.default_rng(0), None
@@ -42,6 +44,8 @@ class FakeMic:
         self.twins = []         # FakeBackup microphones hearing the same room on the same clock
         self.lock = threading.Lock()
         self.clock = threading.Thread(target=self._clock, daemon=True)
+        self.closed = False
+        FakeMic.made.append(self)
 
     @property
     def t(self) -> float:
@@ -73,7 +77,7 @@ class FakeMic:
             done.set()
 
     def _clock(self):
-        while True:
+        while not self.closed:
             time.sleep(TICK_S)
             self._run_due()
             with self.lock:
@@ -111,6 +115,17 @@ class FakeMic:
 
     def error(self):
         return ""
+
+
+@pytest.fixture(autouse=True)
+def stop_clocks():
+    """A clock left ticking every 2 ms after its test would compete with the next tests' sessions for Python's
+    lock (14 of them by the end of this file), enough on a Windows runner to delay a session's loop past what
+    the assertions allow."""
+    yield
+    for mic in FakeMic.made:
+        mic.closed = True
+    FakeMic.made.clear()
 
 
 class FakeBackup:
