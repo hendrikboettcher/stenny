@@ -280,31 +280,72 @@ def test_glossary_auto_section_ranking_and_prompt_order():
     assert with_auto_terms(with_auto_terms(note, ["Cauchy"]), []) == note
     # ranking: used in more recent lectures first; manual terms and corrected spellings never come in
     g = Glossary.parse(with_auto_terms(note, ["Cauchy", "Lebesgue"]))
+    # ranking: used in more recent lectures first; manual terms and corrected spellings never come in; a term just
+    # added counts as used everywhere until the next lectures show otherwise
     assert rank_auto_terms(g, ["Fubini", "Rimane", "riemann"], ["Fubini et Lebesgue", "Lebesgue"]) == \
         ["Lebesgue", "Fubini", "Cauchy"]
+    assert rank_auto_terms(g, ["Hilbert"], ["Lebesgue", "Lebesgue"]) == ["Lebesgue", "Hilbert", "Cauchy"]
     # prompt: hand-made terms first, then automatic ones, slide terms after the first AUTO_IN_PROMPT
     assert Glossary.parse(with_auto_terms(note, ["Cauchy"])).prompt(["Slide"]) == "Riemann, Cauchy, Slide."
 
 
-def test_guard_topics_and_terms_need_evidence():
+def test_guard_topics_need_evidence():
     from stenny.llm import guard
     text = "Les suites de Cauchy convergent. Le critère de Cauchy, une suite de Cauchy. Naive Bayes classifier."
     assert guard.validate_topics(["suite de Cauchy", "Naive Bayes classifiers", "Théorème de Rolle", "Calculus",
                                   "intro: [a|b]", 3], text, existing=["Suite de Cauchy"], reserved=["Calculus"]) == \
         ["Suite de Cauchy", "Naive Bayes classifiers"]  # plural/singular match; existing spelling kept
     assert guard.clean_topic("a/b: [x] #y") == "a b x y"
-    # terms: twice in the text (case-insensitive, text's spelling wins) or on the slides; no short common words
-    assert guard.validate_terms(["critère de cauchy", "Cauchy", "Rolle", "suite", "naive bayes classifier"],
-                                text, known=["Cauchy"]) == []
-    assert guard.validate_terms(["suites de cauchy", "SUITE DE CAUCHY"], text + " suite de Cauchy") == ["suite de Cauchy"]
 
     class Slides:
         flat = "Théorème de Rolle"
 
         def contains(self, phrase, ignore_case=False):
             return phrase.casefold() in self.flat.casefold() if ignore_case else phrase in self.flat
-    assert guard.validate_terms(["Théorème de Rolle"], text, Slides()) == ["Théorème de Rolle"]
     assert guard.validate_topics(["Théorème de Rolle"], text, Slides()) == ["Théorème de Rolle"]
+
+
+def test_glossary_entries_from_claude_need_only_the_shape_of_a_spelling():
+    from stenny.llm import guard
+    assert guard.check_term("Bolzano-Weierstrass") is None and guard.check_term("k-means") is None
+    assert guard.check_term("mean") and guard.check_term("[[x]]") and guard.check_term("a b c d e f")
+    assert guard.check_correction("Rimane", "Riemann") is None
+    assert guard.check_correction("shy square", "chi-square") is None  # no similarity needed: Claude knows
+    assert guard.check_correction("the", "a")                          # would change ordinary text everywhere
+    assert guard.check_correction("x", "x") and guard.check_correction("a b c d e f", "g")
+    assert guard.check_correction("Rimane", "[[Riemann]]") and guard.check_correction("A", "B → C")
+
+
+def test_spelling_changes_ask_only_about_names_and_terms():
+    from stenny.llm.guard import spelling_changes
+    before = "Today: the bolt sano Weierstrass theorem. we use the mean of the cluster, says bayes."
+    after = "Today: the Bolzano-Weierstrass theorem. We use the median of the cluster, says Bayes."
+    # a misheard name and a name's capital; not the sentence's capital or an ordinary word
+    assert spelling_changes(before, after) == [("bolt sano Weierstrass", "Bolzano-Weierstrass"), ("bayes", "Bayes")]
+    assert spelling_changes("A long text.", "A long text, reworded entirely and at length.") == []
+    assert spelling_changes("the colonel trick", "the kernel trick") == []          # ordinary-looking word: no question
+    assert spelling_changes("the eigen vectors", "the eigenvectors") == [("eigen vectors", "eigenvectors")]
+
+
+def test_the_students_answer_goes_into_their_own_sections():
+    from stenny.glossary import TEMPLATE, Glossary, add_correction, with_auto_corrections, with_auto_terms
+    note = TEMPLATE.format(course="Calculus")
+    note = with_auto_corrections(with_auto_terms(note, ["Rimane", "Lebesgue"]), [("Rimane", "Riemannn"), ("Fubbini", "Fubini")])
+    after = add_correction(note, "Rimane", "Riemann")
+    g = Glossary.parse(after)
+    assert g.own_terms == ["Riemann"] and g.own_corrections == [("Rimane", "Riemann")]
+    assert g.auto_terms == ["Lebesgue"]                   # "Rimane" is corrected away now
+    assert g.auto_corrections == [("Fubbini", "Fubini")]  # Claude's correction of the same words gave way
+    assert "## Terms\n- Riemann\n" in after and "## Corrections\n- Rimane → Riemann\n" in after
+    # a second answer for the same words replaces the student's first one; nothing else of theirs changes
+    again = add_correction(after, "Rimane", "Riemann-Stieltjes")
+    assert Glossary.parse(again).own_corrections == [("Rimane", "Riemann-Stieltjes")]
+    assert Glossary.parse(again).own_terms == ["Riemann", "Riemann-Stieltjes"]
+    assert add_correction(again, "Rimane", "Riemann-Stieltjes") == again
+    # a note without the sections gets them
+    bare = add_correction("# Glossary\n\nMy notes.\n", "Koshi", "Cauchy")
+    assert Glossary.parse(bare).own_corrections == [("Koshi", "Cauchy")] and Glossary.parse(bare).own_terms == ["Cauchy"]
+    assert bare.startswith("# Glossary\n\nMy notes.\n")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="moves the old macOS folders (~/.config/lecture …), macOS only")

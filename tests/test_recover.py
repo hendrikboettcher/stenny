@@ -99,8 +99,7 @@ def test_memory_check_needs_normal_pressure_and_room(monkeypatch):
     assert not resources.enough_memory_for_final_pass()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="reads vm_stat and sysctl, macOS only for now (#2)")
-def test_the_real_readings_make_sense():
+def test_the_real_readings_make_sense():  # vm_stat and sysctl on a Mac, GlobalMemoryStatusEx on Windows
     assert resources.memory_pressure() in (1, 2, 4)
     assert 0 < resources.available_memory() < 1024 * resources.GB
 

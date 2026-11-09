@@ -1,13 +1,16 @@
 """What the Claude connector (`stenny mcp`, see mcp_server.py) can read and do, as plain functions.
 
 Everything returned is clean text, as a classmate would get it from `stenny share`: no frontmatter, no paths on
-this Mac, no microphone names, Obsidian links as plain text. Lectures are found through `share.library` and
-`vault.LectureFiles`, glossaries through `glossary.Glossary`, slides through `slides.Slides`, so the connector
-reads exactly what Stenny's window shows.
+this computer, no microphone names, Obsidian links as plain text. Lectures are found through `share.library` and
+`vault.LectureFiles`, glossaries through `glossary.Glossary`, so the connector reads exactly what Stenny's window
+shows.
 
-The only write is `suggest_glossary_terms`: proposed terms pass the same guard as the automatic terms after each
-lecture (`guard.validate_terms`: on the slides, or transcribed the same way at least twice) and go only into the
-"Terms (added automatically)" section, through `pipeline.update_glossary` and `vault.py`.
+The only writes are to a course's glossary: `suggest_glossary_terms` and `suggest_glossary_corrections`. Claude's
+entries are taken as they are (no evidence in the transcripts needed), as long as they have the shape of a spelling
+(`guard.check_term`, `guard.check_correction`), and go only into the "(added automatically)" sections, through
+`vault.py`. The student's own terms and corrections are never changed, and win over Claude's.
+
+`get_slides_text` is dormant: Stenny doesn't use slides any more, and the connector doesn't offer it.
 """
 
 import re
@@ -19,7 +22,7 @@ from .glossary import Glossary
 from .render import parse_frontmatter
 from .share import _body, _unlink, clean_summary, clean_transcript, library
 from .slides import Slides, SlidesError
-from .vault import LectureFiles, Vault, safe_name
+from .vault import LectureFiles, safe_name
 
 PART_CHARS = 40_000   # one part of a transcript (~10k tokens); a 1 h lecture is about 35-40k characters
 SLIDES_CHARS = 40_000
@@ -199,9 +202,8 @@ def list_courses(cfg) -> str:
 
 def list_lectures(cfg, course: str) -> str:
     name, entries = _course(cfg, course)
-    files = [LectureFiles(Path(e["transcript"]).parent, Path(e["transcript"]).parent.parent.name) for e in entries]
     lines = [f"{name}: {len(entries)} recording{'s' * (len(entries) != 1)}, oldest first."]
-    for i, (entry, lf) in enumerate(zip(entries, files)):
+    for i, entry in enumerate(entries):
         head = parse_frontmatter(Path(entry["transcript"]).read_text(encoding="utf-8")[:16384])
         topics = [_unlink(t) for t in head.get("topics") or []]
         sections = [p for p in _section_titles(entry)]
@@ -214,8 +216,7 @@ def list_lectures(cfg, course: str) -> str:
             lines.append(f"Topics: {', '.join(topics)}")
         if sections:
             lines.append(f"Sections: {'; '.join(sections)}")
-        lines.append("Has: transcript" + (", summary" if entry.get("summary") else "")
-                     + (", slides" if lf.slides() else ""))
+        lines.append("Has: transcript" + (", summary" if entry.get("summary") else ""))
     return "\n".join(lines)
 
 
@@ -359,13 +360,17 @@ def get_glossary(cfg, course: str) -> str:
     if not path.exists():
         return f"{name} has no glossary yet."
     g = Glossary.load(path)
-    manual = [t for t in g.terms if t not in g.auto_terms]
+
+    def items(values: list[str]) -> list[str]:
+        return [f"- {v}" for v in values] or ["(none)"]
+
     lines = [f"# Glossary: {name}", "",
-             "Correct spellings of names and technical terms in this course. The transcripts may misspell them.", "",
-             "## Terms (kept by the student)", *(f"- {t}" for t in manual or ["(none)"]), "",
-             "## Terms (added automatically from transcripts and slides)", *(f"- {t}" for t in g.auto_terms or ["(none)"]),
-             "", "## Corrections (applied to new transcripts)",
-             *(f"- {w} → {r}" for w, r in g.corrections or []), *(["(none)"] if not g.corrections else [])]
+             "Correct spellings of names and technical terms in this course. The transcripts may misspell them. "
+             "Corrections are applied word for word to new transcripts.", "",
+             "## Terms (the student's)", *items(g.own_terms), "",
+             "## Terms (added automatically)", *items(g.auto_terms), "",
+             "## Corrections (the student's)", *items([f"{w} → {r}" for w, r in g.own_corrections]), "",
+             "## Corrections (added automatically)", *items([f"{w} → {r}" for w, r in g.auto_corrections])]
     return "\n".join(lines)
 
 
@@ -403,45 +408,100 @@ def get_slides_text(cfg, course: str, lecture: str | int, first_page: int = 1, l
     return f"[Slides of {title}: {slides.count} pages, text only]\n\n" + "\n\n".join(out) + "\n"
 
 
-def suggest_glossary_terms(cfg, course: str, terms: list[str]) -> str:
-    """Add terms to the glossary's automatic section, if the course's transcripts or slides back them up."""
-    from .llm import guard
-    from .pipeline import update_glossary
-
+def _glossary_note(cfg, course: str) -> tuple[str, Path, list[dict]]:
+    """A course's name, its glossary note and its final lectures, for adding to the glossary."""
     name, entries = _course(cfg, course)
     if entries[0]["kind"] != "lecture":
         raise ConnectorError(f"'{name}' is a talk, not a course: talks have no glossary.")
-    vault = cfg.vault_for()
-    path = vault.glossary_path(name)
+    path = cfg.vault_for().glossary_path(name)
     if not path.exists():
         raise ConnectorError(f"{name} has no glossary note yet; Stenny makes one with the course's first lecture.")
+    return name, path, [e for e in entries if e["status"] == "final"]
+
+
+def _rank(cfg, name: str, finals: list[dict], new: list[str]) -> list[str]:
+    """`new` terms into the automatic section (ranked with the others); returns those that were added."""
+    from .pipeline import update_glossary
+
+    vault = cfg.vault_for()
+    latest = Path(finals[-1]["transcript"]) if finals else None
+    text = _body(latest.read_text(encoding="utf-8")) if latest else None
+    return update_glossary(vault, name, Glossary.load(vault.glossary_path(name)), new, text,
+                           latest.parent if latest else None)
+
+
+def suggest_glossary_terms(cfg, course: str, terms: list[str]) -> str:
+    """Add terms to the glossary's automatic section, as Claude spells them (no evidence needed)."""
+    from .llm import guard
+
+    name, path, finals = _glossary_note(cfg, course)
     glossary = Glossary.load(path)
-    finals = [e for e in entries if e["status"] == "final"]
-    texts = [_body(Path(e["transcript"]).read_text(encoding="utf-8")) for e in finals]
-    pages = [page for e in finals for page in ((_slides(e)[1] or Slides()).pages)]
-    known = [*glossary.terms, *(w for w, _ in glossary.corrections)]
-    known_keys = {k.casefold() for k in known}
-    text, slides = "\n\n".join(texts), Slides(pages) if pages else None
+    known = {k.casefold() for k in [*glossary.terms, *(w for w, _ in glossary.corrections)]}
     accepted, already, rejected = [], [], []
-    for term in dict.fromkeys(t for t in terms[:50] if isinstance(t, str) and t.strip()):
-        if " ".join(term.split()).strip(" .,;:").casefold() in known_keys:
+    for value in dict.fromkeys(t for t in terms[:50] if isinstance(t, str) and t.strip()):
+        term = guard.clean_entry(value)
+        if term.casefold() in known:
             already.append(term)
-        elif ok := guard.validate_terms([term], text, slides, [*known, *accepted]):
-            accepted += ok  # may carry the transcript's spelling instead of the proposed one
+        elif reason := guard.check_term(term):
+            rejected.append(f"{value} ({reason})")
         else:
-            rejected.append(term)
-    added = []
-    if accepted:
-        latest = Path(finals[-1]["transcript"])
-        added = update_glossary(vault, name, latest.parent, glossary, accepted, texts[-1])
+            accepted.append(term)
+            known.add(term.casefold())
+    added = _rank(cfg, name, finals, accepted) if accepted else []
     lines = [f"Added to {name}'s glossary (Terms added automatically): {', '.join(added)}" if added
              else f"Nothing added to {name}'s glossary."]
-    if accepted and not added:
-        lines.append(f"Accepted but already there or ranked out: {', '.join(accepted)}.")
     if already:
-        lines.append(f"Already in the glossary: {', '.join(already)}.")
+        lines.append(f"Already in the glossary (or corrected away by a correction): {', '.join(already)}.")
     if rejected:
-        lines.append(f"Not added (not on the slides, and not transcribed this way at least twice): "
-                     f"{', '.join(rejected)}. If one is a misheard spelling, ask the student to add a correction "
-                     "'wrong → right' to the glossary note.")
+        lines.append(f"Not added: {'; '.join(rejected)}.")
+    return "\n".join(lines)
+
+
+def suggest_glossary_corrections(cfg, course: str, corrections: list[str]) -> str:
+    """Add "wrong → right" corrections to the glossary's automatic corrections, as Claude gives them (no evidence
+    needed), and each right spelling to the automatic terms. A correction of the student's for the same words,
+    or one that would undo theirs, wins; an earlier automatic one for the same words is replaced."""
+    from .glossary import _pair, with_auto_corrections
+    from .llm import guard
+
+    name, path, finals = _glossary_note(cfg, course)
+    glossary = Glossary.load(path)
+    own_terms = {t.casefold() for t in glossary.own_terms}
+    own = dict(glossary.own_corrections)
+    own_right = {r for _, r in glossary.own_corrections}
+    auto = dict(glossary.auto_corrections)
+    added, replaced, already, rejected = [], [], [], []
+    for value in dict.fromkeys(c for c in corrections[:50] if isinstance(c, str) and c.strip()):
+        pair = _pair(" ".join(value.split()))
+        if not pair:
+            rejected.append(f"{value} (write it as 'wrong → right')")
+            continue
+        wrong, right = guard.clean_entry(pair[0]), guard.clean_entry(pair[1])
+        if reason := guard.check_correction(wrong, right):
+            rejected.append(f"{value} ({reason})")
+        elif wrong in own:
+            rejected.append(f"{value} (the student corrects '{wrong}' to '{own[wrong]}' themselves)")
+        elif wrong in own_right or wrong.casefold() in own_terms:
+            rejected.append(f"{value} (the student lists '{wrong}' as a correct spelling)")
+        elif auto.get(wrong) == right:
+            already.append(f"{wrong} → {right}")
+        else:
+            (replaced if wrong in auto else added).append(f"{wrong} → {right}")
+            auto[wrong] = right
+    if added or replaced:
+        old = path.read_text(encoding="utf-8")
+        cfg.vault_for().write(path, with_auto_corrections(old, list(auto.items())))
+        _rank(cfg, name, finals, [r for w, r in auto.items() if f"{w} → {r}" in added + replaced])
+    lines = []
+    if added:
+        lines.append(f"Added to {name}'s glossary: {'; '.join(added)}. Applied word for word to the lectures "
+                     "transcribed from now on; the right spellings also go into Whisper's prompt.")
+    if replaced:
+        lines.append(f"Replaced an earlier automatic correction: {'; '.join(replaced)}.")
+    if not added and not replaced:
+        lines.append(f"Nothing added to {name}'s glossary.")
+    if already:
+        lines.append(f"Already in the glossary: {'; '.join(already)}.")
+    if rejected:
+        lines.append(f"Not added: {'; '.join(rejected)}.")
     return "\n".join(lines)

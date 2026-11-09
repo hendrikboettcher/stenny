@@ -73,6 +73,16 @@ class FasterWhisperEngine:
         return restrict(dict(info.all_language_probs or []), allowed)
 
 
+def download(model: str) -> str:
+    """Fetches the model into the folder _load() reads it from (`stenny download-model`), and returns where it is."""
+    from faster_whisper.utils import download_model
+
+    from .. import paths
+
+    root = paths.models_dir()
+    return download_model(model_name(model), cache_dir=str(root) if root else None)
+
+
 def _cuda() -> bool:
     try:
         import ctranslate2

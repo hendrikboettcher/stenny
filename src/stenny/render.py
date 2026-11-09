@@ -3,6 +3,7 @@
 
 import json
 import re
+import sys
 from dataclasses import dataclass, field
 
 from .textproc import fmt_hms
@@ -20,6 +21,8 @@ def draft_status(status: str, waiting: str | None = None) -> str:
     """Where a recording's transcript is, in one sentence: for the placeholder's note, Stenny's window and Claude.
     The only reason given is the one new users wonder about: the Mac is on battery (frontmatter `waiting`)."""
     if status == "queued" and waiting == "battery":
+        if sys.platform == "win32":
+            return "The recording is finished; its transcript is made once the PC is plugged in."
         return "The recording is finished; its transcript is made once the Mac is plugged in."
     if status == "queued":
         return "The recording is finished; its transcript comes later."
@@ -181,9 +184,8 @@ def pause_marker(gap, backup_mic: str | None = None) -> str:
 
 
 AUDIO_ONLY = ("**Audio only:** this is what the microphone heard, not what was shown. Words like \"this\", "
-              "\"here\" or \"as you can see\" often point to slides or the board, which are not in the text. The "
-              "lecture may digress from the slides, and voices of people nearby or questions from the room can "
-              "appear without being marked as such.")
+              "\"here\" or \"as you can see\" often point to something shown in the room, which is not in the text, "
+              "and voices of people nearby or questions from the room can appear without being marked as such.")
 
 
 def transcript_md(lec: Lecture, paragraphs: list[dict], sections: list[dict]) -> str:
