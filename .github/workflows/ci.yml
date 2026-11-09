@@ -1,13 +1,18 @@
-# Stenny on macOS and Windows: the engine's tests, and the app type-checked and compiled, on every pull request
-# and push to dev/main. The Windows runners are how Windows gets tested at all (see #2); what they can't cover
-# (microphone, GPU, the installer) is said in each PR.
+# Stenny on macOS and Windows, in English and German. Two tiers, one branch (main):
+# - quick, on every pull request and push to main: the engine's tests (tests/test_i18n.py keeps English and German
+#   complete) and the app type-checked and compiled;
+# - full, on a release tag (v*) or by hand (Actions ▸ CI ▸ Run workflow): the quick tier plus the installers built
+#   on both systems (installers job below).
+# The Windows runners are how Windows gets tested at all (see #2); what they can't cover (microphone, GPU) is said in
+# each PR.
 name: CI
 
 on:
   pull_request:
-    branches: [dev, main]
+    branches: [main]
   push:
-    branches: [dev, main]
+    branches: [main]
+    tags: ["v*"]
   workflow_dispatch:
 
 concurrency:
@@ -79,3 +84,57 @@ jobs:
       - name: Compile
         working-directory: desktop/src-tauri
         run: cargo check --locked --all-targets
+
+  # Full tier only. Builds the installers (macOS: .app + .dmg, Windows: .msi + setup .exe) to prove bundling works on
+  # both systems; they are kept as the run's artifacts for a week, unsigned, NOT for handing out. On the Mac the Swift
+  # helpers and the connector are the real ones (scripts/helpers.sh); ffmpeg/ffprobe are placeholders (the LGPL build,
+  # app/build-ffmpeg.sh, takes too long here). On Windows every helper is still a placeholder: stenny-agent and
+  # stenny-rec have no Windows version yet (#2), so the Windows installer is a bundling check, not a working app.
+  installers:
+    name: Installer (${{ matrix.os }})
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    needs: app  # not engine: a failing engine test shouldn't hide whether the installers build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+      - name: Install
+        run: npm ci
+      - name: Helpers (macOS)
+        if: runner.os == 'macOS'
+        run: scripts/helpers.sh
+      - name: Placeholders for the helpers that can't be built here
+        shell: bash
+        run: |
+          triple=$(rustc -vV | sed -n 's/^host: //p')
+          ext=""; [[ "$triple" == *windows* ]] && ext=".exe"
+          mkdir -p src-tauri/binaries src-tauri/resources
+          for b in stenny-agent stenny-rec ffmpeg ffprobe; do
+            f="src-tauri/binaries/$b-$triple$ext"; [[ -e "$f" ]] || touch "$f"
+          done
+          [[ -e src-tauri/resources/Stenny.mcpb ]] || touch src-tauri/resources/Stenny.mcpb
+      - name: Build the installers
+        run: npm run tauri build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stenny-${{ runner.os }}-unsigned
+          retention-days: 7
+          path: |
+            desktop/src-tauri/target/release/bundle/dmg/*.dmg
+            desktop/src-tauri/target/release/bundle/msi/*.msi
+            desktop/src-tauri/target/release/bundle/nsis/*.exe

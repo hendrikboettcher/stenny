@@ -101,6 +101,12 @@ Stenny folder (`folder` in config.toml, default `~/Documents/Stenny`, may be ins
 - **The app speaks English and German.** New user-facing text goes into both `desktop/src/lib/locales/*.json`
   (Svelte `t()`, Rust `tr!`) or, for the engine, `tr()` with an entry in `i18n.DE`; German with "du" and the terms
   in desktop/README.md ("Language"). Vault content (transcripts, summaries, file names) is never translated.
+- **One branch, `main`.** Work on a short branch, open a pull request into `main`; CI's quick tier (engine tests and
+  the app compiled on macOS and Windows, English/German checked by tests/test_i18n.py) must pass before merging. A
+  release is a tag `vX.Y.Z` on main, which also runs the full tier (installers built on both systems). There is no
+  `dev` branch any more (merged into main on 2026-11-09).
+- **Every change is for macOS and Windows, in English and German** (see Platforms at the top and the English/German rule above); a PR says
+  what it couldn't test on Windows.
 - **Keep README.md, SETUP.md and config.example.toml current** in the same commit as a change to a feature, a command, a setting or a storage location.
 - Don't install large dependencies (>100 MB) or persistent system config without asking the user. The one exception: setup installs the queue's launchd agent by itself (`stenny schedule uninstall` removes it).
 
