@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from stenny import jobs, pipeline, resources
 from stenny.config import Config, Course
@@ -31,6 +32,7 @@ class FakeMic:
 
     name, clock_rate, restartable = "fake mic", 1.0, True
     microphone = "Alex’s iPhone Microphone"
+    made = []  # every FakeMic of the running test: their clocks stop when it ends (stop_clocks)
 
     def __init__(self, startup_blocks=0, dropout=None, zeros=None):
         self.ticks, self.running, self.rng, self.out = 0, False, np.random.default_rng(0), None
@@ -42,6 +44,8 @@ class FakeMic:
         self.twins = []         # FakeBackup microphones hearing the same room on the same clock
         self.lock = threading.Lock()
         self.started = threading.Event()  # the clock stands at 0 until the session starts the microphone
+        self.closed = False
+        FakeMic.made.append(self)
         threading.Thread(target=self._clock, daemon=True).start()
 
     @property
@@ -75,7 +79,7 @@ class FakeMic:
 
     def _clock(self):
         self.started.wait()
-        while True:
+        while not self.closed:
             time.sleep(TICK_S)
             self._run_due()
             with self.lock:
@@ -112,6 +116,18 @@ class FakeMic:
 
     def error(self):
         return ""
+
+
+@pytest.fixture(autouse=True)
+def stop_clocks():
+    """A clock left ticking every 2 ms after its test would compete with the next tests' sessions for Python's
+    lock (14 of them by the end of this file), enough on a Windows runner to delay a session's loop past what
+    the assertions allow."""
+    yield
+    for mic in FakeMic.made:
+        mic.closed = True
+        mic.started.set()  # a clock still waiting for its start ends too
+    FakeMic.made.clear()
 
 
 class FakeBackup:
@@ -468,7 +484,8 @@ def test_low_disk_stops_the_backup_and_a_full_disk_ends_cleanly(tmp_path, monkey
         state["disk"] = resources.DISK_LOW - 1
         wait_until(lambda: s.disk_low)
         assert s.warning == "Disk almost full" and not s.backup.running
-        wait_until(lambda: mic.t >= 14)
+        # the session reads what the clock wrote a little later (much later on a busy runner): wait for both
+        wait_until(lambda: mic.t >= 14 and s.recorded >= 13 * SAMPLE_RATE)
         state["disk"] = resources.DISK_FULL - 1
 
     s = run_session(tmp_path, monkeypatch, mic, backup=backup, script=script)
