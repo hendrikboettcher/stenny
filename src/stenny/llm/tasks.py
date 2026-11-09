@@ -1,5 +1,5 @@
-"""The two LLM tasks: (1) propose an edit list (sections + term fixes) plus the lecture's topics and glossary
-terms, (2) write a summary."""
+"""The two LLM tasks: (1) propose an edit list (sections + term fixes) plus the lecture's topics, (2) write a
+summary."""
 
 import json
 import re
@@ -16,8 +16,7 @@ STRUCTURE_SYSTEM = """You add structure to an automatic lecture transcript. You 
 You receive numbered paragraphs ("P<number> [h:mm:ss] text"; "(unsure)" after the time means Whisper was unsure about part of that paragraph). Reply with ONLY a JSON object, no prose:
 {"sections": [{"at": <paragraph number>, "title": "<heading>"}],
  "term_fixes": [{"p": <paragraph number>, "from": "<exact words from that paragraph>", "to": "<corrected words>"}],
- "topics": ["<topic>"],
- "terms": ["<term>"]}
+ "topics": ["<topic>"]}
 
 sections:
 - Start a new section where the lecturer moves to a new topic (typically every 5-20 minutes).
@@ -31,9 +30,7 @@ term_fixes (optional, use sparingly):
 topics: the 3-8 main subjects of these paragraphs, for linking lectures that cover the same thing.
 - Specific concepts, methods, models, theorems or named things (e.g. "Naive Bayes", "cross-validation"), never generic words ("introduction", "example", "overview", "exercise").
 - Name each the way it is usually written, in the lecture language, 1-5 words, singular. If one of the existing topics below means the same thing, use its name exactly.
-- Only what these paragraphs actually discuss, not what is merely mentioned in passing.
-
-terms: up to 15 technical terms and names from these paragraphs that a speech recognizer could misspell (jargon, method names, people, places), each written correctly. Only words the lecturer used; no common words, and none that are already in the glossary."""
+- Only what these paragraphs actually discuss, not what is merely mentioned in passing."""
 
 SLIDES_RULES = """
 
@@ -92,15 +89,15 @@ def parse_json(text: str) -> dict:
 
 def propose_edits(paragraphs: list[dict], glossary: Glossary, languages: list[str], backend,
                   slides=None, topics: list[str] = ()) -> tuple[dict, Usage]:
-    """Ask for sections, term fixes, topics and glossary terms chunk by chunk. Returns the raw (unvalidated)
-    proposals as {"sections", "term_fixes", "topics", "terms"}. `slides` (slides.Slides): their text goes
+    """Ask for sections, term fixes and topics chunk by chunk. Returns the raw (unvalidated) proposals as
+    {"sections", "term_fixes", "topics"}. `slides` (slides.Slides): their text goes
     along as reference, for slide pages and spellings. `topics`: topic names already in use, to reuse."""
     lang = " / ".join(LANG_NAMES.get(l, l) for l in languages)
     terms = ", ".join(glossary.terms) or "(none)"
     existing = "; ".join(topics) or "(none yet)"
     system = STRUCTURE_SYSTEM + (SLIDES_RULES if slides else "")
     reference = f"Slides ({slides.count} pages):\n{slides.reference()}\n\n" if slides else ""
-    sections, fixes, found_topics, found_terms, usage = [], [], [], [], Usage()
+    sections, fixes, found_topics, usage = [], [], [], Usage()
     for offset, part in chunks(paragraphs):
         prompt = (f"Lecture language: {lang} (write section titles in {lang})\nGlossary (correct spellings): {terms}\n"
                   f"Existing topics: {existing}\n"
@@ -111,14 +108,13 @@ def propose_edits(paragraphs: list[dict], glossary: Glossary, languages: list[st
         sections += data.get("sections") or []
         fixes += data.get("term_fixes") or []
         found_topics += [t for t in data.get("topics") or [] if isinstance(t, str)]
-        found_terms += [t for t in data.get("terms") or [] if isinstance(t, str)]
     # drop a repeated heading where one chunk's last topic continues into the next chunk
     deduped = []
     for s in sections:
         if deduped and str(s.get("title", "")).casefold() == str(deduped[-1].get("title", "")).casefold():
             continue
         deduped.append(s)
-    return {"sections": deduped, "term_fixes": fixes, "topics": found_topics, "terms": found_terms}, usage
+    return {"sections": deduped, "term_fixes": fixes, "topics": found_topics}, usage
 
 
 def summarize(paragraphs: list[dict], languages: list[str], backend) -> tuple[str, Usage]:

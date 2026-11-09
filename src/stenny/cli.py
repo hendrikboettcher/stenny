@@ -278,11 +278,10 @@ They are automatic transcripts: names and technical terms may be misheard, so pr
 project files. Don't change any of these files, with one exception:
 
 The glossary _Glossaries/{course} (glossary).md makes future transcripts more accurate. Keep it up to date:
-if it has few terms, fill it from the project files; whenever you notice a name or technical term of this
-course that is missing, add it under "## Terms" as "- term"; for a misheard spelling you see in a
-transcript, add "- wrong → right" under "## Corrections". Leave "## Terms (added automatically)" to the tool
-(it rewrites that section after every lecture); to keep one of its terms first, move it up to "## Terms".
-Tell me briefly when you changed it."""
+whenever you notice a name or technical term of this course that is missing, add it under
+"## Terms (added automatically)" as "- term"; for a misheard spelling you see in a transcript, add
+"- wrong → right" under "## Corrections (added automatically)" (start that section at the end of the note if it
+isn't there). Never change "## Terms" or "## Corrections": they are mine. Tell me briefly when you changed it."""
 
 
 def cmd_project_instructions(args) -> None:
@@ -363,6 +362,8 @@ def lecture_job(cfg, course: str, folder: str, event: bool = False) -> Path | No
 
 
 def cmd_queue(args) -> None:
+    if getattr(args, "scheduled", False):
+        jobs.run_without_console()  # Windows' task starts pythonw.exe; does nothing anywhere else
     cfg = load_config()
     items = jobs.pending()
     lecture = getattr(args, "lecture", None)
@@ -378,6 +379,20 @@ def cmd_queue(args) -> None:
         return
     if not items:
         return
+    if not lecture:
+        return run_queue(cfg, args, items)
+    # "being made" at once, also when started from a terminal (the app's finish_now marks it before starting this);
+    # anything that stops the pass before it begins (another one running, the model not loading) makes it wait again
+    mark_job_draft(cfg, items[0], "finalizing")
+    try:
+        run_queue(cfg, args, items, lecture=True)
+    except BaseException:
+        mark_job_draft(cfg, items[0], "queued")  # no-op once the job is done or failed (its file is gone then)
+        raise
+
+
+def run_queue(cfg, args, items: list[Path], lecture: bool = False) -> None:
+    """cmd_queue's work: `items` (just the one lecture's job), or with `lecture` False every pending job."""
     if args.scheduled:
         if cfg.require_ac_for_queue and not jobs.on_ac_power():
             return
@@ -500,7 +515,8 @@ def cmd_live(args) -> None:
     recover_sessions(cfg)
     cfg.data_dir.mkdir(parents=True, exist_ok=True)
     if (free := resources.free_disk(cfg.data_dir)) < resources.DISK_TO_START:
-        sys.exit(f"Only {free / resources.GB:.1f} GB free on this Mac. A lecture needs about "
+        computer = "PC" if sys.platform == "win32" else "Mac"
+        sys.exit(f"Only {free / resources.GB:.1f} GB free on this {computer}. A lecture needs about "
                  f"{resources.DISK_TO_START / resources.GB:.1f} GB, so free some space first.")
     engine = get_engine(cfg.model, cfg.engine)
     session = LiveSession(cfg, course, source, engine, lang=args.lang, draft=cfg.live_draft and not args.no_draft,
@@ -725,12 +741,30 @@ def cmd_control(args) -> None:
 
 
 def cmd_schedule(args) -> None:
+    if sys.platform == "win32":
+        schedule_task(args.action)
+        return
     if args.action == "install":
         path = jobs.install_agent()
         print(f"Installed {path}: checks the queue every 15 min (runs only on AC power"
               f"{' and at night' if load_config().night_only else ''}). Log: {jobs.LOGS_DIR / 'queue.log'}")
     else:
         print("Removed." if jobs.uninstall_agent() else "No schedule installed.")
+
+
+def schedule_task(action: str) -> None:
+    """`stenny schedule` on Windows: the task in Task Scheduler (jobs.install_task)."""
+    try:
+        if action == "uninstall":
+            print("Removed." if jobs.uninstall_agent() else "No schedule installed.")
+            return
+        cfg = load_config()
+        only = [w for w, on in (("on AC power", cfg.require_ac_for_queue), ("at night", cfg.night_only)) if on]
+        task = jobs.install_agent()
+        print(f'Added "{task}" to Task Scheduler: checks the queue every {jobs.QUEUE_INTERVAL_S // 60} min'
+              f"{' (runs only ' + ' and '.join(only) + ')' if only else ''}. Log: {jobs.LOGS_DIR / 'queue.log'}")
+    except OSError as e:
+        sys.exit(f"Task Scheduler: {e}")
 
 
 def cmd_update(args) -> None:
@@ -804,8 +838,7 @@ def main() -> None:
     p.add_argument("--date", help="lecture date/time if the file's own timestamp is wrong (YYYY-MM-DD[THH:MM])")
     p.add_argument("--no-llm", action="store_true", help="skip AI structuring and summary (fully offline)")
     p.add_argument("--no-summary", action="store_true", help="structure with AI but don't write the summary")
-    p.add_argument("--slides", type=Path, help="lecture slides (PDF): stored in the lecture folder, used for spelling and "
-                                                "slide references")
+    p.add_argument("--slides", type=Path, help=argparse.SUPPRESS)  # dormant: Stenny doesn't use slides any more
     g = p.add_mutually_exclusive_group()
     g.add_argument("--now", action="store_true", help="full speed (normal priority)")
     g.add_argument("--later", action="store_true", help="queue it; runs on AC power / at night")
@@ -813,11 +846,11 @@ def main() -> None:
     p.set_defaults(func=cmd_add)
 
     p = sub.add_parser("refresh", help="redo only the AI step (structure, term fixes, summary) of a lecture, "
-                                       "e.g. after adding slides or editing the glossary")
+                                       "e.g. after editing the glossary")
     p.add_argument("course", help="course name or alias (or a talk's title, with --event)")
     p.add_argument("--event", action="store_true", help="COURSE is the title of a talk or event")
     p.add_argument("date", help="lecture folder name, e.g. 2026-10-15 or \"2026-10-15 (2)\"")
-    p.add_argument("--slides", type=Path, help="copy these slides (PDF) into the lecture folder first")
+    p.add_argument("--slides", type=Path, help=argparse.SUPPRESS)  # dormant, as for add
     p.add_argument("--no-llm", action="store_true", help="rebuild the transcript without AI (time sections)")
     p.add_argument("--no-summary", action="store_true", help="don't rewrite the summary")
     p.set_defaults(func=cmd_refresh)
@@ -828,7 +861,7 @@ def main() -> None:
     p.set_defaults(func=cmd_project_instructions)
 
     p = sub.add_parser("mcp", help="the connector for Claude: lets Claude Desktop read your lectures, summaries, "
-                       "slides and glossaries (a local MCP server on stdin/stdout)")
+                       "and glossaries (a local MCP server on stdin/stdout)")
     p.add_argument("--desktop-config", action="store_true",
                    help="print the entry for Claude Desktop's claude_desktop_config.json instead of serving")
     p.set_defaults(func=cmd_mcp)
@@ -932,7 +965,8 @@ def main() -> None:
     p.add_argument("--event", action="store_true", help="--lecture names a talk")
     p.set_defaults(func=cmd_queue)
 
-    p = sub.add_parser("schedule", help="install/remove the launchd agent that runs the queue")
+    scheduler = "Task Scheduler task" if sys.platform == "win32" else "launchd agent"
+    p = sub.add_parser("schedule", help=f"install/remove the {scheduler} that runs the queue")
     p.add_argument("action", choices=["install", "uninstall"])
     p.set_defaults(func=cmd_schedule)
 

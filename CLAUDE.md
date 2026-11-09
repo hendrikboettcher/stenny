@@ -22,7 +22,7 @@ lecture notifications, open at login, PDF for Share…), and the old Swift app i
 ## Stack
 - Python 3.12, uv, packaged as the `stenny` CLI (`uv tool install -e .`)
 - mlx-whisper (Metal) for transcription on a Mac, faster-whisper (CTranslate2) on Windows; ffmpeg for audio decoding/encoding
-- pypdf for slide text (poppler's `pdftotext` is preferred when installed)
+- pypdf for slide text (dormant: slides are no longer part of Stenny, #20)
 - Optional: `claude` CLI or the `anthropic` SDK for structuring and summaries
 - `mcp` (the official MCP SDK) for the connector, `stenny mcp`
 - pytest for tests
@@ -38,16 +38,18 @@ src/stenny/
   engines/        Whisper engines behind one interface: mlx (Mac), faster-whisper (Windows); `[transcription] engine`
   textproc.py     segment cleanup: hallucination filter, gap filling, paragraphs
   language.py     fixed or per-chunk language handling
-  glossary.py     per-course glossary: Whisper prompt (token budget, glossary first) + deterministic replacements;
-                  the "Terms (added automatically)" section is the only part the tool writes
-  slides.py       the lecture's slides PDF: page text, prompt terms, reference text for the LLM
+  glossary.py     per-course glossary, Stenny's list of correct spellings: Whisper prompt (token budget) + word-for-word
+                  corrections; fills itself from the student's fixes ("Always write it like this?" → their own sections)
+                  and from Claude (connector → the "(added automatically)" sections, never over the student's)
+  slides.py       dormant (#20): a lecture's slides PDF; nothing new may rely on it or point users to it
   course_files.py generated _Course Files/<Course> (overview|all lectures|summaries).md and _Topics/<topic>.md;
                   renumbers lectures, sets previous/next links
   share.py        the library (every lecture and talk, for Stenny's window) and clean copies to share
   word.py         Word copies (.docx) without textutil, for Windows: share.py's blocks as a few XML parts in a zip
   connector.py    what Claude may read through the connector, as clean text (no paths, no microphones): courses,
-                  lectures, transcripts in parts, summaries, search, glossary, slide text; one guarded write
-                  (`suggest_glossary_terms`: guard.validate_terms → pipeline.update_glossary, automatic section only)
+                  lectures, transcripts in parts, summaries, search, glossary; two writes, both to the glossary's automatic
+                  sections (`suggest_glossary_terms`, `suggest_glossary_corrections`: taken as given if guard.check_term /
+                  check_correction accept their shape; the student's own entries win)
   mcp_server.py   `stenny mcp`: connector.py as a local MCP server (stdio, official `mcp` SDK) + study instructions
   app_server.py   `stenny app-server`: the engine behind the new app (desktop/), JSON lines over stdio (library,
                   lecture, make_copy, finish_now); plain functions of (cfg, params), so a phone page can serve them too
@@ -67,9 +69,12 @@ src/stenny/
   vault.py        safe writes into the Stenny folder (courses, Talks/, _Glossaries …), folder rule enforcement
   migrate.py      `stenny migrate`: an older install (~/Lectures Data, talks in <vault>/Recordings) into today's
                   places, once; the app runs it at start (`on_start`, also makes a config if there is none)
-  jobs.py         queue, AC-power check, priority wrappers
+  jobs.py         queue, AC-power check, priority wrappers, keep awake; the queue's background job (launchd agent,
+                  on Windows a Task Scheduler task started with pythonw.exe, `run_without_console`)
+  winsys.py       Windows' own calls (ctypes, kernel32) behind jobs.py and resources.py: priority class and background
+                  mode, AC power, SetThreadExecutionState, GlobalMemoryStatusEx
   live/           live mode: sources.py (mic/file via ffmpeg), session.py (record, chunk, draft,
-                  pause/resume, spans → lecture time), control.py (Unix socket JSON API)
+                  pause/resume, spans → lecture time), control.py (JSON lines: a Unix socket, on Windows a named pipe)
 app/              Swift menu bar app (SwiftPM + build.sh): starts `stenny live`, pause shortcut (`[app] pause_shortcut`,
                   read via `stenny app-settings`, default ⌘⇧Ü), status via socket; make-cert.sh: signing certificate;
                   also builds `stenny-rec`, the native microphone recorder bundled in Stenny.app;
@@ -85,17 +90,19 @@ tests/            pytest, no model downloads needed
 bench/            engine benchmark scripts
 ```
 
-Stenny folder (`folder` in config.toml, default `~/Documents/Stenny`, may be inside an Obsidian vault): `<folder>/<Course>/<YYYY-MM-DD>/<Course> <YYYY-MM-DD>{.md, (summary).md, (slides).pdf}`, talks in `<folder>/Talks/<Title>/<date>/` (`vault.TALKS_DIR`; a course can't be called that), plus `<folder>/_Glossaries/<Course> (glossary).md`, `<folder>/_Course Files/` and `<folder>/_Topics/`. **All file names come from `vault.LectureFiles`** (older lectures keep `Transcript.md` etc.). The files are meant as AI context: keep them self-describing (course, lecture number, date in frontmatter and title) and linked to each other.
+Stenny folder (`folder` in config.toml, default `~/Documents/Stenny`, may be inside an Obsidian vault): `<folder>/<Course>/<YYYY-MM-DD>/<Course> <YYYY-MM-DD>{.md, (summary).md}`, talks in `<folder>/Talks/<Title>/<date>/` (`vault.TALKS_DIR`; a course can't be called that), plus `<folder>/_Glossaries/<Course> (glossary).md`, `<folder>/_Course Files/` and `<folder>/_Topics/`. **All file names come from `vault.LectureFiles`** (older lectures keep `Transcript.md` etc.). The files are meant as AI context: keep them self-describing (course, lecture number, date in frontmatter and title) and linked to each other.
 
 ## Rules
 - **Never create, modify or delete anything outside the Stenny folder** (`folder` in config.toml; it may sit inside the user's Obsidian vault). All writes there go through `vault.py`.
 - **Folder rule:** each folder contains either only folders or only files, never both. `vault.py` enforces this; don't bypass it.
 - **Raw transcript is sacred:** the raw output (`Recordings/<Course>/… (raw).md` in Stenny's data place, outside the Stenny folder) is written before any post-processing and never changed by the LLM step.
-- **The LLM never rewrites text.** It returns an edit list (section headings with optional slide ranges, term fixes) that `llm/guard.py` validates and applies. A term fix must point to a glossary term, or to words found verbatim in the slide text (stricter where Whisper was confident). Slide ranges must exist in the PDF. Free-form LLM text appears only in `Summary.md`, clearly labelled. Topics and automatic glossary terms don't change the text, but they too need evidence (`guard.validate_topics` / `validate_terms`): a topic's words must be in the transcript or slides, a term on the slides or transcribed the same way twice. Never add corrections automatically.
+- **The LLM never rewrites text.** It returns an edit list (section headings, term fixes) that `llm/guard.py` validates and applies. A term fix must point to a glossary term; the AI step never fixes a term from its own knowledge. Free-form LLM text appears only in `Summary.md`, clearly labelled. Topics don't change the text, but they need evidence (`guard.validate_topics`: a topic's words must be in the transcript). The AI step adds no glossary terms or corrections.
+- **Slides are not part of Stenny** (#20): nothing users see (app, connector, docs, CLI help) mentions slides or assumes they exist. The slide code (`slides.py`, the hidden `--slides`) stays dormant; nothing new relies on it.
+- **The glossary fills itself; the student's entries always win.** Its sources: the student's own fixes ("Always write it like this?" → `glossary.add_correction`, their Terms/Corrections) and Claude through the connector (taken as given, into the "(added automatically)" sections, never over the student's). Claude's and the student's corrections are applied word for word, so they must pass `guard.check_correction` (a spelling of a few words, never a common word).
 - `segments.json` (in Recordings/, outside the Stenny folder) keeps every segment plus the lecture details (`meta.lecture`), so `stenny refresh` can rebuild everything after Whisper without the audio.
 - **Only what you or Claude read goes into the Stenny folder** (transcripts, summaries, glossaries, course files, topic notes). Everything else lives in the system's app-data places, and only `paths.py` knows them: config.toml + consent.json in `~/Library/Application Support/Stenny/` (Windows `%APPDATA%\Stenny\`); `Recordings/<Course>/` (audio, segments.json, sessions, raw output) and `Queue/` in `~/Library/Application Support/Stenny/` (Windows `%LOCALAPPDATA%\Stenny\`, or `data_dir` in the config); logs in `~/Library/Logs/Stenny/` (Windows `%LOCALAPPDATA%\Stenny\Logs\`); shared copies in the caches folder. `STENNY_HOME` puts them all in one folder (tests, development). Never upload audio anywhere.
 - **No hardcoded personal paths, names or courses in code, tests or docs.** Everything comes from the config; examples stay neutral.
-- Heavy commands must respect the priority settings (`nice`/`taskpolicy`) unless the user passes `--now`.
+- Heavy commands must respect the priority settings (`nice`/`taskpolicy`; on Windows the priority class, `winsys.py`) unless the user passes `--now`.
 - **Microphone capture goes through `stenny-rec` (AVAudioEngine), never through Python** and not through ffmpeg's avfoundation input, which silently dropped ~1 s every ~8 s. Check every change to live mode with `stenny check`.
 - **The backup microphone only fills "no input" gaps** of the main one (final pass, `fill_from_backup`); never mix it into audio the main microphone delivered. It stops on pause like the main one. Its text is marked `backup` in segments and paragraphs.
 - **Pause means the microphone is off:** while paused, the audio source is stopped; never record or buffer paused audio.
@@ -111,14 +118,13 @@ Stenny folder (`folder` in config.toml, default `~/Documents/Stenny`, may be ins
 - **Every change is for macOS and Windows, in English and German** (see Platforms at the top and the English/German rule above); a PR says
   what it couldn't test on Windows.
 - **Keep README.md, SETUP.md and config.example.toml current** in the same commit as a change to a feature, a command, a setting or a storage location.
-- Don't install large dependencies (>100 MB) or persistent system config without asking the user. The one exception: setup installs the queue's launchd agent by itself (`stenny schedule uninstall` removes it).
+- Don't install large dependencies (>100 MB) or persistent system config without asking the user. The one exception: setup installs the queue's launchd agent (Windows: Task Scheduler task) by itself (`stenny schedule uninstall` removes it).
 
 ## Commands
 ```bash
 uv run pytest                          # tests
 uv run stenny add <audio> --course "<name>" [--lang fr] [--no-llm]
-uv run stenny add <audio> --course "<name>" --slides deck.pdf
-uv run stenny refresh "<course>" <YYYY-MM-DD[ (n)]>   # AI step again (slides, glossary edits), no Whisper
+uv run stenny refresh "<course>" <YYYY-MM-DD[ (n)]>   # AI step again (glossary edits), no Whisper
 uv run stenny courses                 # list configured courses
 uv run stenny mcp                     # the connector for Claude (MCP over stdio); --desktop-config: its config entry
 connector/build.sh                     # dist/Stenny.mcpb, the one-click Claude Desktop extension (macOS or Git Bash)

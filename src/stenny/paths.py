@@ -10,7 +10,8 @@ Two places:
     config          ~/Library/Application Support/Stenny/     %APPDATA%\\Stenny\\        config.toml, consent.json
     data            ~/Library/Application Support/Stenny/     %LOCALAPPDATA%\\Stenny\\   Recordings/<Course>/ (audio,
                                                                                        segments.json, sessions, raw
-                                                                                       output), Queue/, live.sock
+                                                                                       output), Queue/
+    live control    live.sock in the data place               \\\\.\\pipe\\stenny-live-<tag>  (control_address)
     logs            ~/Library/Logs/Stenny/                    %LOCALAPPDATA%\\Stenny\\Logs\\
     cache           ~/Library/Caches/Stenny/                  %LOCALAPPDATA%\\Stenny\\Cache\\   Shared/ (copies to send)
     Whisper models  ~/.cache/huggingface (mlx's own)          %LOCALAPPDATA%\\Stenny\\Models\\
@@ -23,6 +24,7 @@ Older layouts (`~/Lectures Data/`, and before it `~/.config/lecture/` …) are m
 until then the config is still found at its old place.
 """
 
+import hashlib
 import os
 import sys
 from pathlib import Path
@@ -145,6 +147,16 @@ def tilde(path: Path | str) -> str:
         return path.as_posix()
 
 
+def control_address(data: Path) -> Path:
+    """Where a running recording answers (live/control.py): a Unix socket in the data place, or on Windows, which
+    has no Unix sockets in Python, a named pipe. Pipes share one name space on the whole PC, so the name comes from
+    the data place: each user, and each $STENNY_HOME, has their own."""
+    if _windows():
+        tag = hashlib.sha256(str(data).lower().encode()).hexdigest()[:16]
+        return Path(f"\\\\.\\pipe\\stenny-live-{tag}")
+    return data / "live.sock"
+
+
 CONFIG_DIR = config_dir()
 DATA_DIR = data_dir()
 LOGS_DIR = logs_dir()
@@ -152,7 +164,7 @@ CACHE_DIR = cache_dir()
 CONFIG_PATH = CONFIG_DIR / "config.toml"
 CONSENT_PATH = CONFIG_DIR / "consent.json"
 QUEUE_DIR = DATA_DIR / "Queue"
-SOCKET = DATA_DIR / "live.sock"
+SOCKET = control_address(DATA_DIR)
 SHARED_DIR = CACHE_DIR / "Shared"
 
 # the layout before (`stenny migrate` moves it, see migrate.py). With $STENNY_HOME (a test copy) an older layout is

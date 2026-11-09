@@ -88,7 +88,6 @@ One word for each thing, everywhere:
 | recording | Aufnahme |
 | transcript | Transkript |
 | summary | Zusammenfassung |
-| slides | Folien |
 | glossary | Glossar |
 | draft (live draft) | Entwurf (Live-Entwurf) |
 | pause shortcut | Kurzbefehl zum Pausieren |
