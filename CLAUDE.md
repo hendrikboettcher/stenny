@@ -94,6 +94,10 @@ Stenny folder (`folder` in config.toml, default `~/Documents/Stenny`, may be ins
 - **No hardcoded personal paths, names or courses in code, tests or docs.** Everything comes from the config; examples stay neutral.
 - Heavy commands must respect the priority settings (`nice`/`taskpolicy`) unless the user passes `--now`.
 - **Microphone capture goes through `stenny-rec` (AVAudioEngine), never through Python** and not through ffmpeg's avfoundation input, which silently dropped ~1 s every ~8 s. Check every change to live mode with `stenny check`.
+- **Starting, the microphone comes first:** nothing slow runs before the recorder starts (`cli.cmd_live`). The system's
+  input device records as "default" and is named after its first audio, when the backup microphone joins too
+  (`LiveSession.run(after_start=…)`); the library row exists by the time the status says "recording", and the menu bar
+  tells the windows (the "recording" event) instead of letting them wait for a poll.
 - **The backup microphone only fills "no input" gaps** of the main one (final pass, `fill_from_backup`); never mix it into audio the main microphone delivered. It stops on pause like the main one. Its text is marked `backup` in segments and paragraphs.
 - **Pause means the microphone is off:** while paused, the audio source is stopped; never record or buffer paused audio.
 - **The recording comes first (`resources.py`):** low memory costs the live draft, low disk the backup microphone, and a final pass waits for memory like it waits for power. A process that dies mustn't lose a lecture: `stenny recover` queues its final pass, and Stenny starts recording again without the draft.

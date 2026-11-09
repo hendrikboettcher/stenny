@@ -83,17 +83,43 @@
   // what the detail view depends on: a reload every few seconds gives new objects, but the same key
   let selectedKey = $derived(selected ? `${id(selected)}:${selected.status}` : "");
 
-  async function reload() {
+  // Several reloads can be under way at once (the window's focus, the timer, the menu bar's "recording" event), and
+  // the engine answers each in its own thread: only the latest one counts, or an older answer could take a recording
+  // that just appeared away again for a moment.
+  // `show`: the entry to show once it's read (in the same step, so the list never shows it with the old selection)
+  let reloads = 0;
+  async function reload(show?: (all: Entry[]) => Entry | undefined) {
+    const mine = ++reloads;
+    let next: Library;
     try {
-      data = await library();
-      failed = null;
+      next = await library();
     } catch (e) {
-      failed = String(e);
+      if (mine === reloads) failed = String(e);
       return;
+    }
+    if (mine !== reloads) return;
+    data = next;
+    failed = null;
+    const shown = show?.(next.entries);
+    if (shown) {
+      group = { course: shown.course, event: shown.kind === "event" };
+      selectedId = id(shown);
     }
     const all = [...groups.courses, ...groups.talks];
     if (!group || !all.some((g) => same(g, group))) group = all[0] ?? null;
     if (!selected) selectedId = entries[0] ? id(entries[0]) : null;
+  }
+
+  // From the menu bar (src-tauri/src/menubar.rs): the recording's state changed. The library is read again at once;
+  // a recording that just started is shown, in its course, without waiting for a click into the window.
+  type RecordingEvent = { state: string; course: string; kind: string; transcript: string; started: boolean };
+  async function recordingChanged(r: RecordingEvent) {
+    if (r.state === "starting") return; // its transcript file isn't there yet
+    await reload(r.started && !editing ? (all) => {
+      const live = all.filter((e) => e.status === "live");
+      return live.find((e) => e.transcript === r.transcript)
+        ?? live.find((e) => e.course === r.course && (e.kind === "event") === (r.kind === "event"));
+    } : undefined);
   }
 
   function pick(g: Group) {
@@ -103,18 +129,22 @@
 
   // The summary of the selected recording, or its text so far while it has no transcript yet (looked at again
   // every 10 s, as it grows during a recording); reloaded when the selection or its status changes.
+  // "Loading…" only if it takes a moment: usually the text is there at once, and a word flashing up in between reads
+  // as a flicker.
+  let slow = $state(false);
   $effect(() => {
     const key = selectedKey;
     const entry = untrack(() => selected);
-    untrack(() => { summary = undefined; progress = null; notice = null; shareOpen = false; });
+    untrack(() => { summary = undefined; progress = null; notice = null; shareOpen = false; slow = false; });
     if (!key || !entry) return;
     let current = true;
     const load = () => lecture(entry)
       .then((r) => { if (current) { summary = r.summary; progress = r.progress; } })
       .catch(() => { if (current) summary = null; });
     load();
+    const wait = setTimeout(() => { if (current) slow = true; }, 400);
     const timer = isDraft(entry) ? setInterval(load, 10000) : undefined;
-    return () => { current = false; clearInterval(timer); };
+    return () => { current = false; clearTimeout(wait); clearInterval(timer); };
   });
 
   $effect(() => localStorage.setItem("withSummary", String(withSummary)));
@@ -122,7 +152,7 @@
   // While a draft waits or finishes, look again now and then, so "final" shows up by itself.
   $effect(() => {
     if (!data?.entries.some((e) => e.status === "queued" || e.status === "finalizing" || e.status === "live")) return;
-    const timer = setInterval(reload, 5000);
+    const timer = setInterval(() => reload(), 5000);
     return () => clearInterval(timer);
   });
 
@@ -147,12 +177,15 @@
     const onFocus = () => reload();
     window.addEventListener("focus", onFocus);
     window.addEventListener("keydown", settingsShortcut);
-    let unlisten: (() => void) | undefined;
-    if ("__TAURI_INTERNALS__" in window) listen("open-settings", () => openSettings()).then((u) => (unlisten = u));
+    const unlisten: (() => void)[] = [];
+    if ("__TAURI_INTERNALS__" in window) {
+      listen("open-settings", () => openSettings()).then((u) => unlisten.push(u));
+      listen<RecordingEvent>("recording", (e) => recordingChanged(e.payload)).then((u) => unlisten.push(u));
+    }
     return () => {
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("keydown", settingsShortcut);
-      unlisten?.();
+      unlisten.forEach((u) => u());
     };
   });
 
@@ -513,7 +546,7 @@
         <hr />
 
         {#if summary === undefined}
-          <p class="quiet serif">{t("common.loading")}</p>
+          <p class="quiet serif" class:hidden={!slow}>{t("common.loading")}</p>
         {:else if isDraft(selected)}
           {#if progress}
             <div class="kicker">{t("lib.soFar")}</div>
@@ -532,7 +565,7 @@
       <div class="center">
         <p class="serif big">{t("lib.readFailed")}</p>
         <p class="quiet selectable">{failed}</p>
-        <button class="pill" onclick={reload}>{t("lib.tryAgain")}</button>
+        <button class="pill" onclick={() => reload()}>{t("lib.tryAgain")}</button>
       </div>
     {:else if data && group}
       <div class="center">
@@ -785,6 +818,7 @@
 
   hr { border: 0; border-top: 1px solid var(--line); margin: 30px 0 26px; }
   .quiet { color: var(--muted); }
+  .hidden { visibility: hidden; }  /* keeps its line, so nothing moves when it shows */
   .detail .kicker { margin-bottom: 4px; }
 
   .summary { font-size: 16px; line-height: 1.6; }

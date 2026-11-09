@@ -346,6 +346,56 @@ def test_backup_microphone_records_through_main_gaps_but_not_pauses(tmp_path, mo
     assert Path(info["recording"]).stat().st_size == b.written * 2
 
 
+def test_the_microphone_starts_before_the_system_is_asked_about_devices(monkeypatch):
+    from stenny.live import sources
+
+    asked = []
+    monkeypatch.setattr(sources.subprocess, "run", lambda cmd, **kw: asked.append(cmd))
+    mic = sources.MicSource(None)
+    assert mic.device == "default" and mic.microphone is None and not asked  # system_profiler: only after the start
+
+
+def test_microphone_name_and_backup_join_after_the_start(tmp_path, monkeypatch):
+    mic = FakeMic()
+    mic.device, mic.microphone = "default", None  # the system's input device, not named yet
+    seen = {}
+
+    def after_start(s):
+        seen["placeholder"] = s.transcript_path.exists()  # the library shows it as soon as it is "recording"
+        seen["status"] = s.status()["microphone"]
+        seen["audio"] = s.written > 0  # it runs once the first audio is in
+        seen["joined"] = mic.at(mic.t + 1.0, lambda: (s.name_microphone("Alex’s iPhone Microphone"),
+                                                      s.attach_backup(FakeBackup(mic)), mic.t)[-1])
+
+    def script(s):
+        wait_until(lambda: "joined" in seen)
+        t = seen["joined"]
+        mic.at(t + 10.0, lambda: s.command("pause"))
+        mic.at(t + 12.0, lambda: s.command("resume"))
+        mic.at(t + 18.0, lambda: s.command("stop"))
+
+    (tmp_path / "vault" / "Areas").mkdir(parents=True)
+    cfg = Config(folder=tmp_path / "vault" / "Areas/Lectures", data_dir=tmp_path / "audio")
+    s = LiveSession(cfg, Course("Calculus", language="fr"), mic, FakeEngine())
+    short_chunks(s, monkeypatch)
+    monkeypatch.setattr(s, "now", lambda: mic.t)
+    monkeypatch.setattr(s, "wall", lambda: mic.ticks * TICK_S)
+    monkeypatch.setattr(live_session, "POLL", 0.002)
+    threading.Thread(target=script, args=(s,), daemon=True).start()
+    s.run(after_start=after_start)
+
+    joined = seen.pop("joined")
+    assert seen == {"placeholder": True, "status": None, "audio": True}  # no "default" in the menu while unnamed
+    assert s.status()["microphone"] == mic.device == "Alex’s iPhone Microphone"
+    info = json.loads(s.session_path.read_text(encoding="utf-8"))
+    assert info["microphone"] == "Alex’s iPhone Microphone"
+    b = s.backup
+    assert len(b.spans) == 2 and abs(b.spans[0][1] - joined) < 0.3    # from when it joined; off during the pause
+    assert info["backup"]["microphone"] == "MacBook Air Microphone" and b.written > 0
+    s.name_microphone("Another Microphone")                             # a named microphone keeps its name
+    assert mic.device == "Alex’s iPhone Microphone"
+
+
 def test_gap_at_the_end_is_kept_when_a_backup_heard_it(tmp_path, monkeypatch):
     mic = FakeMic(dropout=(12.0, 10**9))      # main microphone lost for the rest of the lecture
     s = run_session(tmp_path, monkeypatch, mic, backup=FakeBackup(mic))

@@ -1,6 +1,7 @@
 //! The menu bar: Stenny's icon with the recording's clock next to it, and a classic macOS menu to start, pause,
 //! resume and stop recordings, pick the microphone and open the library. Everything goes through the engine
-//! (`stenny app-server`): `status` every second while recording, every three seconds otherwise.
+//! (`stenny app-server`): `status` every second while recording, every 200 ms while one starts (and right after
+//! Start), every three seconds otherwise. A change of state is sent to the windows as the "recording" event.
 //!
 //! Like the Swift app it replaces (app/Sources/Stenny/LectureController.swift): it asks once per course whether
 //! the lecturer agreed to being recorded; a recording that vanishes without stopping (killed, crashed) is
@@ -12,12 +13,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 use tauri::image::Image;
 use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
-use tauri::{AppHandle, Manager, Wry};
+use tauri::{AppHandle, Emitter, Manager, Wry};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind, MessageDialogResult};
 use tauri_plugin_notification::NotificationExt;
 
@@ -33,6 +34,7 @@ struct Prefs {
 #[derive(Default)]
 struct State {
     status: Value,
+    answered: Option<Instant>, // when an action (start, pause, stop …) last brought a status: older polls don't count
     shape: String, // what the menu shows, so it's only rebuilt when that changes
     courses: Vec<String>,
     devices: Vec<String>,
@@ -84,7 +86,14 @@ struct Suggestion {
 }
 
 #[derive(Default)]
-pub struct MenuBar(Mutex<State>);
+pub struct MenuBar(Mutex<State>, Wake);
+
+/// Wakes the polling thread before its interval is up: after Start, so "recording" shows as soon as it is true.
+#[derive(Default)]
+struct Wake {
+    asked: Mutex<bool>,
+    signal: Condvar,
+}
 
 fn engine(app: &AppHandle) -> Arc<Engine> {
     app.state::<Arc<Engine>>().inner().clone()
@@ -281,7 +290,8 @@ pub(crate) fn redraw(app: &AppHandle, force: bool) {
         "recording" => ("recording", Some(clock(num(&s, "elapsed_s") - num(&s, "paused_s")))),
         "paused" => ("paused", Some(clock(num(&s, "elapsed_s") - num(&s, "paused_s")))),
         "stopping" | "cancelling" | "finalizing" | "done" => ("finishing", None),
-        "starting" => ("starting", None),
+        // the clock is there the moment Start is clicked, while the recorder comes up
+        "starting" => ("starting", Some(clock(0.0))),
         _ => ("idle", None),
     };
     if st.icon != name {
@@ -333,14 +343,32 @@ fn load_lists(app: &AppHandle) {
     st.lists_loaded = Some(Instant::now());
 }
 
-/// One status answer: notes and warnings, the "vanished recording" check, then the menu bar.
-fn update(app: &AppHandle, status: Value) {
+/// One status answer: notes and warnings, the "vanished recording" check, then the menu bar and the windows.
+/// `asked`: when the polling thread asked for it; None for the answer to an action (start, pause, stop …). A poll
+/// asked before the last action's answer came is older than what the menu shows: it would show "idle" again for a
+/// moment right after Start.
+fn update(app: &AppHandle, status: Value, asked: Option<Instant>) {
     let bar = app.state::<MenuBar>();
     let mut vanished = None;
     let mut messages = Vec::new();
+    let changed;
     {
         let mut st = bar.0.lock().unwrap();
+        match asked {
+            Some(t) if st.answered.is_some_and(|a| a > t) => return,
+            Some(_) => {}
+            None => st.answered = Some(Instant::now()),
+        }
         let state = str_of(&status, "state").to_string();
+        let before = str_of(&st.status, "state").to_string();
+        // the library window (routes/+page.svelte) reads the library again: a new recording shows at once
+        changed = (state != before).then(|| json!({
+            "state": state,
+            "course": str_of(&status, "course"),
+            "kind": str_of(&status, "kind"),
+            "transcript": str_of(&status, "transcript"),
+            "started": state == "recording" && matches!(before.as_str(), "idle" | "" | "starting"),
+        }));
         if let Some(error) = status.get("error").and_then(Value::as_str) {
             messages.push((true, tr!("note.didntStart", error = error))); // a dialog, not a notification
         }
@@ -390,6 +418,16 @@ fn update(app: &AppHandle, status: Value) {
         std::thread::spawn(move || handle_vanished(&app, course, event, was_recording));
     }
     redraw(app, false);
+    if let Some(payload) = changed {
+        let _ = app.emit("recording", payload);
+    }
+}
+
+/// The polling thread asks again now instead of when its interval is up.
+fn wake(app: &AppHandle) {
+    let bar = app.state::<MenuBar>();
+    *bar.1.asked.lock().unwrap() = true;
+    bar.1.signal.notify_one();
 }
 
 /// Recording again without the live draft needs far less memory; `recover` decides whether it really was a crash.
@@ -439,10 +477,21 @@ pub fn start_polling(app: AppHandle) {
         if stale {
             load_lists(&app);
         }
+        let asked = Instant::now();
         let status = engine(&app).call("status", json!({})).unwrap_or_else(|_| json!({"state": "idle"}));
-        let fast = matches!(str_of(&status, "state"), "recording" | "paused" | "starting" | "stopping" | "cancelling");
-        update(&app, status);
-        std::thread::sleep(Duration::from_secs(if fast { 1 } else { 3 }));
+        update(&app, status, Some(asked));
+        let bar = app.state::<MenuBar>();
+        // while starting, every 200 ms: the clock starts as soon as the recording does
+        let interval = match str_of(&bar.0.lock().unwrap().status, "state") {
+            "starting" => Duration::from_millis(200),
+            "recording" | "paused" | "stopping" | "cancelling" => Duration::from_secs(1),
+            _ => Duration::from_secs(3),
+        };
+        let mut woken = bar.1.asked.lock().unwrap();
+        if !*woken {
+            woken = bar.1.signal.wait_timeout(woken, interval).unwrap().0;
+        }
+        *woken = false;
     });
 }
 
@@ -497,7 +546,8 @@ pub fn start_with(app: &AppHandle, course: &str, event: bool, lang: Option<&str>
         params["llm"] = json!(false);
     }
     let status = engine(app).call("start", params)?;
-    update(app, status);
+    update(app, status, None);
+    wake(app);
     Ok(())
 }
 
@@ -527,7 +577,10 @@ fn cancel_recording(app: &AppHandle) {
 
 fn send(app: &AppHandle, cmd: &str) {
     match engine(app).call("command", json!({"cmd": cmd})) {
-        Ok(status) => update(app, status),
+        Ok(status) => {
+            update(app, status, None);
+            wake(app);
+        }
         Err(e) => notify(app, &e),
     }
 }
