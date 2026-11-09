@@ -144,10 +144,31 @@ def recover(cfg, params: dict) -> dict:
 FEEDBACK_URL = "https://stenny.eu/api/feedback"  # the same endpoint serves the website's form
 
 
-def send_feedback(cfg, params: dict) -> dict:
-    """Posts the message (and, if the user ticked the box, Stenny's version, this Mac's model and the last lines
-    of Stenny's log) to stenny.eu, like the Swift app did."""
+def system_details() -> str:
+    """The computer's model, memory and system version, for feedback: "Mac16,12, 16 GB, macOS 15.5" or
+    "LENOVO 21HD, 16 GB, Windows 11 (10.0.22631)"."""
     import platform
+    if sys.platform == "win32":
+        from . import winsys
+        model = platform.machine()
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"HARDWARE\DESCRIPTION\System\BIOS") as key:
+                model = " ".join(str(winreg.QueryValueEx(key, name)[0]).strip()
+                                 for name in ("SystemManufacturer", "SystemProductName")) or model
+        except (OSError, ImportError):
+            pass
+        status = winsys.memory()
+        release, build = platform.win32_ver()[:2]
+        return f"{model}, {(status.ullTotalPhys if status else 0) >> 30} GB, Windows {release} ({build})"
+    model = subprocess.run(["sysctl", "-n", "hw.model"], capture_output=True, text=True, encoding="utf-8", errors="replace").stdout.strip()
+    memory = int(subprocess.run(["sysctl", "-n", "hw.memsize"], capture_output=True, text=True, encoding="utf-8", errors="replace").stdout or 0) >> 30
+    return f"{model}, {memory} GB, macOS {platform.mac_ver()[0]}"
+
+
+def send_feedback(cfg, params: dict) -> dict:
+    """Posts the message (and, if the user ticked the box, Stenny's version, the computer's model and the last lines
+    of Stenny's log) to stenny.eu, like the Swift app did."""
     from importlib.metadata import version
 
     message = (params.get("message") or "").strip()
@@ -155,17 +176,16 @@ def send_feedback(cfg, params: dict) -> dict:
         raise LiveError(tr("Write a few words first."))
     body = {"source": "app", "message": message, "contact": (params.get("contact") or "").strip()}
     if params.get("details"):
-        model = subprocess.run(["sysctl", "-n", "hw.model"], capture_output=True, text=True, encoding="utf-8", errors="replace").stdout.strip()
-        memory = int(subprocess.run(["sysctl", "-n", "hw.memsize"], capture_output=True, text=True, encoding="utf-8", errors="replace").stdout or 0) >> 30
         try:
             log = (paths.LOGS_DIR / "stenny.log").read_text(encoding="utf-8").splitlines()[-40:]
         except OSError:
             log = []
-        body.update(version=version("stenny"), system=f"{model}, {memory} GB, macOS {platform.mac_ver()[0]}",
-                    log="\n".join(log))
-    # curl, not urllib: uv's Python doesn't reliably find macOS's certificates (see update.py)
+        body.update(version=version("stenny"), system=system_details(), log="\n".join(log))
+    # curl, not urllib: uv's Python doesn't reliably find macOS's certificates (see update.py); Windows 10 and 11
+    # come with a curl.exe of their own
+    curl = "curl.exe" if sys.platform == "win32" else "/usr/bin/curl"
     try:
-        done = subprocess.run(["/usr/bin/curl", "-sS", "--max-time", "20", "--fail-with-body", "-X", "POST",
+        done = subprocess.run([curl, "-sS", "--max-time", "20", "--fail-with-body", "-X", "POST",
                                "-H", "Content-Type: application/json", "--data-binary", "@-", FEEDBACK_URL],
                               input=json.dumps(body), capture_output=True, text=True, encoding="utf-8", errors="replace")
     except OSError:

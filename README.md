@@ -121,7 +121,7 @@ stenny mcp --desktop-config                       # the connector for Claude Des
 stenny api-key [status | remove]                  # the Anthropic API key, in the system keychain
 stenny match-course "VL Calculus (Room 1.01)"     # which course a calendar event belongs to
 stenny queue list | run                           # waiting final passes (run --lecture COURSE FOLDER: just that one, now)
-stenny schedule install                           # run the queue every 10 min when plugged in (launchd)
+stenny schedule install                           # run the queue every 10 min when plugged in (launchd; Windows: Task Scheduler)
 ```
 
 ## Studying with Claude
@@ -246,6 +246,8 @@ German and English, measured the same way without a glossary (LibriVox recording
 At the default low priority Stenny runs at about 8× realtime. While recording, live mode uses about 2.5 GB of RAM and around 6 % of one CPU core.
 
 **Windows (in development, #2):** the same model runs through faster-whisper (an NVIDIA GPU when CUDA is installed, else the CPU, int8), with the same decoding as on the Mac. Through Stenny's own chunked pipeline on the same clips, the two engines match: on six one-minute lecture-style clips in English, German and French (synthetic speech, clean and with room echo and noise), the word error rate was the same on five and differed by one word on the sixth. On a Mac's CPU faster-whisper runs at about 1.4× realtime, so a CPU-only Windows PC needs about as long as the lecture, or longer; an NVIDIA GPU is much faster. Not yet measured on a Windows PC. `[transcription] engine` picks one by hand (`auto`, `mlx`, `faster-whisper`).
+
+**Background work on Windows (in development, #2):** `low` priority is Windows' below-normal priority class, `background` the idle class (programs Stenny starts, such as ffmpeg, inherit both). While Stenny records or makes a final transcript, the PC doesn't go to sleep when idle (closing a laptop's lid still sleeps). Memory counts as low from 90 % in use: the live text pauses, and a final transcript waits. `stenny schedule install` adds the task *Stenny Queue* to Task Scheduler, for your user and without admin rights: every 10 minutes while you're signed in, without a window; whether it waits for power or the night is read from the config each time, as on the Mac. Tested on GitHub's Windows runners, not yet on a Windows PC.
 
 ## Development
 
