@@ -256,13 +256,14 @@ def cmd_match_course(args) -> None:
         print(f"{m['title']} → {m['course'] or '(no course)'}")
 
 
-PROJECT_TEXT = """Lecture transcripts for this course are on my Mac, readable with the Filesystem connector, in
+PROJECT_TEXT = """Lecture transcripts for this course are on my computer, readable with the Filesystem connector, in
 {root}
 
-- All lectures in one file: _Course Files/{course} (all lectures).md (table of contents at the top)
-- All summaries: _Course Files/{course} (summaries).md
-- Overview (every lecture with its topics): _Course Files/{course} (overview).md
-- Single lectures: {course}/<date>/{course} <date>.md
+- Overview (every lecture with links to its transcript and summary, and its topics): _Course Files/{course} (overview).md
+- Each lecture: {course}/<date>/{course} <date>.md, its AI summary next to it as {course} <date> (summary).md
+
+Start with the overview and the summaries; the transcripts are the source for details. (With Stenny's own
+connector installed, use its tools instead: they read the same files.)
 
 Read them whenever a question is explicitly about what was said in the lectures, and cite as "Lecture N [h:mm:ss]".
 They are automatic transcripts: names and technical terms may be misheard, so prefer the spellings in the
@@ -324,7 +325,8 @@ def cmd_api_key(args) -> None:
 
 
 def cmd_course_files(args) -> None:
-    """Rebuild the generated per-course files (normally done after every final pass)."""
+    """Rebuild the generated course files: overview, previous/next links, topic notes (normally done after
+    every final pass)."""
     cfg = load_config()
     from .course_files import rebuild
     from .vault import Vault
@@ -353,6 +355,8 @@ def lecture_job(cfg, course: str, folder: str, event: bool = False) -> Path | No
 
 
 def cmd_queue(args) -> None:
+    if getattr(args, "scheduled", False):
+        jobs.run_without_console()  # Windows' task starts pythonw.exe; does nothing anywhere else
     cfg = load_config()
     items = jobs.pending()
     lecture = getattr(args, "lecture", None)
@@ -504,7 +508,8 @@ def cmd_live(args) -> None:
     recover_sessions(cfg)
     cfg.data_dir.mkdir(parents=True, exist_ok=True)
     if (free := resources.free_disk(cfg.data_dir)) < resources.DISK_TO_START:
-        sys.exit(f"Only {free / resources.GB:.1f} GB free on this Mac. A lecture needs about "
+        computer = "PC" if sys.platform == "win32" else "Mac"
+        sys.exit(f"Only {free / resources.GB:.1f} GB free on this {computer}. A lecture needs about "
                  f"{resources.DISK_TO_START / resources.GB:.1f} GB, so free some space first.")
     engine = get_engine(cfg.model, cfg.engine)
     session = LiveSession(cfg, course, source, engine, lang=args.lang, draft=cfg.live_draft and not args.no_draft,
@@ -729,12 +734,30 @@ def cmd_control(args) -> None:
 
 
 def cmd_schedule(args) -> None:
+    if sys.platform == "win32":
+        schedule_task(args.action)
+        return
     if args.action == "install":
         path = jobs.install_agent()
         print(f"Installed {path}: checks the queue every 15 min (runs only on AC power"
               f"{' and at night' if load_config().night_only else ''}). Log: {jobs.LOGS_DIR / 'queue.log'}")
     else:
         print("Removed." if jobs.uninstall_agent() else "No schedule installed.")
+
+
+def schedule_task(action: str) -> None:
+    """`stenny schedule` on Windows: the task in Task Scheduler (jobs.install_task)."""
+    try:
+        if action == "uninstall":
+            print("Removed." if jobs.uninstall_agent() else "No schedule installed.")
+            return
+        cfg = load_config()
+        only = [w for w, on in (("on AC power", cfg.require_ac_for_queue), ("at night", cfg.night_only)) if on]
+        task = jobs.install_agent()
+        print(f'Added "{task}" to Task Scheduler: checks the queue every {jobs.QUEUE_INTERVAL_S // 60} min'
+              f"{' (runs only ' + ' and '.join(only) + ')' if only else ''}. Log: {jobs.LOGS_DIR / 'queue.log'}")
+    except OSError as e:
+        sys.exit(f"Task Scheduler: {e}")
 
 
 def cmd_update(args) -> None:
@@ -845,7 +868,8 @@ def main() -> None:
     p.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
     p.set_defaults(func=cmd_match_course)
 
-    p = sub.add_parser("course-files", help="rebuild the per-course files in _Course Files/ (all lectures, summaries)")
+    p = sub.add_parser("course-files", help="rebuild each course's overview in _Course Files/, the lectures' "
+                                         "previous/next links and the topic notes")
     p.add_argument("--course", help="only this course (default: all configured courses)")
     p.set_defaults(func=cmd_course_files)
 
@@ -934,7 +958,8 @@ def main() -> None:
     p.add_argument("--event", action="store_true", help="--lecture names a talk")
     p.set_defaults(func=cmd_queue)
 
-    p = sub.add_parser("schedule", help="install/remove the launchd agent that runs the queue")
+    scheduler = "Task Scheduler task" if sys.platform == "win32" else "launchd agent"
+    p = sub.add_parser("schedule", help=f"install/remove the {scheduler} that runs the queue")
     p.add_argument("action", choices=["install", "uninstall"])
     p.set_defaults(func=cmd_schedule)
 

@@ -159,6 +159,45 @@ def test_the_app_starts_a_config_without_example_courses(places):
     assert config_mod.load().courses == {}
 
 
+
+def test_the_per_course_copies_go_to_the_trash_at_start(places, monkeypatch):
+    """Earlier versions wrote every transcript and summary of a course again into _Course Files/. At start those
+    copies go to the Trash, only Stenny's own (by their frontmatter); lectures, the overview and lookalikes stay."""
+    from stenny import manage
+    mig.on_start(log=lambda m: None)
+    folder = config_mod.load().folder
+    files = folder / "_Course Files"
+    files.mkdir(parents=True)
+    copy = '---\ncourse: "Calculus"\nkind: "course-file"\ncontent: "{}"\n---\n# Calculus – {}\n'
+    (files / "Calculus (all lectures).md").write_text(copy.format("all lectures", "all lectures"), encoding="utf-8")
+    (files / "Calculus (summaries).md").write_text(copy.format("summaries", "summaries"), encoding="utf-8")
+    (files / "Calculus (overview).md").write_text('---\nkind: "course-overview"\n---\n', encoding="utf-8")
+    (files / "Notes (summaries).md").write_text("# my own summaries\n", encoding="utf-8")  # the user's, no frontmatter
+    lecture = folder / "Calculus" / "2026-10-15"
+    lecture.mkdir(parents=True)
+    (lecture / "Calculus 2026-10-15 (summary).md").write_text("x", encoding="utf-8")
+    trashed = []
+    monkeypatch.setattr(manage, "trash", lambda items: trashed.extend(items) or [p.unlink() for p in items])
+    said = []
+
+    assert mig.drop_course_copies(dry_run=True, log=said.append) == 2 and not trashed  # `stenny migrate --dry-run`
+    mig.on_start(log=said.append)
+    assert sorted(p.name for p in trashed) == ["Calculus (all lectures).md", "Calculus (summaries).md"]
+    assert sorted(p.name for p in files.iterdir()) == ["Calculus (overview).md", "Notes (summaries).md"]
+    assert (lecture / "Calculus 2026-10-15 (summary).md").exists()
+    assert any("Calculus (summaries).md" in m and m.startswith("migrate: ") for m in said)
+    trashed.clear()
+    mig.on_start(log=lambda m: None)  # nothing left to do: the Trash isn't asked again
+    assert not trashed
+
+    def broken(items):
+        raise manage.ManageError("no Trash")
+    (files / "Calculus (summaries).md").write_text(copy.format("summaries", "summaries"), encoding="utf-8")
+    monkeypatch.setattr(manage, "trash", broken)
+    said.clear()
+    mig.on_start(log=said.append)  # a Trash that fails doesn't stop the start; it tries again next time
+    assert "migrate: no Trash" in said and (files / "Calculus (summaries).md").exists()
+
 # ---------------------------------------------------------------- `stenny migrate` from ~/Lectures Data
 
 # the older layouts were a Mac's only: Windows never had ~/Lectures Data
