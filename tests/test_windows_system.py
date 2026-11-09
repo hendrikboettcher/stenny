@@ -56,7 +56,7 @@ def win(monkeypatch):
     monkeypatch.setattr(winsys, "kernel32", lambda: k)
     monkeypatch.setattr(winsys, "_awake", None)
     monkeypatch.setattr(os, "execvpe", lambda *a: pytest.fail("no re-exec on Windows"))
-    monkeypatch.setattr(os, "nice", lambda n: pytest.fail("no nice on Windows"))
+    monkeypatch.setattr(os, "nice", lambda n: pytest.fail("no nice on Windows"), raising=False)  # none on Windows
     return k
 
 
@@ -71,10 +71,10 @@ def test_low_priority_is_below_normal_without_a_re_exec(win, monkeypatch):
     assert len(win.priority) == 1
 
 
-def test_background_is_idle_and_windows_background_mode(win, monkeypatch):
+def test_background_is_idle(win, monkeypatch):
     monkeypatch.setenv("STENNY_PRIORITY", "")
     jobs.apply_priority("background")
-    assert win.priority == [winsys.IDLE_PRIORITY_CLASS, winsys.PROCESS_MODE_BACKGROUND_BEGIN]
+    assert win.priority == [winsys.IDLE_PRIORITY_CLASS]
 
 
 def test_normal_priority_changes_nothing(win, monkeypatch):
@@ -87,8 +87,7 @@ def test_normal_priority_changes_nothing(win, monkeypatch):
 def test_the_final_pass_after_a_recording_lowers_its_own_process(win):
     jobs.lower_own_priority("low")
     jobs.lower_own_priority("background")
-    assert win.priority == [winsys.BELOW_NORMAL_PRIORITY_CLASS, winsys.IDLE_PRIORITY_CLASS,
-                            winsys.PROCESS_MODE_BACKGROUND_BEGIN]
+    assert win.priority == [winsys.BELOW_NORMAL_PRIORITY_CLASS, winsys.IDLE_PRIORITY_CLASS]
 
 
 # ---------------------------------------------------------------- power, sleep, memory
@@ -350,8 +349,7 @@ def _priority_of_child(mode: str) -> str:
 @windows
 def test_real_priority_classes_and_children_inherit_them():
     assert _priority_of_child("low") == [str(winsys.BELOW_NORMAL_PRIORITY_CLASS)] * 2
-    own, child = _priority_of_child("background")
-    assert int(child) == winsys.IDLE_PRIORITY_CLASS
+    assert _priority_of_child("background") == [str(winsys.IDLE_PRIORITY_CLASS)] * 2
 
 
 @windows

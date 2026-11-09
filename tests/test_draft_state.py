@@ -24,8 +24,9 @@ def draft(status="live", paragraphs=PARAGRAPHS) -> str:
 def test_the_placeholder_says_its_transcript_waits_for_power():
     queued = set_draft_state(draft(paragraphs=[]), "queued", "battery")
     assert 'status: "queued"\nwaiting: "battery"\n' in queued
-    assert "> **No transcript yet.** The recording is finished; its transcript is made once the Mac is plugged in." \
-        in queued
+    computer = "PC" if sys.platform == "win32" else "Mac"
+    assert f"> **No transcript yet.** The recording is finished; its transcript is made once the {computer} is " \
+        "plugged in." in queued
     assert queued.count("No transcript yet") == 1
 
     making = set_draft_state(queued, "finalizing")

@@ -9,7 +9,6 @@ import threading
 
 BELOW_NORMAL_PRIORITY_CLASS = 0x00004000
 IDLE_PRIORITY_CLASS = 0x00000040
-PROCESS_MODE_BACKGROUND_BEGIN = 0x00100000  # CPU, disk I/O and memory priority all low; only for the process itself
 ES_CONTINUOUS = 0x80000000
 ES_SYSTEM_REQUIRED = 0x00000001             # no idle sleep; the display may still turn off (caffeinate -i)
 CREATE_NO_WINDOW = 0x08000000               # a console program without a console window
@@ -46,16 +45,16 @@ def kernel32():
 
 
 def set_priority(mode: str) -> None:
-    """"low": below normal, like nice 10. "background": idle CPU priority plus Windows' background mode (low disk
-    and memory priority too), like taskpolicy -b. The priority class carries over to the programs this process
-    starts (ffmpeg, claude); background mode is the process's own."""
+    """"low": below normal, like nice 10. "background": idle, like taskpolicy -b. The class carries over to the
+    programs this process starts (ffmpeg, claude). Not Windows' background mode (PROCESS_MODE_BACKGROUND_BEGIN):
+    it would lower disk and memory priority too, but then the programs it starts run at normal priority (Windows
+    CI showed it), which is worse for a lecture's final pass than a normal disk priority."""
     k = kernel32()
     me = k.GetCurrentProcess()
     if mode == "low":
         k.SetPriorityClass(me, BELOW_NORMAL_PRIORITY_CLASS)
     elif mode == "background":
         k.SetPriorityClass(me, IDLE_PRIORITY_CLASS)
-        k.SetPriorityClass(me, PROCESS_MODE_BACKGROUND_BEGIN)  # fails harmlessly if it's in background mode already
 
 
 def on_ac_power() -> bool:
