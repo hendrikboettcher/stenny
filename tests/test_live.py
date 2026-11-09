@@ -336,7 +336,8 @@ def test_backup_microphone_records_through_main_gaps_but_not_pauses(tmp_path, mo
     s = run_session(tmp_path, monkeypatch, mic, backup=backup, script=script)
     assert [p[2] for p in s.pauses] == ["no input", "paused"]
     b = s.backup
-    assert len(b.spans) == 2 and b.spans[0][1] < 0.3                  # started with the main mic
+    # started with the main mic, long before its gap at 8 s; Windows' ~15 ms timer tick alone is ~0.8 s simulated
+    assert len(b.spans) == 2 and b.spans[0][1] < 1.0
     (p0, p1, _) = s.pauses[1]
     assert abs(b.spans[1][1] - p1) < 0.3                               # off while paused, back on resume
     recorded = b.written / SAMPLE_RATE
@@ -390,7 +391,7 @@ def test_microphone_name_and_backup_join_after_the_start(tmp_path, monkeypatch):
     info = json.loads(s.session_path.read_text(encoding="utf-8"))
     assert info["microphone"] == "Alex’s iPhone Microphone"
     b = s.backup
-    assert len(b.spans) == 2 and abs(b.spans[0][1] - joined) < 0.3    # from when it joined; off during the pause
+    assert len(b.spans) == 2 and abs(b.spans[0][1] - joined) < 1.0    # from when it joined (Windows: ~15 ms timer); off when paused
     assert info["backup"]["microphone"] == "MacBook Air Microphone" and b.written > 0
     s.name_microphone("Another Microphone")                             # a named microphone keeps its name
     assert mic.device == "Alex’s iPhone Microphone"

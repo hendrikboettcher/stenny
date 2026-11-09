@@ -128,14 +128,18 @@
   }
 
   // The summary of the selected recording, or its text so far while it has no transcript yet (looked at again
-  // every 10 s, as it grows during a recording); reloaded when the selection or its status changes.
-  // "Loading…" only if it takes a moment: usually the text is there at once, and a word flashing up in between reads
-  // as a flicker.
+  // every 10 s, as it grows during a recording); reloaded when the selection or its status changes. A draft that
+  // only moves on (live → waiting → being made) keeps its text on screen meanwhile instead of blinking "Loading…".
+  // Otherwise "Loading…" shows only if it takes a moment: usually the text is there at once, and a word flashing up
+  // in between reads as a flicker.
+  let shownDraft = ""; // id() of the draft whose text is on screen
   let slow = $state(false);
   $effect(() => {
     const key = selectedKey;
     const entry = untrack(() => selected);
-    untrack(() => { summary = undefined; progress = null; notice = null; shareOpen = false; slow = false; });
+    const stillDraft = !!entry && isDraft(entry) && id(entry) === shownDraft;
+    shownDraft = entry && isDraft(entry) ? id(entry) : "";
+    if (!stillDraft) untrack(() => { summary = undefined; progress = null; notice = null; shareOpen = false; slow = false; });
     if (!key || !entry) return;
     let current = true;
     const load = () => lecture(entry)
@@ -363,11 +367,12 @@
     busy = "finish";
     notice = null;
     try {
+      // the engine marks the draft "Finishing" before it answers, so one reload shows it, button gone
       await finishNow(selected);
-      // it shows as "Finishing" once the final pass has taken the draft; until then the button says "Starting…"
-      setTimeout(() => { reload(); busy = null; }, 2500);
+      await reload();
     } catch (e) {
       notice = { text: String(e), error: true };
+    } finally {
       busy = null;
     }
   }
