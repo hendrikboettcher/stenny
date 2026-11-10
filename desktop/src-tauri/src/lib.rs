@@ -481,10 +481,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, share_files, copy_text, check_updates, reload_window, microphone_pref, set_microphone_pref, login_item, apply_shortcut, pause_shortcut_label, ui_language, set_ui_language, courses_changed, start_recording, recording_command, recording_status, show_talk])
         .setup(move |app| {
             if !library_only {
-                // A Dock app with the menu bar icon next to it. Info.plist keeps LSUIElement for the helpers in the
-                // bundle (stenny-agent reads the same Info.plist), so the app itself asks for its Dock icon here.
-                #[cfg(target_os = "macos")]
-                app.set_activation_policy(tauri::ActivationPolicy::Regular);
+                // A Dock app (Tauri's default; Info.plist has no LSUIElement, so the Dock bounces it while it opens)
+                // with the menu bar icon next to it
                 menubar::install(app.handle())?;
             } else if let Some(window) = app.get_webview_window("library") {
                 let _ = window.show();
