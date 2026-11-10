@@ -618,8 +618,9 @@ def test_low_disk_stops_the_backup_and_a_full_disk_ends_cleanly(tmp_path, monkey
     def script(s):
         wait_until(lambda: mic.t >= 8)
         state["disk"] = resources.DISK_LOW - 1
-        wait_until(lambda: s.disk_low)
-        assert s.warning == "Disk almost full" and not s.backup.running
+        # the session sets disk_low, then stops the backup: wait for both (a busy runner reads in between)
+        wait_until(lambda: s.disk_low and not s.backup.running)
+        assert s.warning == "Disk almost full"
         # the session reads what the clock wrote a little later (much later on a busy runner): wait for both
         wait_until(lambda: mic.t >= 14 and s.recorded >= 13 * SAMPLE_RATE)
         state["disk"] = resources.DISK_FULL - 1
