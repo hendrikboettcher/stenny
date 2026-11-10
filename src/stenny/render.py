@@ -28,7 +28,7 @@ def draft_status(status: str, waiting: str | None = None) -> str:
         return "The recording is finished; its transcript comes later."
     if status == "finalizing":
         return "The recording is finished and its transcript is being made now."
-    return "Stenny is recording. The transcript appears here when it's done; Stenny's window shows the text so far."
+    return "Stenny is recording. The full transcript is made once the recording ends."
 
 
 def draft_note(status: str, waiting: str | None = None) -> str:
