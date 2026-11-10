@@ -51,7 +51,7 @@ def test_every_message_has_german():
     "The recording is finished; its transcript is made once the Mac is plugged in.",
     "The recording is finished; its transcript comes later.",
     "The recording is finished and its transcript is being made now.",
-    "Stenny is recording. The transcript appears here when it's done; Stenny's window shows the text so far.",
+    "Stenny is recording. The full transcript is made once the recording ends.",
 ])
 def test_built_messages_have_german(text):
     assert text in DE
