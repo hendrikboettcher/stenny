@@ -335,8 +335,6 @@
   "menu.openTranscript": "Open Transcript",
   "menu.open": "Open Stenny…",
   "menu.cancel": "Cancel Recording…",
-  "menu.feedback": "Send Feedback…",
-  "menu.updates": "Check for Updates…",
   "menu.quit": "Quit Stenny",
 
   "activity.recording": "Recording",

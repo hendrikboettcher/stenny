@@ -314,12 +314,12 @@ Say clearly: **✅ Setup is finished.** Then, short:
 - If a step above was skipped (no course, the AI step not signed in, the connector not installed), the window's *Finish setting up Stenny* card lists what's left, with a button for each, until it's done.
 - If memory or disk runs low, the recording goes on first: the live text pauses, or the final transcript waits. If something crashes, Stenny saves the audio and starts recording again by itself.
 - **Ask the lecturer first.** Many universities need the lecturer's consent before a lecture is recorded. Keep recordings and transcripts to themselves.
-- New versions: Stenny's icon ▸ *Check for Updates…*.
+- New versions: *Check for Updates…* at the bottom of Stenny's window (its icon ▸ *Open Stenny…*).
 - Docs: https://stenny.eu/docs/quickstart/
 
 **Stenny is made to be built on.** It's open source and lives in this folder. Whenever they want something different, they can reopen this chat (or this folder in Claude Code) and ask in plain language: "add a course", "change my pause shortcut", or a new feature. Changing the menu bar app itself needs Apple's Command Line Tools, which Claude Code can set up then. An update replaces the folder and keeps the old one next to it, so their changes can be carried over.
 
-**Feedback is very welcome:** Stenny's icon ▸ *Send Feedback…*, or the form at https://stenny.eu.
+**Feedback is very welcome:** *Send Feedback…* at the bottom of Stenny's window, or the form at https://stenny.eu.
 
 Write a short setup report: Mac model (`sysctl -n hw.model`), memory, macOS version, Stenny version, and any step that needed a workaround. No names, courses or file paths. Show it and offer to send it to Stenny's author: "Send it (Recommended)" / "Keep it to myself". If yes, send exactly what you showed them:
 
