@@ -240,12 +240,6 @@ final class LectureController: NSObject {
         AppLog.write("notified: \(message)")
     }
 
-    // MARK: Feedback
-
-    @objc private func sendFeedback() {
-        AppActions.sendFeedback()
-    }
-
     // MARK: Actions
 
     @objc private func startCourse(_ sender: NSMenuItem) {
@@ -359,10 +353,6 @@ final class LectureController: NSObject {
 
     @objc private func openLibrary() {
         LibraryWindow.shared.show()
-    }
-
-    @objc private func checkForUpdates() {
-        AppActions.checkForUpdates()
     }
 
     @objc private func quit() {
@@ -524,10 +514,6 @@ final class LectureController: NSObject {
         let libraryItem = NSMenuItem()
         configure(libraryItem, title: "Open Stenny…", symbol: "books.vertical", action: #selector(openLibrary))
 
-        let feedbackItem = NSMenuItem()
-        configure(feedbackItem, title: "Send Feedback…", symbol: "bubble.left", action: #selector(sendFeedback))
-        let updateItem = NSMenuItem()
-        configure(updateItem, title: "Check for Updates…", symbol: "arrow.down.circle", action: #selector(checkForUpdates))
         let quitItem = NSMenuItem()
         configure(quitItem, title: "Quit Stenny", symbol: "power", action: #selector(quit))
 
@@ -535,7 +521,7 @@ final class LectureController: NSObject {
          suggestItem, startItem, pauseItem, stopItem, .separator(),
          micItem, draftItem, .separator(),
          openItem, libraryItem, .separator(),
-         feedbackItem, updateItem, quitItem].forEach(menu.addItem)
+         quitItem].forEach(menu.addItem)
         statusItem.menu = menu
         refresh()
     }
