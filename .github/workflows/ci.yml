@@ -105,7 +105,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: desktop/src-tauri
+          workspaces: desktop/src-tauri -> target.noindex
       - name: Install
         run: npm ci
       - name: Type check
@@ -158,7 +158,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
-            desktop/src-tauri
+            desktop/src-tauri -> target.noindex
             desktop/stenny-rec
       - name: Install
         run: npm ci
@@ -195,6 +195,6 @@ jobs:
           name: stenny-${{ runner.os }}-unsigned
           retention-days: 7
           path: |
-            desktop/src-tauri/target/release/bundle/dmg/*.dmg
-            desktop/src-tauri/target/release/bundle/msi/*.msi
-            desktop/src-tauri/target/release/bundle/nsis/*.exe
+            desktop/src-tauri/target.noindex/release/bundle/dmg/*.dmg
+            desktop/src-tauri/target.noindex/release/bundle/msi/*.msi
+            desktop/src-tauri/target.noindex/release/bundle/nsis/*.exe

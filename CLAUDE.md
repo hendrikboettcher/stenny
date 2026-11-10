@@ -131,6 +131,10 @@ Stenny folder (`folder` in config.toml, default `~/Documents/Stenny`, may be ins
 - **Every change is for macOS and Windows, in English and German** (see Platforms at the top and the English/German rule above); a PR says
   what it couldn't test on Windows.
 - **Keep README.md, SETUP.md and config.example.toml current** in the same commit as a change to a feature, a command, a setting or a storage location.
+- **One Stenny in the Dock, Spotlight and Launchpad.** Install a Mac build only with `desktop/scripts/install-mac.sh`
+  (in place, other copies unregistered, duplicate Dock tiles removed); deleting and copying the app by hand leaves the
+  Dock with two or three Stenny icons. Builds go to `desktop/src-tauri/target.noindex` (.cargo/config.toml), which
+  Spotlight skips; never put a built Stenny.app anywhere Spotlight indexes.
 - Don't install large dependencies (>100 MB) or persistent system config without asking the user. The one exception: setup installs the queue's launchd agent (Windows: Task Scheduler task) by itself (`stenny schedule uninstall` removes it).
 
 ## Commands
@@ -145,6 +149,7 @@ desktop/scripts/ffmpeg-windows.sh      # the pinned, checksummed LGPL ffmpeg/ffp
 uv run python bench/run_bench.py       # engine benchmark
 uv run stenny live --course "<name>" --file sample.m4a --speed 3   # test live mode without a microphone
 app/build.sh                           # build + install the menu bar app (--no-install: only build)
+desktop/scripts/install-mac.sh         # install the new app's build on this Mac (never copy it by hand: one Stenny in the Dock)
 (cd desktop/stenny-rec && cargo test)  # the Windows recorder's tests (also on a Mac); desktop/scripts/stenny-rec.sh builds it on Windows
 uv run stenny course add "<name>" -l en  # or `course hide`; config.toml stays as text, comments intact
 uv run stenny recover                  # queue the final pass of recordings whose process died
