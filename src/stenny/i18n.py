@@ -104,8 +104,8 @@ DE = {
         "Aufnahme abgeschlossen. Das Transkript folgt später.",
     "The recording is finished and its transcript is being made now.":
         "Aufnahme abgeschlossen. Das Transkript wird gerade erstellt.",
-    "Stenny is recording. The transcript appears here when it's done; Stenny's window shows the text so far.":
-        "Stenny nimmt gerade auf. Das Transkript erscheint, sobald es fertig ist – bis dahin zeigt Stennys Fenster den bisherigen Text.",
+    "Stenny is recording. The full transcript is made once the recording ends.":
+        "Stenny nimmt gerade auf. Das vollständige Transkript entsteht, sobald die Aufnahme endet.",
     "No transcript for {course} on {folder}.": "Zu {course} gibt es am {folder} kein Transkript.",
     "The Word file couldn't be made: {error}": "Die Word-Datei konnte nicht erstellt werden: {error}",
     "Unknown format '{fmt}': use {formats}.": "Unbekanntes Format „{fmt}“. Möglich sind: {formats}.",
