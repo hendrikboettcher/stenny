@@ -1090,7 +1090,9 @@
 
   /* Detail */
   .detail { overflow-y: auto; min-width: 0; }
-  article { max-width: 660px; padding: 4px 48px 56px; }
+  /* the page fills the detail pane, whatever the window's width (48px either side); a word or link too long for a
+     narrow window breaks rather than pushing the page sideways */
+  article { padding: 4px 48px 56px; overflow-wrap: break-word; }
   h1 { font-size: 34px; line-height: 1.1; font-weight: 440; letter-spacing: -0.02em; margin: 6px 0 6px; }
   .meta { color: var(--muted); margin: 0; font-variant-numeric: tabular-nums; }
 
