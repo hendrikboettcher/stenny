@@ -68,7 +68,7 @@ or sign in to Claude Code, paste an API key, or what Off leaves out), Use with C
 connector: installed in Claude Desktop or not, Install…, Add to Claude Code), background work (priority, power, night hours) and each course's language. Changes are saved at once:
 config.toml through the engine (src/stenny/settings.py; the AI step's and the connector's status through
 src/stenny/claude_setup.py, checked again whenever the window gets the focus back), the microphone and login item through the app (menubar.rs,
-the same choices as the menu bar's; a new pause shortcut restarts stenny-agent, or registers it again on Windows). Also in the menu and the library
+the same choices as the menu bar's; a new pause shortcut is registered by the running stenny-agent (`shortcut …`), or again on Windows). Also in the menu and the library
 window's footer: Send Feedback… (to stenny.eu, like the website's form) and
 Check for Updates… (installing comes with the app's own updater). An installed copy (in an Applications folder)
 adds itself to the login items once, through stenny-agent (on Windows: the Run value, see above); after that it's the
@@ -95,12 +95,14 @@ engine finds the bundled ffmpeg next to Stenny.exe (src/stenny/paths.py, `bundle
 The app is in English and German: every window, menu, dialog and notification, and the engine's messages. By
 default it follows the system (the first of the user's preferred languages Stenny has, else English); Settings ▸
 General ▸ Language picks *System default*, *English* or *Deutsch* (`[app] language` in config.toml) and every
-window, the menu bar's menu, the app menu and stenny-agent follow at once (`set_ui_language` → the "language" event).
+window, the menu bar's menu, the app menu and stenny-agent follow at once (`set_ui_language` → the "language" event;
+the agent gets `lang de` on its stdin and is never started again for it: a second process with Stenny's bundle id
+shows up in the Dock as another Stenny, #46).
 
 - **Texts:** `src/lib/locales/en.json` and `de.json`, one key per text, `{name}` placeholders; plurals as `….one` /
   `….other`; a `….windows` twin where Windows says it differently (Show in Explorer). Svelte: `t()` / `tn()` from
   `src/lib/i18n.svelte.ts`; Rust: `tr!` from `src-tauri/src/i18n.rs` (the same files, compiled in). The engine
-  (`src/stenny/i18n.py`, `tr()` keyed by the English text) and stenny-agent (`--lang de`, a handful of texts) mirror
+  (`src/stenny/i18n.py`, `tr()` keyed by the English text) and stenny-agent (`--lang de`, later `lang de`, a handful of texts) mirror
   only what they show themselves. `tests/test_i18n.py` checks both files have the same keys and placeholders, that
   every key used exists, and that the engine's German is complete.
 - **Not translated:** transcripts, summaries and file names in the vault (each course keeps its own language).

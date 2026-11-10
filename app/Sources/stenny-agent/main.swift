@@ -14,6 +14,9 @@ import UserNotifications
 //        "start <course>" when "Start Recording" is clicked in a lecture notification;
 //        "quit" when macOS asks Stenny to quit and reaches this helper (see QuitForwarder)
 //   in:  "notify {"id": …, "course": …, "range": …}" posts that notification ("Record this lecture?");
+//        "lang en|de" switches this helper's texts to Stenny's new language (no restart: a new process with Stenny's
+//        bundle id would show up in the Dock as a second Stenny, #46);
+//        "shortcut cmd+shift+ü" registers a new pause shortcut in place of the old one → "ready …" / "error …";
 //        "login" makes Stenny open at login (System Settings ▸ General ▸ Login Items) → "login ok" / "login error …";
 //        "login off" stops that; "login status" → "login on", "login off" or "login approval" (still to be allowed)
 //
@@ -21,9 +24,10 @@ import UserNotifications
 // The key is given as printed on the keyboard and looked up in the current layout, since Carbon hotkeys use
 // physical key codes (Ü is "[" on a US keyboard). Same rules as the Swift app's Shortcut.swift.
 
-// Stenny's language (`--lang de`, from the app): the few texts this helper shows itself. The app's own texts are
-// in desktop/src/lib/locales; these use the same words ("Vorlesung", "Aufnahme starten").
-let german = CommandLine.arguments.firstIndex(of: "--lang").map { $0 + 1 < CommandLine.arguments.count
+// Stenny's language (`--lang de` at start, "lang de" later, from the app): the few texts this helper shows itself.
+// The app's own texts are in desktop/src/lib/locales; these use the same words ("Vorlesung", "Aufnahme starten").
+// Only changed and read on the main thread.
+var german = CommandLine.arguments.firstIndex(of: "--lang").map { $0 + 1 < CommandLine.arguments.count
     && CommandLine.arguments[$0 + 1] == "de" } ?? false
 
 func localized(_ english: String, _ deutsch: String) -> String { german ? deutsch : english }
@@ -172,14 +176,20 @@ func postLecture(_ json: String) {
     UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: id, content: content, trigger: nil))
 }
 
+/// The lecture notification's button, in Stenny's language (set again when that changes).
+func setLectureCategory() {
+    guard args.contains("--calendar"), Bundle.main.bundleIdentifier != nil else { return }
+    // one action only: with two, macOS folds them into an "Options" menu
+    let start = UNNotificationAction(identifier: "start", title: localized("Start Recording", "Aufnahme starten"), options: [])
+    UNUserNotificationCenter.current().setNotificationCategories(
+        [UNNotificationCategory(identifier: "lecture", actions: [start], intentIdentifiers: [])])
+}
+
 if args.contains("--calendar") {
     let dataDir = args.firstIndex(of: "--data-dir").flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil }
     if Bundle.main.bundleIdentifier != nil {
-        let center = UNUserNotificationCenter.current()
-        center.delegate = notifications
-        // one action only: with two, macOS folds them into an "Options" menu
-        let start = UNNotificationAction(identifier: "start", title: localized("Start Recording", "Aufnahme starten"), options: [])
-        center.setNotificationCategories([UNNotificationCategory(identifier: "lecture", actions: [start], intentIdentifiers: [])])
+        UNUserNotificationCenter.current().delegate = notifications
+        setLectureCategory()
     }
     Task {
         let granted: Bool
@@ -225,6 +235,15 @@ Thread.detachNewThread {
         } else if line.hasPrefix("notify ") {
             let json = String(line.dropFirst("notify ".count))
             DispatchQueue.main.async { postLecture(json) }
+        } else if line.hasPrefix("lang ") {
+            let lang = String(line.dropFirst("lang ".count))
+            DispatchQueue.main.async {
+                german = lang == "de"
+                setLectureCategory()
+            }
+        } else if line.hasPrefix("shortcut ") {
+            let shortcut = String(line.dropFirst("shortcut ".count))
+            DispatchQueue.main.async { register(shortcut) }
         }
     }
     exit(0)
@@ -246,20 +265,34 @@ DispatchQueue.main.async {  // once app.run() has launched: AppKit sets up its o
         forEventClass: AEEventClass(kCoreEventClass), andEventID: AEEventID(kAEQuitApplication))
 }
 
-guard let (code, modifiers, label) = parse(args[i + 1]) else {
-    say("error " + localized("The key of the pause shortcut \(args[i + 1]) isn't on this keyboard.",
-                        "Die Taste für den Kurzbefehl \(args[i + 1]) gibt es auf dieser Tastatur nicht."))
-    exit(1)
-}
+// MARK: The pause shortcut
+
 var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
 InstallEventHandler(GetApplicationEventTarget(), { _, _, _ in
     say("hotkey")
     return noErr
 }, 1, &eventType, nil, nil)
-var ref: EventHotKeyRef?
-let id = EventHotKeyID(signature: OSType(0x53544E59) /* "STNY" */, id: 1)
-let status = RegisterEventHotKey(UInt32(code), UInt32(modifiers), id, GetApplicationEventTarget(), 0, &ref)
-say(status == noErr ? "ready \(code) \(label)"
-    : "error " + localized("\(label) is taken by another app (status \(status)).",
-                      "\(label) wird bereits von einer anderen App verwendet (Status \(status))."))
+var hotKey: EventHotKeyRef?
+
+/// Registers `shortcut` as the pause shortcut in place of the one before (at start, and on "shortcut …" from the
+/// app): "ready <key code> <label>" or "error <why>". Without a working one there's no shortcut, but the helper
+/// stays (the calendar, opening at login). On the main thread.
+func register(_ shortcut: String) {
+    if let old = hotKey {
+        UnregisterEventHotKey(old)
+        hotKey = nil
+    }
+    guard let (code, modifiers, label) = parse(shortcut) else {
+        say("error " + localized("The key of the pause shortcut \(shortcut) isn't on this keyboard.",
+                                 "Die Taste für den Kurzbefehl \(shortcut) gibt es auf dieser Tastatur nicht."))
+        return
+    }
+    let id = EventHotKeyID(signature: OSType(0x53544E59) /* "STNY" */, id: 1)
+    let status = RegisterEventHotKey(UInt32(code), UInt32(modifiers), id, GetApplicationEventTarget(), 0, &hotKey)
+    say(status == noErr ? "ready \(code) \(label)"
+        : "error " + localized("\(label) is taken by another app (status \(status)).",
+                               "\(label) wird bereits von einer anderen App verwendet (Status \(status))."))
+}
+
+register(args[i + 1])
 app.run()
