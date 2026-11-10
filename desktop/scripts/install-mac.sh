@@ -1,8 +1,8 @@
 #!/bin/zsh
 # Installs a built Stenny.app on this Mac and makes sure macOS knows one Stenny only: one in Spotlight and Launchpad,
 # one icon in the Dock. Use it every time instead of copying the app by hand.
-#   scripts/install-mac.sh                     src-tauri/target/release/bundle/macos/Stenny.app, then open it
-#   scripts/install-mac.sh --debug             the debug build (src-tauri/target/debug/…)
+#   scripts/install-mac.sh                     src-tauri/target.noindex/release/bundle/macos/Stenny.app, then open it
+#   scripts/install-mac.sh --debug             the debug build (src-tauri/target.noindex/debug/…)
 #   scripts/install-mac.sh --no-open [<app>]   install only; <app>: another Stenny.app to install
 #
 # Why: macOS registers every Stenny.app it sees (each build folder, each worktree) under the same bundle id, and a
@@ -26,7 +26,7 @@ for arg in "$@"; do
         *) app="$arg" ;;
     esac
 done
-app="${app:-src-tauri/target/$profile/bundle/macos/Stenny.app}"
+app="${app:-src-tauri/target.noindex/${profile}/bundle/macos/Stenny.app}"
 [[ -d "$app" ]] || { echo "❌ $app doesn't exist. Build it first: npm run tauri build -- --bundles app"; exit 1; }
 app="${app:A}"
 plist() { /usr/libexec/PlistBuddy -c "Print :$2" "$1/Contents/Info.plist" 2>/dev/null || true; }

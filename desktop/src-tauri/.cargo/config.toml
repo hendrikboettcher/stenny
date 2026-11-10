@@ -1,0 +1,4 @@
+# Builds go to target.noindex: Spotlight skips *.noindex folders, so the Stenny.app copies a build leaves there
+# never show up in Spotlight or Launchpad next to the installed Stenny (one Stenny, see scripts/install-mac.sh).
+[build]
+target-dir = "target.noindex"

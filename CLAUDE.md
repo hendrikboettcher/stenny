@@ -133,7 +133,8 @@ Stenny folder (`folder` in config.toml, default `~/Documents/Stenny`, may be ins
 - **Keep README.md, SETUP.md and config.example.toml current** in the same commit as a change to a feature, a command, a setting or a storage location.
 - **One Stenny in the Dock, Spotlight and Launchpad.** Install a Mac build only with `desktop/scripts/install-mac.sh`
   (in place, other copies unregistered, duplicate Dock tiles removed); deleting and copying the app by hand leaves the
-  Dock with two or three Stenny icons.
+  Dock with two or three Stenny icons. Builds go to `desktop/src-tauri/target.noindex` (.cargo/config.toml), which
+  Spotlight skips; never put a built Stenny.app anywhere Spotlight indexes.
 - Don't install large dependencies (>100 MB) or persistent system config without asking the user. The one exception: setup installs the queue's launchd agent (Windows: Task Scheduler task) by itself (`stenny schedule uninstall` removes it).
 
 ## Commands

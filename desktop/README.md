@@ -10,15 +10,16 @@ npm install                                   # once
 scripts/helpers.sh                            # what it bundles: stenny-agent (macOS only, tauri.macos.conf.json), stenny-rec, Stenny.mcpb (needs Node)
 bash scripts/stenny-rec.sh                    # on Windows (Git Bash): stenny-rec.exe, the WASAPI recorder (stenny-rec/)
 npm run check                                 # type check
-npm run tauri build -- --debug --bundles app  # src-tauri/target/debug/bundle/macos/Stenny.app
+npm run tauri build -- --debug --bundles app  # src-tauri/target.noindex/debug/bundle/macos/Stenny.app
 scripts/install-mac.sh                        # the release build into /Applications, one Stenny in the Dock (--debug, --no-open)
-open -n --env STENNY_CLI=../.venv/bin/stenny src-tauri/target/debug/bundle/macos/Stenny.app --args --library
+open -n --env STENNY_CLI=../.venv/bin/stenny src-tauri/target.noindex/debug/bundle/macos/Stenny.app --args --library
 STENNY_CLI=../.venv/bin/stenny npx vite dev --port 1420   # the interface in a browser, real engine (dev/engine-bridge.js)
 ```
 
 **Install on a Mac only with `scripts/install-mac.sh`**, never by copying the app: it updates the installed app in
 place (so the Dock's tile still knows it), unregisters every other Stenny.app (build folders, worktrees) and removes
-Stenny tiles the Dock has twice, so Stenny shows in the Dock once. It won't quit a Stenny that's recording.
+Stenny tiles the Dock has twice, so Stenny shows in the Dock once. Builds land in `src-tauri/target.noindex` (src-tauri/.cargo/config.toml): Spotlight
+skips `.noindex` folders, so a build never shows up in Spotlight or Launchpad as a second Stenny. It won't quit a Stenny that's recording.
 
 `--library` runs the window without the menu bar icon, for trying a build next to the installed Stenny (never two
 Stenny icons in the menu bar). `STENNY_CLI` picks the engine (default `~/.local/bin/stenny`); `STENNY_HOME` puts all of
