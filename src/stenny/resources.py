@@ -54,5 +54,27 @@ def available_memory() -> int:
     return pages * int(page.group(1)) if page else MEMORY_FOR_FINAL_PASS
 
 
+# The live draft's Whisper model (large-v3-turbo through mlx) takes ~2.5 GB while loaded (measured on battery, #13).
+# On a 16 GB Mac with a second account logged in, loading it alone turns macOS's verdict to "warning" with 40-60 %
+# still free; pausing on that unloaded the model, the verdict went back to normal, the draft came back two minutes
+# later and paused again. So "warning" pauses the draft only when memory really runs short, and it comes back only
+# once the model fits again with room to spare.
+DRAFT_MEMORY_LOW = 1 * GB      # less available than this, with the verdict at "warning": the draft pauses
+DRAFT_MODEL_MEMORY = 3 * GB    # what the model needs back (2.5 GB measured, plus some)
+
+
+def draft_memory_low(paused: bool) -> bool:
+    """Whether the live draft has to (stay) paused for memory. "critical" always pauses it. Running, it pauses at
+    "warning" only with less than DRAFT_MEMORY_LOW available; paused (the model unloaded), it stays paused until
+    the model fits again: DRAFT_MEMORY_LOW plus DRAFT_MODEL_MEMORY available."""
+    pressure = memory_pressure()
+    if pressure >= PRESSURE_CRITICAL:
+        return True
+    if pressure == PRESSURE_NORMAL and not paused:
+        return False
+    need = DRAFT_MEMORY_LOW + (DRAFT_MODEL_MEMORY if paused else 0)
+    return available_memory() < need
+
+
 def enough_memory_for_final_pass() -> bool:
     return memory_pressure() == PRESSURE_NORMAL and available_memory() >= MEMORY_FOR_FINAL_PASS

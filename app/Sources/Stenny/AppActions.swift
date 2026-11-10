@@ -21,8 +21,7 @@ enum Consent {
     }
 }
 
-/// Send Feedback…, Check for Updates… and adding or removing a course: the same from the menu bar menu
-/// and from Stenny's window.
+/// Send Feedback…, Check for Updates… (both in the footer of Stenny's window) and adding or removing a course.
 @MainActor
 enum AppActions {
     // MARK: Feedback

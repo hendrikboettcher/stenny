@@ -131,7 +131,7 @@ async fn lecturer_agreed(app: AppHandle, purpose: String, course: String, event:
         .map_err(|e| e.to_string())
 }
 
-/// The library window's footer: Send Feedback… and Check for Updates…, as in the menu bar.
+/// The library window's footer: Send Feedback… and Check for Updates… (only there, not in the menu bar).
 #[tauri::command]
 fn show_feedback(app: AppHandle) {
     show_window(&app, "feedback");
