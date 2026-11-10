@@ -33,8 +33,10 @@ plist() { /usr/libexec/PlistBuddy -c "Print :$2" "$1/Contents/Info.plist" 2>/dev
 BUNDLE_ID="$(plist "$app" CFBundleIdentifier)"
 LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 
-# A recording comes first: never quit Stenny in the middle of one
-if pgrep -u "$(id -u)" -f "stenny(\.exe)? live" >/dev/null; then
+# A recording comes first: never quit Stenny in the middle of one. Only the real processes count (`stenny live`
+# started by Python, the recorder), not a shell or script whose command line merely mentions "stenny live".
+recording='^[^ ]*/python[0-9.]* (-m stenny|[^ ]*/stenny) live( |$)|^[^ ]*/Contents/MacOS/stenny-rec( |$)'
+if pgrep -u "$(id -u)" -f "$recording" >/dev/null; then
     echo "❌ Stenny is recording (or finishing a recording). Install again once it's done."
     exit 1
 fi
