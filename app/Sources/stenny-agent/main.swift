@@ -87,7 +87,8 @@ let args = CommandLine.arguments
 
 // A one-off job instead of the helper's usual work (PDFExport.swift).
 if let p = args.firstIndex(of: "--pdf"), p + 1 < args.count {
-    // Never in the Dock: Stenny.app's Info.plist, which this helper reads too, makes a Dock app (no LSUIElement)
+    // Never in the Dock. Stenny.app's Info.plist (LSUIElement), which this helper reads too, already sees to that;
+    // this is the second guard (#52)
     NSApplication.shared.setActivationPolicy(.prohibited)
     let result = MainActor.assumeIsolated { makePDF(from: URL(fileURLWithPath: args[p + 1])) }
     switch result {
@@ -103,7 +104,7 @@ guard let i = args.firstIndex(of: "--shortcut"), i + 1 < args.count else {
 }
 
 let app = NSApplication.shared
-app.setActivationPolicy(.prohibited)  // never in the Dock (see --pdf above)
+app.setActivationPolicy(.prohibited)  // never in the Dock, a second guard after LSUIElement (see --pdf above)
 
 // MARK: Calendar and the lecture notification (as in the Swift app's CalendarWatcher and LectureController)
 
