@@ -329,9 +329,6 @@ fn build_menu(app: &AppHandle, st: &State) -> tauri::Result<(Menu<Wry>, MenuItem
         items.push(Box::new(MenuItem::with_id(app, "cancel", label(tr!("menu.cancel")), true, None::<&str>)?));
         items.push(Box::new(PredefinedMenuItem::separator(app)?));
     }
-    items.push(Box::new(MenuItem::with_id(app, "feedback", label(tr!("menu.feedback")), true, None::<&str>)?));
-    items.push(Box::new(MenuItem::with_id(app, "updates", label(tr!("menu.updates")), true, None::<&str>)?));
-    items.push(Box::new(PredefinedMenuItem::separator(app)?));
     items.push(Box::new(MenuItem::with_id(app, "quit", label(tr!("menu.quit")), true, None::<&str>)?));
     let refs: Vec<&dyn IsMenuItem<Wry>> = items.iter().map(|b| b.as_ref()).collect();
     Ok((Menu::with_items(app, &refs)?, status_item))
@@ -752,8 +749,6 @@ fn on_menu(app: &AppHandle, id: &str) {
         "talk" => crate::show_window(&app, "talk"),
         "open" => crate::show_window(&app, "library"),
         "open-text" => crate::show_recording(&app),
-        "feedback" => crate::show_window(&app, "feedback"),
-        "updates" => check_updates(&app),
         "transcript" => open_transcript(&app),
         "quit" => {
             if confirm_quit(&app) {
@@ -773,7 +768,7 @@ fn on_menu(app: &AppHandle, id: &str) {
     });
 }
 
-/// "Check for Updates…": whether a newer Stenny is out. Installing it comes with the app's own updater; until
+/// "Check for Updates…" in the library window's footer: whether a newer Stenny is out. Installing it comes with the app's own updater; until
 /// then "Download" opens the release page.
 pub fn check_updates(app: &AppHandle) {
     let result = engine(app).call("check_update", json!({}));

@@ -1,5 +1,5 @@
 <script lang="ts">
-  // "Send Feedback…" from the menu bar or the library window: goes to stenny.eu, like the website's form.
+  // "Send Feedback…" in the library window's footer: goes to stenny.eu, like the website's form.
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { engine } from "$lib/engine";
   import { t } from "$lib/i18n.svelte";
