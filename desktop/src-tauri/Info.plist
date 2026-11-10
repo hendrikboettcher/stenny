@@ -2,9 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <!-- merged into Stenny.app's Info.plist by the Tauri bundler. No LSUIElement: Stenny is a Dock app, so the Dock
-       knows it from the start and bounces it while it opens. stenny-agent, which reads this Info.plist too, keeps
-       itself out of the Dock (setActivationPolicy(.prohibited), app/Sources/stenny-agent/main.swift). -->
+  <!-- merged into Stenny.app's Info.plist by the Tauri bundler. LSUIElement keeps the bundled helpers out of the
+       Dock: stenny-agent lives in the same Stenny.app and reads this Info.plist too, and without it the Dock shows
+       every start of the helper as another Stenny and keeps it under recent apps (#52). The app itself turns its
+       Dock icon on at launch (lib.rs, `setup`); so Stenny doesn't bounce in the Dock while it opens. -->
+  <key>LSUIElement</key><true/>
   <!-- English and German (desktop/src/lib/locales): the system's own parts (permission prompts, the share menu)
        follow the system's language; the permission texts below in German: locales/de.lproj/InfoPlist.strings -->
   <key>CFBundleDevelopmentRegion</key><string>en</string>
