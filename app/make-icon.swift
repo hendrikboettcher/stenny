@@ -38,11 +38,11 @@ func png(size: Int) -> Data {
                              xRadius: s * 184 / 1024, yRadius: s * 184 / 1024)
     inner.lineWidth = max(1, s * 2 / 1024)
     inner.stroke()
-    // The figure, 66 % of the shape's height: big enough to read, with the breathing room the grid asks for.
+    // The figure, 75 % of the shape's height: big enough to read, with the breathing room the grid asks for.
     // Optically centred: the body line sits near the middle (the pen arm reaches right), a touch below the
     // geometric centre because the head carries most of the weight.
     let height: CGFloat = 152                   // the figure's height in the logo's units (y 2–154)
-    let scale = body.height * 0.66 / height
+    let scale = body.height * 0.75 / height
     let t = NSAffineTransform()
     t.translateX(by: s / 2, yBy: s / 2)
     t.scaleX(by: scale, yBy: -scale)
