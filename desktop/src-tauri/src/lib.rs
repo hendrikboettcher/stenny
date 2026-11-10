@@ -186,7 +186,7 @@ async fn login_item(app: AppHandle, on: Option<bool>) -> Result<Option<String>, 
 /// After the pause shortcut changed in the config: registers the new one. Its problem, if it couldn't.
 #[tauri::command]
 async fn apply_shortcut(app: AppHandle) -> Result<Option<String>, String> {
-    tauri::async_runtime::spawn_blocking(move || menubar::restart_agent(&app)).await.map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(move || menubar::apply_shortcut(&app)).await.map_err(|e| e.to_string())
 }
 
 /// The pause shortcut as Windows registered it ("Strg+Umschalt+Ü"); null on a Mac, where Settings shows the config's.
@@ -285,7 +285,8 @@ async fn set_ui_language(app: AppHandle, language: String) {
 }
 
 /// After the language changed: the windows (the "language" event, routes/+layout.svelte), their titles, the app
-/// menu, the menu bar's menu, and stenny-agent (its notifications), which is started again with the new language.
+/// menu, the menu bar's menu, and stenny-agent (its notifications), which is told the new language: never started
+/// again, which put a second Stenny in the Dock (#46).
 pub fn language_changed(app: &AppHandle) {
     let _ = app.emit("language", i18n::language());
     let app2 = app.clone();
@@ -301,7 +302,7 @@ pub fn language_changed(app: &AppHandle) {
         }
     });
     menubar::redraw(app, true);
-    menubar::restart_agent(app);
+    menubar::set_agent_language(app);
 }
 
 /// The app menu while a window of Stenny's is in front (macOS): Tauri's own default, in Stenny's language.

@@ -56,6 +56,10 @@ struct State {
     pause_accel: Option<String>,             // the pause shortcut as a physical accelerator ("Cmd+F1"), if not a character
     login: Option<String>,                   // the agent's last "login on|off|approval" (Settings asks for it)
     shortcut_problem: Option<String>,        // the agent couldn't register the pause shortcut: why
+    #[cfg_attr(windows, allow(dead_code))]
+    pause_shortcut: String,                  // macOS: the pause shortcut the agent was told ("cmd+shift+ü")
+    #[cfg_attr(windows, allow(dead_code))]
+    shortcut_answers: u32,                   // macOS: how many "ready"/"error" lines the agent has sent
     pause_label: Option<String>,             // Windows: the pause shortcut as registered ("Strg+Umschalt+Ü")
 }
 
@@ -834,7 +838,7 @@ fn start_agent(app: &AppHandle) {
         let settings = engine(&app).call("settings", json!({})).unwrap_or(Value::Null);
         let shortcut = settings.get("pause_shortcut").and_then(Value::as_str).unwrap_or("cmd+shift+ü").to_string();
         let data_dir = settings.get("data_dir").and_then(Value::as_str).unwrap_or_default().to_string();
-        // its notifications and messages in Stenny's language (restarted when that changes)
+        // its notifications and messages in Stenny's language ("lang …" when that changes, set_agent_language)
         let lang = i18n::language();
         let child = std::process::Command::new(exe)
             .args(["--shortcut", &shortcut, "--calendar", "--data-dir", &data_dir, "--lang", lang])
@@ -846,6 +850,13 @@ fn start_agent(app: &AppHandle) {
             let bar = app.state::<MenuBar>();
             let mut st = bar.0.lock().unwrap();
             st.agent_in = child.stdin.take(); // open while Stenny runs
+            st.pause_shortcut = shortcut.clone();
+            if i18n::language() != lang {
+                // changed while it started
+                if let Some(stdin) = st.agent_in.as_mut() {
+                    let _ = writeln!(stdin, "lang {}", i18n::language());
+                }
+            }
             // open at login by default, so the lecture notification works without thinking of it: once, and only
             // for a copy in an Applications folder (never a build copy)
             let installed = std::env::current_exe().is_ok_and(|e| {
@@ -861,7 +872,13 @@ fn start_agent(app: &AppHandle) {
         let Some(out) = child.stdout.take() else { return };
         for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
             if let Some(rest) = line.strip_prefix("ready ") {
-                app.state::<MenuBar>().0.lock().unwrap().shortcut_problem = None;
+                let shortcut = {
+                    let bar = app.state::<MenuBar>();
+                    let mut st = bar.0.lock().unwrap();
+                    st.shortcut_problem = None;
+                    st.shortcut_answers += 1;
+                    st.pause_shortcut.clone()
+                };
                 let code = rest.split(' ').next().and_then(|c| c.parse::<u32>().ok());
                 // a character key (Ü) is put on the menu item natively (macos.rs): Tauri's physical accelerator
                 // gets relabelled by macOS (⇧⌘Ö on a German keyboard)
@@ -892,7 +909,17 @@ fn start_agent(app: &AppHandle) {
             } else if let Some(state) = line.strip_prefix("login ").filter(|s| ["on", "off", "approval"].contains(s)) {
                 app.state::<MenuBar>().0.lock().unwrap().login = Some(state.to_string());
             } else if let Some(problem) = line.strip_prefix("error ") {
-                app.state::<MenuBar>().0.lock().unwrap().shortcut_problem = Some(problem.to_string());
+                {
+                    let bar = app.state::<MenuBar>();
+                    let mut st = bar.0.lock().unwrap();
+                    st.shortcut_problem = Some(problem.to_string());
+                    st.shortcut_answers += 1;
+                }
+                // nothing registered now: no shortcut on the menu item either
+                #[cfg(target_os = "macos")]
+                crate::macos::set_pause_shortcut("");
+                app.state::<MenuBar>().0.lock().unwrap().pause_accel = None;
+                redraw(&app, true);
                 notify(&app, &tr!("note.shortcutBroken", problem = problem));
             }
         }
@@ -1085,15 +1112,65 @@ pub fn pause_label(app: &AppHandle) -> Option<String> {
 /// Windows: the pause shortcut registered again from the config (windows_agent.rs). Its problem, if it couldn't be
 /// (another app has it). Nothing to do in a --library window: the shortcut is the installed Stenny's.
 #[cfg(windows)]
-pub fn restart_agent(app: &AppHandle) -> Option<String> {
+pub fn apply_shortcut(app: &AppHandle) -> Option<String> {
     app.tray_by_id(TRAY)?;
     register_shortcut(app)
 }
 
-/// After the pause shortcut changed: the agent again, which reads it from the config. Returns its problem, if the
-/// new shortcut couldn't be registered (another app has it). Nothing to do without an agent (a --library window).
+/// Windows: after the language changed, the pause shortcut's label in it ("Strg+Umschalt+Ü" / "Ctrl+Shift+Ü"):
+/// registered again in the app's own thread (windows_agent.rs), no new process, window or notification-area icon.
+#[cfg(windows)]
+pub fn set_agent_language(app: &AppHandle) {
+    let _ = apply_shortcut(app);
+}
+
+/// A line to the running agent. False if there's none (a --library window) or it's gone.
 #[cfg(not(windows))]
-pub fn restart_agent(app: &AppHandle) -> Option<String> {
+fn tell_agent(app: &AppHandle, line: &str) -> bool {
+    let bar = app.state::<MenuBar>();
+    let mut st = bar.0.lock().unwrap();
+    st.agent_in.as_mut().is_some_and(|stdin| writeln!(stdin, "{line}").is_ok())
+}
+
+/// After the language changed: the agent's notifications and messages follow ("lang de"). Never by starting it
+/// again: a second process with Stenny's bundle id shows up in the Dock as another Stenny (#46).
+#[cfg(not(windows))]
+pub fn set_agent_language(app: &AppHandle) {
+    tell_agent(app, &format!("lang {}", i18n::language()));
+}
+
+/// After the pause shortcut changed in the config: the running agent registers it in place of the old one (not a
+/// new agent, see set_agent_language). Returns its problem, if the new shortcut couldn't be registered (another app
+/// has it). Nothing to do without an agent (a --library window).
+#[cfg(not(windows))]
+pub fn apply_shortcut(app: &AppHandle) -> Option<String> {
+    let settings = engine(app).call("settings", json!({})).unwrap_or(Value::Null);
+    let shortcut = settings.get("pause_shortcut").and_then(Value::as_str).unwrap_or("cmd+shift+ü").to_string();
+    let before = {
+        let bar = app.state::<MenuBar>();
+        let mut st = bar.0.lock().unwrap();
+        st.agent_in.as_ref()?;
+        st.pause_shortcut = shortcut.clone();
+        st.shortcut_answers
+    };
+    if !tell_agent(app, &format!("shortcut {shortcut}")) {
+        return restart_agent(app); // the agent died: a new one, as at start
+    }
+    for _ in 0..40 {
+        std::thread::sleep(Duration::from_millis(50));
+        let bar = app.state::<MenuBar>();
+        let st = bar.0.lock().unwrap();
+        if st.shortcut_answers != before {
+            return st.shortcut_problem.clone();
+        }
+    }
+    None
+}
+
+/// The agent started again, which reads the shortcut from the config: only when the old one is gone, since the new
+/// one appears in the Dock for a moment. Its problem, if the shortcut couldn't be registered.
+#[cfg(not(windows))]
+fn restart_agent(app: &AppHandle) -> Option<String> {
     {
         let bar = app.state::<MenuBar>();
         let mut st = bar.0.lock().unwrap();
