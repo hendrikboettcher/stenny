@@ -573,10 +573,11 @@ def test_switching_the_microphone_ends_the_gap_and_keeps_recording(tmp_path, mon
     assert LiveInfo.load(s.session_path).microphone == "MacBook Air Microphone"
 
 
-def fake_resources(monkeypatch, disk=10 * resources.GB, pressure=resources.PRESSURE_NORMAL):
-    state = {"disk": disk, "pressure": pressure}
+def fake_resources(monkeypatch, disk=10 * resources.GB, pressure=resources.PRESSURE_NORMAL, available=8 * resources.GB):
+    state = {"disk": disk, "pressure": pressure, "available": available}
     monkeypatch.setattr(resources, "free_disk", lambda path: state["disk"])
     monkeypatch.setattr(resources, "memory_pressure", lambda: state["pressure"])
+    monkeypatch.setattr(resources, "available_memory", lambda: state["available"])
     monkeypatch.setattr(live_session, "RESOURCE_CHECK", 0.0)
     return state
 
@@ -589,14 +590,14 @@ def test_low_memory_pauses_transcription_but_never_the_recording(tmp_path, monke
 
     def script(s):
         wait_until(lambda: mic.t >= 10 and s.cache.chunks)  # the model is loaded
-        state["pressure"] = 2
+        state["pressure"], state["available"] = 2, resources.DRAFT_MEMORY_LOW - 1   # memory really runs short
         wait_until(lambda: s.draft_paused and s.warning)
         s.engine.release = lambda: released.append(True)
         before = len(s.segments)
         # the session reads what the clock wrote a little later (much later on a busy runner): wait for both
         wait_until(lambda: mic.t >= 25 and s.recorded >= 24 * SAMPLE_RATE)
         s.seen = before, len(s.segments), s.recorded
-        state["pressure"] = 1
+        state["pressure"], state["available"] = 1, 8 * resources.GB
         wait_until(lambda: not s.draft_paused)
         mic.at(45, lambda: s.command("stop"))
 
@@ -608,6 +609,35 @@ def test_low_memory_pauses_transcription_but_never_the_recording(tmp_path, monke
     assert len(s.segments) > during                  # and transcription came back
     assert released == [True]
     assert not s.warning
+
+
+def test_the_models_own_memory_doesnt_pause_the_draft(tmp_path, monkeypatch):
+    """macOS says "warning" once the model is loaded (16 GB, a second account logged in), with plenty still
+    available: the draft goes on, instead of unloading the model and coming back two minutes later, again and again."""
+    state = fake_resources(monkeypatch, available=6 * resources.GB)
+    mic = FakeMic()
+
+    def script(s):
+        wait_until(lambda: mic.t >= 5 and s.cache.chunks)  # the model is loaded
+        state["pressure"] = resources.PRESSURE_WARNING
+        mic.at(30, lambda: s.command("stop"))
+
+    s = run_session(tmp_path, monkeypatch, mic, script=script)
+    assert not s.draft_paused and not s.warning
+    assert max(seg["end"] for seg in s.segments) > 20     # transcribed all along
+
+
+def test_paused_for_memory_it_comes_back_only_once_the_model_fits(monkeypatch):
+    state = fake_resources(monkeypatch, pressure=resources.PRESSURE_WARNING, available=resources.DRAFT_MEMORY_LOW - 1)
+    assert resources.draft_memory_low(paused=False)                   # running: memory really runs short
+    state["available"] = resources.DRAFT_MEMORY_LOW + resources.GB
+    assert not resources.draft_memory_low(paused=False)               # "warning", but room enough: goes on
+    state["pressure"] = resources.PRESSURE_NORMAL
+    assert resources.draft_memory_low(paused=True)                    # unloading the model made this room:
+    state["available"] = resources.DRAFT_MEMORY_LOW + resources.DRAFT_MODEL_MEMORY   # it waits until the model fits
+    assert not resources.draft_memory_low(paused=True)
+    state["pressure"] = resources.PRESSURE_CRITICAL
+    assert resources.draft_memory_low(paused=False)                   # "critical" always pauses it
 
 
 def test_low_disk_stops_the_backup_and_a_full_disk_ends_cleanly(tmp_path, monkeypatch):
