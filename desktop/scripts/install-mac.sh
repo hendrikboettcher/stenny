@@ -33,6 +33,17 @@ plist() { /usr/libexec/PlistBuddy -c "Print :$2" "$1/Contents/Info.plist" 2>/dev
 BUNDLE_ID="$(plist "$app" CFBundleIdentifier)"
 LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 
+# Signed with a stable certificate ("Stenny Dev", made once by app/make-cert.sh), so the microphone and calendar
+# permissions survive updates; Tauri's builds are only signed ad hoc, which changes with every build and makes macOS ask
+# again. STENNY_SIGN_IDENTITY picks another certificate from the keychain.
+identity="${STENNY_SIGN_IDENTITY:-Stenny Dev}"
+if security find-identity -p codesigning | grep -q "\"$identity\""; then
+    codesign --force --deep --sign "$identity" "$app"
+else
+    echo "⚠️  Certificate \"$identity\" not found: installing the ad-hoc signed build, so macOS will ask for the microphone"
+    echo "   and calendar again. Run app/make-cert.sh once to fix that."
+fi
+
 # A recording comes first: never quit Stenny in the middle of one. Only the real processes count (`stenny live`
 # started by Python, the recorder), not a shell or script whose command line merely mentions "stenny live".
 recording='^[^ ]*/python[0-9.]* (-m stenny|[^ ]*/stenny) live( |$)|^[^ ]*/Contents/MacOS/stenny-rec( |$)'
