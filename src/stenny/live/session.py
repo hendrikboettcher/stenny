@@ -46,7 +46,7 @@ AFTER_START_WAIT = 5.0  # seconds run(after_start) waits for the first audio bef
 
 BACKUP_RETRY = 30.0  # seconds between restarts of a backup recorder that stopped
 RESOURCE_CHECK = 10.0  # seconds between looks at free disk and memory
-DRAFT_RESUME = 120.0   # seconds of normal memory before transcription paused for memory goes on
+DRAFT_RESUME = 120.0   # seconds with room for the model again before transcription paused for memory goes on
 # Audio this close to the recording's head may still become a gap (SILENT_GAP of zeros is noticed only after
 # 2 s); chunks are cut only behind it, so they are the ones the final pass will cut.
 LAG = SILENT_GAP + 1.5
@@ -400,10 +400,9 @@ class LiveSession:
             self.disk_low = True
             if self.backup:
                 self.backup.stop()
-        pressure = resources.memory_pressure()
-        if pressure > resources.PRESSURE_NORMAL:
+        if self.draft and resources.draft_memory_low(self.draft_paused):
             self.memory_normal_since = None
-            if self.draft and not self.draft_paused:
+            if not self.draft_paused:
                 log("Memory is low: transcription paused, the recording goes on and catches up later")
                 self.draft_paused = True
         elif self.draft_paused:
