@@ -524,7 +524,9 @@
   async function capture(e: KeyboardEvent) {
     if (!recording) {
       if (e.key === "Escape" && courseMenu) { courseMenu = null; return; }
-      if (e.key === "Escape" && !e.defaultPrevented && !deleting && !adding && !removing && !connRemove) onclose();
+      // Escape inside one of Settings' dialogs closes only that dialog (Dialog.svelte), not Settings
+      const dialogOpen = deleting || adding || removing || connRemove || linkAdding || linkRemoving;
+      if (e.key === "Escape" && !e.defaultPrevented && !dialogOpen) onclose();
       return;
     }
     e.preventDefault();
@@ -614,7 +616,7 @@
       {#if !env || st.state === "ready"}
         <form class="key" onsubmit={(e) => { e.preventDefault(); saveKey(); }}>
           <input type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false" bind:value={keyInput}
-                 aria-label="Anthropic API key" disabled={keyBusy} />
+                 aria-label={t("settings.ai.api.label")} disabled={keyBusy} />
           <button class="pill primary" type="submit" disabled={keyBusy || !keyInput.trim()}>
             {keyBusy ? t("settings.ai.checking") : t("settings.ai.api.save")}
           </button>

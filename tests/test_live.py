@@ -696,7 +696,6 @@ def test_virtual_devices_are_not_offered_as_microphones(monkeypatch):
 
 def test_cancel_ends_without_a_transcript_and_trashes_the_recording(tmp_path, monkeypatch):
     import shutil
-    from types import SimpleNamespace
 
     from stenny import cli, manage
     (tmp_path / "vault" / "Areas").mkdir(parents=True)

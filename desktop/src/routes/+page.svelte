@@ -646,7 +646,7 @@
                     onsettings={openSettings} />
     <footer>
       <button class="with-key" onclick={() => openSettings()}>
-        <span>{t("lib.settings")}</span><kbd aria-label={onWindows ? "Control comma" : "Command comma"}>{settingsKey}</kbd>
+        <span>{t("lib.settings")}</span><kbd aria-label={t("lib.settings.shortcut")}>{settingsKey}</kbd>
       </button>
       <button onclick={() => invoke("show_feedback")}>{t("lib.feedback")}</button>
       <button onclick={() => invoke("check_updates")}>{t("lib.updates")}</button>

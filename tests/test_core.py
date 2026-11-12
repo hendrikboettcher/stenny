@@ -89,6 +89,12 @@ def test_glossary_parse_prompt_and_corrections():
     assert n == 2
 
 
+def test_glossary_corrections_are_written_as_they_are():
+    """A backslash in the right spelling is a character, not part of a regex template (LaTeX names)."""
+    g = Glossary([], [("sigma", "\\sigma"), ("nabla", "\\nabla"), ("group one", "\\1")])
+    assert g.apply_corrections("sigma and nabla of group one") == ("\\sigma and \\nabla of \\1", 3)
+
+
 # --- guard --------------------------------------------------------------------
 
 PARAS = [{"start": 0, "text": "Le théorème de Bolsano Weierstrass dit que toute suite bornée converge."},
@@ -110,6 +116,8 @@ def test_guard_applies_near_spelling_and_glossary_fixes():
     ({"p": 0, "from": "toute suite bornée converge", "to": "toute suite bornée admet une sous-suite convergente"},
      "too large"),
     ({"p": 0, "from": "converge", "to": "diverge"}, "not a glossary term"),
+    # one word of a longer term ("suite de Cauchy") is no term: "toute" → "suite" would change ordinary text
+    ({"p": 0, "from": "toute", "to": "suite"}, "not a glossary term"),
     ({"p": 0, "from": "suite", "to": "Riemann"}, "not a near spelling of the original"),
     ({"p": 1, "from": "Cauchy", "to": "Cauchy-Schwarz"}, "'from' not found in paragraph"),
     ({"p": 0, "from": "théorème", "to": "théorème"}, "empty or no-op"),

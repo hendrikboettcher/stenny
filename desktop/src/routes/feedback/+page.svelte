@@ -1,7 +1,7 @@
 <script lang="ts">
   // "Send Feedback…" in the library window's footer: goes to stenny.eu, like the website's form.
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import { engine } from "$lib/engine";
+  import { copyText, engine } from "$lib/engine";
   import { t } from "$lib/i18n.svelte";
 
   let message = $state("");
@@ -23,9 +23,10 @@
       await engine("send_feedback", { message, contact, details });
       sent = true;
     } catch (err) {
-      // the message mustn't be lost: it goes to the clipboard
-      await navigator.clipboard.writeText(message).catch(() => {});
-      error = t("feedback.onClipboard", { error: String(err) });
+      // the message mustn't be lost: it goes to the clipboard (the app's own copy: the web view's clipboard isn't
+      // reliable in a WKWebView), and only if that worked does the window say so
+      const copied = await copyText(message).then(() => true, () => false);
+      error = t(copied ? "feedback.onClipboard" : "feedback.notCopied", { error: String(err) });
     } finally {
       busy = false;
     }

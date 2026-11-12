@@ -50,7 +50,6 @@ language = "system"
 # device = "MacBook Air Microphone"   # microphone for `stenny live` (see `stenny devices`);
                                        # unset = the system's input device. Stenny has its own picker.
 # draft = true        # live draft, plugged in or on battery (paused below 20 % battery); false: record only, the transcript is made after the lecture
-# provisional = false  # true: the live draft also shows the sentence being spoken (italics), replaced seconds later; costs battery
 # backup = "auto"   # second microphone recorded alongside, used only where the main one sent nothing
                     # (e.g. while you use the iPhone): "auto" = the computer's own microphone, "off", or a name
 

@@ -23,7 +23,8 @@ import ServiceManagement
 //        bundle id would show up in the Dock as a second Stenny, #46);
 //        "shortcut cmd+shift+ü" registers a new pause shortcut in place of the old one → "ready …" / "error …";
 //        "login" makes Stenny open at login (System Settings ▸ General ▸ Login Items) → "login ok" / "login error …";
-//        "login off" stops that; "login status" → "login on", "login off" or "login approval" (still to be allowed)
+//        "login off" stops that; "login status" → "login on", "login off" or "login approval" (still to be allowed);
+//        any other line is ignored (the app sends "login check" before "login status" when it only asks)
 //
 // It runs inside Stenny.app (Contents/MacOS), so the calendar permission is Stenny's. Notifications are not done
 // here: macOS turns down a request from a second program in the bundle at once and without a prompt, so the app asks
@@ -68,14 +69,17 @@ func keyCode(for char: String) -> Int? {
     return nil
 }
 
-/// "cmd+shift+ü" → (key code, Carbon modifiers, "⌘⇧Ü"); nil if the key isn't on this keyboard.
+/// "cmd+shift+ü" → (key code, Carbon modifiers, "⌘⇧Ü"); nil if the key isn't on this keyboard. The modifiers'
+/// other names are the ones the engine accepts too (config.py, MODIFIERS): command, control, option, alt.
 func parse(_ text: String) -> (Int, Int, String)? {
-    let parts = text.lowercased().split(separator: "+").map(String.init)
+    let parts = text.lowercased().split(separator: "+").map { $0.trimmingCharacters(in: .whitespaces) }
     guard let key = parts.last else { return nil }
+    let aliases = ["command": "cmd", "control": "ctrl", "option": "opt", "alt": "opt"]
+    let modifiers = parts.dropLast().map { aliases[$0] ?? $0 }
     var carbon = 0
     var symbols = ""
     for (name, flag, symbol) in [("ctrl", controlKey, "⌃"), ("opt", optionKey, "⌥"), ("shift", shiftKey, "⇧"),
-                                 ("cmd", cmdKey, "⌘")] where parts.dropLast().contains(name) {
+                                 ("cmd", cmdKey, "⌘")] where modifiers.contains(name) {
         carbon |= flag
         symbols += symbol
     }

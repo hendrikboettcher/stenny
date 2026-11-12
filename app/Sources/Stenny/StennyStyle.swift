@@ -11,7 +11,6 @@ enum Palette {
     static let line = color(0xddd6cc, dark: 0x3a3631)
     static let mark = color(0xe9dfd5, dark: 0x3a332c)   // the beige highlighter
     static let bar = color(0xf3efe9, dark: 0x23211e)
-    static let card = color(0xffffff, dark: 0x1e1c1a)
     static let warn = color(0xa86a3d, dark: 0xd39a6c)
     static let rec = color(0xc0392b, dark: 0xe0675a)
 

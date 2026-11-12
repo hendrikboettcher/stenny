@@ -308,7 +308,7 @@
             {#if !env}
               <form class="key" onsubmit={(e) => { e.preventDefault(); saveKey(); }}>
                 <input type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false" bind:value={keyInput}
-                       aria-label="Anthropic API key" disabled={busy === "key"} />
+                       aria-label={t("settings.ai.api.label")} disabled={busy === "key"} />
                 <button class="pill primary" type="submit" disabled={busy === "key" || !keyInput.trim()}>
                   {busy === "key" ? t("settings.ai.checking") : t("settings.ai.api.save")}
                 </button>
