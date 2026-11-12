@@ -180,6 +180,7 @@
   "settings.calendar.notifications.ask": "Stenny hat noch nicht nach Mitteilungen gefragt. Ohne sie kann „Diese Vorlesung aufnehmen?“ nicht erscheinen.",
   "settings.calendar.notifications.denied": "Mitteilungen sind für Stenny ausgeschaltet – „Diese Vorlesung aufnehmen?“ kann nicht erscheinen. Erlaube sie in den Systemeinstellungen unter Mitteilungen ▸ Stenny.",
   "settings.calendar.notifications.denied.windows": "Benachrichtigungen sind für Stenny oder für alle Apps ausgeschaltet – „Diese Vorlesung aufnehmen?“ kann nicht erscheinen. Schalte sie in den Windows-Einstellungen unter System ▸ Benachrichtigungen ein.",
+  "settings.calendar.notifications.refused": "macOS hat seine Frage nicht gezeigt. Seine Antwort: „{why}“. Versuch es noch einmal oder erlaube Mitteilungen in den Systemeinstellungen unter Mitteilungen ▸ Stenny.",
   "settings.calendar.sees": "Was Stenny sieht",
   "settings.calendar.calendars.one": "1 Kalender",
   "settings.calendar.calendars.other": "{n} Kalender",

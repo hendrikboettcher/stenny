@@ -81,6 +81,7 @@ export interface CalendarStatus {
   platform: "mac" | "windows" | "other";
   access: Permission | null;
   notifications: Permission | null;
+  notifications_problem?: string | null; // macOS: why it turned the last Allow… down (the app adds it)
   sources: { name: string; calendars: number; lectures: number }[]; // the Mac's accounts (iCloud, Google …)
   links: CalendarLink[];
   lectures: number;
@@ -115,8 +116,8 @@ export const setupStatus = async () => {
   if (inApp) await invoke("calendar_check").catch(() => {});
   return engine<SetupStatus>("setup_status");
 };
-// Settings ▸ Calendar. In the app through Rust: the Mac's helper checks the permissions again first, and on Windows
-// the app adds whether it may show notifications.
+// Settings ▸ Calendar. In the app through Rust: the Mac's helper checks the calendar permission again first, and the
+// app adds whether it may show notifications (both systems).
 export const calendarStatus = () =>
   inApp ? invoke<CalendarStatus>("calendar_status") : engine<CalendarStatus>("calendar_status");
 // after a link was added or removed, or the reminders switched: the menu bar follows now, not at its next look

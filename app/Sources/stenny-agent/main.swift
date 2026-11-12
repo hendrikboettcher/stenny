@@ -2,7 +2,6 @@ import AppKit
 import Carbon
 import EventKit
 import ServiceManagement
-import UserNotifications
 
 // stenny-agent: the macOS parts of Stenny's new app (desktop/) that Tauri doesn't have, as a helper it starts.
 // One line per event on stdout, one command per line on stdin; it quits when its stdin closes (the app quit).
@@ -11,22 +10,24 @@ import UserNotifications
 //   stenny-agent --pdf <copy.html> [--lang de]: makes the shared PDF from the HTML copy ("pdf <path>"), then quits
 //   out: "ready <key code> ⌘⇧Ü" (or "error …"); "hotkey" on every press;
 //        with --calendar, every 30 s: "events [{title, start, end, range, id}, …]" (on now or within 10 min);
-//        "calendar-state allowed|denied|ask allowed|denied|ask|unknown" (may Stenny read the calendar, may it send
-//        notifications) whenever that changes and after "calendar check"; the same goes into calendar-mac.json in
-//        the data folder, with the Mac's accounts and this term's event titles (the engine's calendars.py reads it);
-//        "start <course>" when "Start Recording" is clicked in a lecture notification;
+//        "calendar-state allowed|denied|ask" (may Stenny read the calendar) whenever that changes and after
+//        "calendar check"; the same goes into calendar-mac.json in the data folder, with the Mac's accounts and this
+//        term's event titles (the engine's calendars.py reads it);
+//        "calendar-asked" once at start, after macOS's calendar question (or right away if it was answered before):
+//        the app asks for notifications next;
 //        "quit" when macOS asks Stenny to quit and reaches this helper (see QuitForwarder)
-//   in:  "notify {"id": …, "course": …, "range": …}" posts that notification ("Record this lecture?");
-//        "calendar check" looks at the calendar and notification permissions and the Mac's accounts again (Settings ▸
-//        Calendar opened, or the window got the focus back); "calendar allow" and "notifications allow" ask macOS
-//        for them (only possible while macOS hasn't been answered yet) → "calendar-state …";
+//   in:  "calendar check" looks at the calendar permission and the Mac's accounts again (Settings ▸ Calendar opened,
+//        or the window got the focus back); "calendar allow" asks macOS for it (only possible while macOS hasn't
+//        been answered yet) → "calendar-state …";
 //        "lang en|de" switches this helper's texts to Stenny's new language (no restart: a new process with Stenny's
 //        bundle id would show up in the Dock as a second Stenny, #46);
 //        "shortcut cmd+shift+ü" registers a new pause shortcut in place of the old one → "ready …" / "error …";
 //        "login" makes Stenny open at login (System Settings ▸ General ▸ Login Items) → "login ok" / "login error …";
 //        "login off" stops that; "login status" → "login on", "login off" or "login approval" (still to be allowed)
 //
-// It runs inside Stenny.app (Contents/MacOS), so the calendar permission and the notifications are Stenny's.
+// It runs inside Stenny.app (Contents/MacOS), so the calendar permission is Stenny's. Notifications are not done
+// here: macOS turns down a request from a second program in the bundle at once and without a prompt, so the app asks
+// for them and posts them itself (desktop/src-tauri/src/macos_notifications.rs, #60).
 // The key is given as printed on the keyboard and looked up in the current layout, since Carbon hotkeys use
 // physical key codes (Ü is "[" on a US keyboard). Same rules as the Swift app's Shortcut.swift.
 
@@ -112,7 +113,7 @@ guard let i = args.firstIndex(of: "--shortcut"), i + 1 < args.count else {
 let app = NSApplication.shared
 app.setActivationPolicy(.prohibited)  // never in the Dock, a second guard after LSUIElement (see --pdf above)
 
-// MARK: Calendar and the lecture notification (as in the Swift app's CalendarWatcher and LectureController)
+// MARK: Calendar (as in the Swift app's CalendarWatcher)
 
 let lead: TimeInterval = 10 * 60          // offer a lecture this long before it starts, and until it ends
 let minimumLength: TimeInterval = 20 * 60 // shorter events (deadlines, reminders) are never lectures
@@ -169,7 +170,6 @@ func termSources() -> [[String: Any]] {
 // What Settings ▸ Calendar shows about this Mac. Only changed and read on the main thread.
 let dataDir = args.firstIndex(of: "--data-dir").flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil }
 var calendarAccess = ""            // "allowed", "denied" (also: only allowed to add events) or "ask" (not asked yet)
-var notificationAccess = "unknown" // the same three; "unknown" outside the app bundle
 var sources: [[String: Any]] = []
 var sourcesStale = true            // the Mac's calendars changed (an account added or removed): read them again
 var lastNote = ""
@@ -185,7 +185,7 @@ func accessNow() -> String {
 /// calendar-mac.json in Stenny's data folder, written when something in it changed.
 func writeNote() {
     guard let dataDir else { return }
-    let note: [String: Any] = ["access": calendarAccess, "notifications": notificationAccess, "sources": sources]
+    let note: [String: Any] = ["access": calendarAccess, "sources": sources]
     guard let data = try? JSONSerialization.data(withJSONObject: note, options: [.prettyPrinted, .sortedKeys]),
           let text = String(data: data, encoding: .utf8), text != lastNote else { return }
     try? FileManager.default.createDirectory(atPath: dataDir, withIntermediateDirectories: true)
@@ -194,36 +194,16 @@ func writeNote() {
     }
 }
 
-/// May Stenny send notifications: "allowed", "denied" or "ask" (not asked yet); "unknown" outside the app bundle,
-/// which notifications need around this helper. macOS answers on a queue of its own, so waiting here is safe.
-func notificationsNow() -> String {
-    guard Bundle.main.bundleIdentifier != nil else { return "unknown" }
-    final class Answer: @unchecked Sendable { var state = "unknown" }
-    let answer = Answer()
-    let done = DispatchSemaphore(value: 0)
-    UNUserNotificationCenter.current().getNotificationSettings { settings in
-        switch settings.authorizationStatus {
-        case .notDetermined: answer.state = "ask"
-        case .denied: answer.state = "denied"
-        default: answer.state = "allowed"
-        }
-        done.signal()
-    }
-    return done.wait(timeout: .now() + 2) == .success ? answer.state : "unknown"
-}
-
-/// Looks at both permissions again (they can change in System Settings at any time) and, with access, at the
-/// events. `report`: say "calendar-state …" even if nothing changed (the app asked). On the main thread.
+/// Looks at the permission again (it can change in System Settings at any time) and, with access, at the events.
+/// `report`: say "calendar-state …" even if nothing changed (the app asked). On the main thread.
 func checkCalendar(report: Bool) {
     let access = accessNow()
-    let notifications = notificationsNow()
-    let changed = access != calendarAccess || notifications != notificationAccess
+    let changed = access != calendarAccess
     if access == "allowed" && calendarAccess != "allowed" {
         store = EKEventStore()
         sourcesStale = true
     }
     calendarAccess = access
-    notificationAccess = notifications
     if access != "allowed" {
         sources = []
     } else if sourcesStale || report {
@@ -231,7 +211,7 @@ func checkCalendar(report: Bool) {
         sourcesStale = false
     }
     writeNote()
-    if changed || report { say("calendar-state \(access) \(notifications)") }
+    if changed || report { say("calendar-state \(access)") }
     if access == "allowed" {
         sayEvents()
     } else if changed {
@@ -248,58 +228,7 @@ func askForCalendar(then: @escaping () -> Void) {
     store.requestFullAccessToEvents { _, _ in DispatchQueue.main.async { then() } }
 }
 
-/// Asks macOS for notifications, for "Record this lecture?" (its own dialog, once as well).
-func askForNotifications(then: @escaping () -> Void) {
-    guard Bundle.main.bundleIdentifier != nil else {
-        then()
-        return
-    }
-    UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in
-        DispatchQueue.main.async { then() }
-    }
-}
-
-final class Notifications: NSObject, UNUserNotificationCenterDelegate {
-    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification)
-        async -> UNNotificationPresentationOptions { [.banner, .sound] }
-
-    /// "Start Recording" starts it; closing it does nothing.
-    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
-        if response.actionIdentifier == "start", let course = response.notification.request.content.userInfo["course"] as? String {
-            say("start " + course)
-        }
-    }
-}
-let notifications = Notifications()
-
-/// Laid out like the website's mock-up: "Stenny" / "Record this lecture?" / "<course> · <time>".
-func postLecture(_ json: String) {
-    guard Bundle.main.bundleIdentifier != nil,  // notifications need the app bundle around this helper
-          let data = json.data(using: .utf8),
-          let info = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-          let id = info["id"] as? String, let course = info["course"] as? String else { return }
-    let content = UNMutableNotificationContent()
-    content.title = "Stenny"
-    content.body = localized("Record this lecture?", "Diese Vorlesung aufnehmen?") + "\n\(course) · \(info["range"] as? String ?? "")"
-    content.categoryIdentifier = "lecture"
-    content.userInfo = ["course": course]
-    UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: id, content: content, trigger: nil))
-}
-
-/// The lecture notification's button, in Stenny's language (set again when that changes).
-func setLectureCategory() {
-    guard args.contains("--calendar"), Bundle.main.bundleIdentifier != nil else { return }
-    // one action only: with two, macOS folds them into an "Options" menu
-    let start = UNNotificationAction(identifier: "start", title: localized("Start Recording", "Aufnahme starten"), options: [])
-    UNUserNotificationCenter.current().setNotificationCategories(
-        [UNNotificationCategory(identifier: "lecture", actions: [start], intentIdentifiers: [])])
-}
-
 if args.contains("--calendar") {
-    if Bundle.main.bundleIdentifier != nil {
-        UNUserNotificationCenter.current().delegate = notifications
-        setLectureCategory()
-    }
     NotificationCenter.default.addObserver(forName: .EKEventStoreChanged, object: nil, queue: .main) { _ in
         sourcesStale = true
     }
@@ -307,10 +236,11 @@ if args.contains("--calendar") {
     checkCalendar(report: true)
     let timer = Timer(timeInterval: 30, repeats: true) { _ in checkCalendar(report: false) }
     RunLoop.main.add(timer, forMode: .common)
-    // the first time, macOS asks for the calendar, then for notifications (a calendar by link needs those too)
+    // the first time, macOS asks for the calendar; then the app asks for notifications (a calendar by link needs
+    // those too)
     askForCalendar {
         checkCalendar(report: true)
-        askForNotifications { checkCalendar(report: true) }
+        say("calendar-asked")
     }
 }
 
@@ -332,9 +262,6 @@ Thread.detachNewThread {
             case .requiresApproval: say("login approval")
             default: say("login off")
             }
-        } else if line.hasPrefix("notify ") {
-            let json = String(line.dropFirst("notify ".count))
-            DispatchQueue.main.async { postLecture(json) }
         } else if line == "calendar check" {
             DispatchQueue.main.async {
                 sourcesStale = true
@@ -342,14 +269,9 @@ Thread.detachNewThread {
             }
         } else if line == "calendar allow" {
             DispatchQueue.main.async { askForCalendar { checkCalendar(report: true) } }
-        } else if line == "notifications allow" {
-            DispatchQueue.main.async { askForNotifications { checkCalendar(report: true) } }
         } else if line.hasPrefix("lang ") {
             let lang = String(line.dropFirst("lang ".count))
-            DispatchQueue.main.async {
-                german = lang == "de"
-                setLectureCategory()
-            }
+            DispatchQueue.main.async { german = lang == "de" }
         } else if line.hasPrefix("shortcut ") {
             let shortcut = String(line.dropFirst("shortcut ".count))
             DispatchQueue.main.async { register(shortcut) }

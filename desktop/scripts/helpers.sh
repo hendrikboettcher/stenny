@@ -1,7 +1,7 @@
 #!/bin/zsh
 # Builds the Swift helpers the app bundles (app/Package.swift) and puts them where Tauri's bundler expects
-# them (src-tauri/binaries/<name>-<target triple>): stenny-agent (pause shortcut, calendar, lecture
-# notifications) and stenny-rec (the microphone recorder `stenny live` uses); and Stenny.mcpb, the connector.
+# them (src-tauri/binaries/<name>-<target triple>): stenny-agent (pause shortcut, calendar, open at login,
+# PDF for Share…) and stenny-rec (the microphone recorder `stenny live` uses); and Stenny.mcpb, the connector.
 set -euo pipefail
 cd "$(dirname "$0")/../../app"
 swift build -c release --product stenny-agent

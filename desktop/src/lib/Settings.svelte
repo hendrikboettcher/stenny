@@ -878,6 +878,10 @@
                       <div class="hint state"><span class="dot"></span>{t("settings.calendar.notifications.allowed")}</div>
                     {:else if cal.notifications === "ask"}
                       <div class="hint">{t("settings.calendar.notifications.ask")}</div>
+                      <!-- macOS turned Allow… down without asking (macos_notifications.rs): never a silent click -->
+                      {#if cal.notifications_problem}
+                        <p class="error selectable">{t("settings.calendar.notifications.refused", { why: cal.notifications_problem })}</p>
+                      {/if}
                     {:else}
                       <div class="hint state"><span class="dot off"></span>{t("settings.calendar.notifications.denied")}</div>
                     {/if}

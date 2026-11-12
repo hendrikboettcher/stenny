@@ -179,7 +179,7 @@ def test_the_macs_accounts_show_with_their_matching_lectures(cal, monkeypatch):
     from stenny import paths
     monkeypatch.setattr(sys, "platform", "darwin")
     assert calendars.status(cal.cfg)["access"] == "unknown"     # no helper has written its note
-    note = {"access": "allowed", "notifications": "denied", "sources": [
+    note = {"access": "allowed", "sources": [
         {"name": "Google", "calendars": 3, "titles": [{"title": "Statistics – Lecture", "count": 12},
                                                        {"title": "Football", "count": 8}]},
         {"name": "iCloud", "calendars": 1, "titles": []}]}
@@ -188,7 +188,8 @@ def test_the_macs_accounts_show_with_their_matching_lectures(cal, monkeypatch):
     now = datetime.now().replace(microsecond=0)
     cal.web[LINK] = (200, ical(weekly(now), weekly(now, "Linear Algebra", "la")))
     status = calendars.add_link(cal.cfg, LINK, now.timestamp())
-    assert status["access"] == "allowed" and status["notifications"] == "denied" and status["connected"]
+    assert status["access"] == "allowed" and status["connected"]
+    assert status["notifications"] is None   # the app's to tell (macos_notifications.rs), not the helper's
     assert status["sources"] == [{"name": "Google", "calendars": 3, "lectures": 12},
                                  {"name": "iCloud", "calendars": 1, "lectures": 0}]
     # the statistics lecture is in the Mac's Google account and behind the link: counted once

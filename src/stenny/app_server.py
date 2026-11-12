@@ -316,7 +316,7 @@ def _calendar(fn, *args):
 
 def calendar_status(cfg, params: dict) -> dict:
     """Settings ▸ Calendar: whether Stenny may read the Mac's calendar, the calendars it sees (the Mac's accounts,
-    the pasted links) with how many lectures match the courses, and the notifications (calendars.py)."""
+    the pasted links) with how many lectures match the courses (calendars.py). The app adds the notifications."""
     from . import calendars
     return calendars.status(cfg)
 

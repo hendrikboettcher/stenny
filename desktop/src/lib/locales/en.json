@@ -180,6 +180,7 @@
   "settings.calendar.notifications.ask": "Stenny hasn't asked for notifications yet. Without them, “Record this lecture?” can't appear.",
   "settings.calendar.notifications.denied": "Notifications are off for Stenny, so “Record this lecture?” can't appear. Allow them in System Settings ▸ Notifications ▸ Stenny.",
   "settings.calendar.notifications.denied.windows": "Notifications are off for Stenny or for all apps, so “Record this lecture?” can't appear. Switch them on in Windows Settings ▸ System ▸ Notifications.",
+  "settings.calendar.notifications.refused": "macOS didn't show its question. Its answer: “{why}”. Try again, or allow notifications in System Settings ▸ Notifications ▸ Stenny.",
   "settings.calendar.sees": "What Stenny sees",
   "settings.calendar.calendars.one": "1 calendar",
   "settings.calendar.calendars.other": "{n} calendars",
