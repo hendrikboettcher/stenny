@@ -1115,7 +1115,9 @@
   .draft p { margin: 0; font-size: 14.5px; line-height: 1.5; }
   .draft .status { margin-right: 6px; }
   .draft .pill, .draft .trash { margin-top: 12px; }
-  .draft .trash { margin-left: 4px; vertical-align: top; }
+  /* the small pill's size here ("Make final transcript now"), so the two buttons stand equally tall */
+  .draft .trash { margin-left: 4px; vertical-align: top; width: 26px; height: 26px; border-radius: 8px; }
+  .draft .trash svg { width: 14px; height: 14px; }
 
   /* the heading renames in place: pointing at it shows a soft background and a faint pencil, clicking edits it */
   .title-button {
