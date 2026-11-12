@@ -85,12 +85,11 @@ def install_tool(folder: Path) -> None:
 
 
 def supported() -> None:
-    """Raises on Windows, where updates come through the installer and Claude Code (see above)."""
+    """Raises on Windows, where updates come through scripts/install.ps1."""
     if sys.platform == "win32":
         raise UpdateError(
-            "On Windows, Stenny updates through its installer: download the newest one from "
-            f"{RELEASES} and run it. Then ask Claude Code to update Stenny's engine (SETUP.md, \"Updating on "
-            "Windows\").")
+            "On Windows, Stenny updates through its installer: run this line in PowerShell: "
+            f"irm https://github.com/{REPO}/releases/latest/download/install.ps1 | iex")
 
 
 def update(folder: Path = FOLDER) -> Path:

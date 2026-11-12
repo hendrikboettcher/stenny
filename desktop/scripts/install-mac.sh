@@ -39,6 +39,8 @@ LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchSe
 identity="${STENNY_SIGN_IDENTITY:-Stenny Dev}"
 if security find-identity -p codesigning | grep -q "\"$identity\""; then
     codesign --force --deep --sign "$identity" "$app"
+elif ! codesign -dv "$app" 2>&1 | grep -q 'Signature=adhoc'; then
+    :   # a release, already signed with the certificate (scripts/install.sh on a user's Mac): keep that signature
 else
     echo "⚠️  Certificate \"$identity\" not found: installing the ad-hoc signed build, so macOS will ask for the microphone"
     echo "   and calendar again. Run app/make-cert.sh once to fix that."

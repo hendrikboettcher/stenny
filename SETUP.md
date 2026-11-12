@@ -33,6 +33,15 @@ Start by greeting the user in three lines: Stenny records lectures from the menu
 
 ## 0. Get Stenny onto the Mac
 
+**First, Stenny's installer.** One script does steps 0–4 and 12 in one go: this folder (`~/Applications/stenny.noindex`), uv and the `stenny` command, the app, the Stenny folder `~/Documents/Stenny`, the background job and the Whisper model; at the end it opens Stenny. It asks nothing. Run it in the background (the Whisper download takes 2–10 minutes) and say so in one line:
+
+```bash
+curl -fsSL https://github.com/hendrikboettcher/stenny/releases/latest/download/install.sh | zsh
+```
+
+- **It ends with `✅ Stenny … is installed`:** go on with step 5. The config exists already, so don't run `stenny init` there: if they'd like another folder than `~/Documents/Stenny`, change `folder` in config.toml (`stenny where` shows where it is). Step 7's `open` is done too; the rest of step 7 isn't.
+- **It stops with `❌`:** tell the user what it says. If it's about the Mac itself, see step 1's *If it fails*. Otherwise do steps 0–4 below by hand.
+
 Stenny runs from its folder for good, so it needs a permanent place. If the current folder already contains Stenny (`SETUP.md`, `pyproject.toml` and `app/` are here), use it. Otherwise use `~/Applications/stenny.noindex` without asking; the user can move it another day by asking you.
 
 First look whether it's already there (an earlier attempt): `ls ~/Applications/stenny.noindex/SETUP.md 2>/dev/null`. If it is, ask "Use the existing folder (Recommended)" / "Replace it with the newest version"; replace only by moving the old folder to the Trash first.
@@ -370,6 +379,14 @@ Tell the user in one sentence how fast transcription will be: with an NVIDIA car
 
 ## W2. Get Stenny onto the PC
 
+**First, Stenny's installer.** It does W2–W5 and W11 in one go (the code folder, uv and the `stenny` command, the app through its setup program, without the *"Windows protected your PC"* warning, the Stenny folder `Documents\Stenny`, the task for final transcripts, the Whisper model) and starts Stenny. Run it in the background and say so:
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command 'irm https://github.com/hendrikboettcher/stenny/releases/latest/download/install.ps1 | iex'
+```
+
+If it ends with `Stenny … is installed`, go on with W6 (the config exists: for another folder change `folder` in config.toml instead of `stenny init`). If it stops with `X`, tell the user what it says and do W2–W5 below by hand.
+
 Stenny's code lives in a permanent folder: `%LOCALAPPDATA%\Programs\stenny` (in Git Bash `"$LOCALAPPDATA/Programs/stenny"`), without asking. If the current folder already contains Stenny (`SETUP.md`, `pyproject.toml`), use it instead. If `ls "$LOCALAPPDATA/Programs/stenny/SETUP.md"` finds an earlier attempt, ask "Use the existing folder (Recommended)" / "Replace it with the newest version"; replace only by moving the old folder to the Recycle Bin first (the command is in W10).
 
 Download the code of the newest release and unpack it there:
@@ -496,11 +513,7 @@ As in step 17, with Windows' words: the taskbar's notification area instead of t
 
 ## Updating on Windows
 
-`stenny update` doesn't work on Windows (Windows won't let it replace the program that is running it), and *Check for Updates…* only says whether there is a new version. When the user asks you to update Stenny:
-1. `stenny status` must say no recording is running, and no final transcript may be in progress. Quit Stenny (its icon ▸ *Quit Stenny*).
-2. The engine: download the new code as in W2, but rename it to `stenny-new` instead. Rename the old folder to `stenny (before <old version>)` (`stenny --version`), so their own changes can be carried over, rename `stenny-new` to `stenny`, and run `uv tool install -e . --force --python 3.12` in it.
-3. The app: download the new setup program as in W4 and run it; it installs over the old one.
-4. **Check:** `stenny --version` shows the new version, and `stenny mcp --desktop-config` works.
+`stenny update` doesn't work on Windows (Windows won't let it replace the program that is running it), and *Check for Updates…* only says whether there is a new version. When the user asks you to update Stenny, run the installer again (W2): it waits for no recording or final transcript to be running (it stops and says so), quits Stenny, replaces the code (the old folder goes to the Recycle Bin), the engine and the app, and starts Stenny again. **Check:** `stenny --version` shows the new version, and `stenny mcp --desktop-config` works.
 
 ## Troubleshooting on Windows
 

@@ -35,19 +35,25 @@ Stenny comes as a finished app with its source code next to it. Changing the men
 
 ## Setup
 
-### The easy way: let Claude Code do it
+### Install
 
-Paste this sentence into [Claude Code](https://claude.com/claude-code) (in the Claude desktop app's Code tab, or in the terminal):
+**On a Mac:** open Terminal (⌘Space, type *Terminal*, Return), paste this line and press Return:
 
+```bash
+curl -fsSL https://github.com/hendrikboettcher/stenny/releases/latest/download/install.sh | zsh
 ```
-Install Stenny on my Mac by following https://github.com/hendrikboettcher/stenny/blob/main/SETUP.md
+
+**On Windows:** open PowerShell (Start, type *PowerShell*, Enter), paste this line and press Enter:
+
+```powershell
+irm https://github.com/hendrikboettcher/stenny/releases/latest/download/install.ps1 | iex
 ```
 
-That's all. Claude Code downloads Stenny to `~/Applications/stenny.noindex`, checks your Mac, installs what's missing and the menu bar app, asks where your transcripts should go and which courses you take, downloads the Whisper model, makes a test recording with you and adds the Stenny connector to Claude. It explains each step and asks before anything important. [SETUP.md](SETUP.md) is the exact script it follows; you can read it first.
+That's all; it asks nothing and needs no password. It checks the computer, downloads Stenny's code (Mac: `~/Applications/stenny.noindex`, Windows: `%LOCALAPPDATA%\Programs\stenny`), installs [uv](https://docs.astral.sh/uv/) and the `stenny` engine with it, installs the app (Mac: `/Applications`, Windows: for your user only, into `%LOCALAPPDATA%\Stenny`), makes your Stenny folder (`~/Documents/Stenny`), adds the background job that finishes final transcripts, opens Stenny and downloads the Whisper model (1.6 GB, once). Stenny's window then lists what's left: your courses, Claude and your calendar. Running the line again updates Stenny; an older copy of the code goes to the Trash (Windows: Recycle Bin). The scripts are [scripts/install.sh](scripts/install.sh) and [scripts/install.ps1](scripts/install.ps1), if you'd like to read them first.
 
-The app is signed with the author's own certificate, not one from Apple, so macOS refuses a copy downloaded in a browser. Claude Code's download doesn't have that problem. To get a new version later: *Check for Updates…* at the bottom of Stenny's window (or `stenny update`).
+**Why a line in a terminal and not a download:** the Mac app is signed with the author's own certificate, not one from Apple, and the Windows app isn't signed yet. macOS refuses such an app when it was downloaded in a browser, and Windows says *"Windows protected your PC"*. Downloaded by the script, neither happens. The code is open, here.
 
-**On Windows,** paste `Install Stenny on my PC by following https://github.com/hendrikboettcher/stenny/blob/main/SETUP.md` instead; [SETUP.md](SETUP.md#stenny-on-windows-preview) has a Windows part. Stenny's code goes to `%LOCALAPPDATA%\Programs\stenny` and the `stenny` command is installed with uv, as on a Mac. The app comes as a setup program (`Stenny_<version>_x64-setup.exe`) that installs for your user only, into `%LOCALAPPDATA%\Stenny`, with its own LGPL ffmpeg and the connector. It isn't signed yet, so Windows says *"Windows protected your PC"*: *More info ▸ Run anyway*. New versions: a newer setup program installs over the old one, and Claude Code updates the code (`stenny update` is macOS only).
+To get a new version later: *Check for Updates…* at the bottom of Stenny's window, `stenny update` (Mac), or the line above again. Claude Code can still set Stenny up step by step with you, too: [SETUP.md](SETUP.md).
 
 ### By hand
 
@@ -62,7 +68,7 @@ cd ~/Applications/stenny.noindex
 curl -LsSf https://astral.sh/uv/install.sh | sh
 uv tool install -e . --python 3.12   # puts `stenny` on your PATH (~/.local/bin)
 
-# 2. Menu bar app
+# 2. The app
 app/install.sh --no-open        # installs the finished Stenny.app to /Applications (or ~/Applications)
 
 # 3. Settings

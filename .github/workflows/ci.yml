@@ -140,6 +140,8 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     needs: app  # not engine: a failing engine test shouldn't hide whether the installers build
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write  # a release tag: the Windows setup program goes onto the release (scripts/install.ps1 needs it)
     strategy:
       fail-fast: false
       matrix:
@@ -198,3 +200,13 @@ jobs:
             desktop/src-tauri/target.noindex/release/bundle/dmg/*.dmg
             desktop/src-tauri/target.noindex/release/bundle/msi/*.msi
             desktop/src-tauri/target.noindex/release/bundle/nsis/*.exe
+      # app/release.sh creates the release right after pushing the tag, so wait for it a little. Unsigned, like the
+      # artifact; install.ps1 downloads it with PowerShell, so Windows doesn't block it. The Mac app is in Stenny.zip.
+      - name: Attach the Windows setup program to the release
+        if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for _ in $(seq 20); do gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 && break; sleep 30; done
+          gh release upload "$GITHUB_REF_NAME" src-tauri/target.noindex/release/bundle/nsis/*-setup.exe --clobber
