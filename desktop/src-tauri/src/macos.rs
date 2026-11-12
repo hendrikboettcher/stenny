@@ -10,6 +10,7 @@
 //!   handler for that Apple Event never ends this menu bar app, so Stenny answers it itself and quits the
 //!   same way as its Quit menu item: right away, or after asking while a lecture records.
 
+use crate::i18n::tr;
 use objc2::rc::Retained;
 use objc2_app_kit::{
     NSEventModifierFlags, NSFont, NSFontWeightRegular, NSMenu, NSMenuDidBeginTrackingNotification, NSStatusItem,
@@ -151,14 +152,14 @@ thread_local! {
 /// (`x`, `y`, `width`, `height` in the page's CSS pixels, from its top left) of the window's page. Main thread only.
 pub fn share_files(view: *mut std::ffi::c_void, paths: &[String], x: f64, y: f64, width: f64, height: f64) -> Result<(), String> {
     use objc2_foundation::{NSArray, NSPoint, NSRect, NSSize, NSURL};
-    let view = unsafe { (view as *mut AnyObject).as_ref() }.ok_or("No window to share from.")?;
+    let view = unsafe { (view as *mut AnyObject).as_ref() }.ok_or_else(|| tr!("error.shareNoWindow"))?;
     let urls: Vec<Retained<NSURL>> = paths.iter().map(|p| NSURL::fileURLWithPath(&NSString::from_str(p))).collect();
     let items = NSArray::from_retained_slice(&urls);
-    let class = AnyClass::get(c"NSSharingServicePicker").ok_or("The share menu isn't available.")?;
+    let class = AnyClass::get(c"NSSharingServicePicker").ok_or_else(|| tr!("error.shareUnavailable"))?;
     unsafe {
         let picker: *mut AnyObject = msg_send![class, alloc];
         let picker: *mut AnyObject = msg_send![picker, initWithItems: &*items];
-        let picker = Retained::from_raw(picker).ok_or("The share menu couldn't be opened.")?;
+        let picker = Retained::from_raw(picker).ok_or_else(|| tr!("error.shareNotOpened"))?;
         // the page's coordinates start at the top; the view's may start at the bottom
         let flipped: bool = msg_send![view, isFlipped];
         let bounds: NSRect = msg_send![view, bounds];

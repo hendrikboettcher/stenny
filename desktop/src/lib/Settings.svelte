@@ -616,7 +616,7 @@
       {#if !env || st.state === "ready"}
         <form class="key" onsubmit={(e) => { e.preventDefault(); saveKey(); }}>
           <input type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false" bind:value={keyInput}
-                 aria-label="Anthropic API key" disabled={keyBusy} />
+                 aria-label={t("settings.ai.api.label")} disabled={keyBusy} />
           <button class="pill primary" type="submit" disabled={keyBusy || !keyInput.trim()}>
             {keyBusy ? t("settings.ai.checking") : t("settings.ai.api.save")}
           </button>
