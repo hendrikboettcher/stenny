@@ -149,7 +149,7 @@ class Glossary:
         count = 0
         for wrong, right in self.corrections:
             pattern = re.compile(rf"(?<!\w){re.escape(wrong)}(?!\w)")
-            text, n = pattern.subn(right, text)
+            text, n = pattern.subn(lambda _, right=right: right, text)  # as written: a backslash is just a character
             count += n
         return text, count
 

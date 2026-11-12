@@ -89,6 +89,12 @@ def test_glossary_parse_prompt_and_corrections():
     assert n == 2
 
 
+def test_glossary_corrections_are_written_as_they_are():
+    """A backslash in the right spelling is a character, not part of a regex template (LaTeX names)."""
+    g = Glossary([], [("sigma", "\\sigma"), ("nabla", "\\nabla"), ("group one", "\\1")])
+    assert g.apply_corrections("sigma and nabla of group one") == ("\\sigma and \\nabla of \\1", 3)
+
+
 # --- guard --------------------------------------------------------------------
 
 PARAS = [{"start": 0, "text": "Le théorème de Bolsano Weierstrass dit que toute suite bornée converge."},
