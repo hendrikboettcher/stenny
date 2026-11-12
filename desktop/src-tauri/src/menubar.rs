@@ -461,6 +461,7 @@ fn update(app: &AppHandle, status: Value, asked: Option<Instant>) {
     let mut vanished = None;
     let mut messages = Vec::new();
     let changed;
+    let plugged_in;
     {
         let mut st = bar.0.lock().unwrap();
         match asked {
@@ -512,7 +513,19 @@ fn update(app: &AppHandle, status: Value, asked: Option<Instant>) {
         } else {
             st.running = None;
         }
+        // plugged in just now with final passes waiting: the queue's run starts now, not when the background job
+        // next fires (every 10 minutes). Only a change seen here counts: with the app just opened, that job does it.
+        let ready = |s: &Value| s.get("queued").and_then(Value::as_u64).unwrap_or(0) > 0
+            && s.get("on_power").and_then(Value::as_bool) == Some(true);
+        let on_battery = st.status.get("on_power").and_then(Value::as_bool) == Some(false);
+        plugged_in = on_battery && ready(&status);
         st.status = status;
+    }
+    if plugged_in {
+        let app = app.clone();
+        std::thread::spawn(move || {
+            let _ = engine(&app).call("plugged_in", json!({}));
+        });
     }
     for (as_dialog, m) in messages {
         if as_dialog {

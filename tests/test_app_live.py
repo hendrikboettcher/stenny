@@ -101,3 +101,15 @@ def test_feedback_needs_words_and_says_when_stenny_eu_is_unreachable(home, monke
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=22, stdout='{"error": "Too long."}'))
     with pytest.raises(app_live.LiveError, match="Too long."):
         app_live.send_feedback(None, {"message": "x"})
+
+
+def test_plugged_in_starts_the_queues_scheduled_run_only_with_passes_waiting(home, monkeypatch):
+    monkeypatch.setattr(subprocess, "Popen", FakeProcess)
+    FakeProcess.last = None
+    assert app_live.plugged_in(None, {}) == {"started": False}
+    assert FakeProcess.last is None
+    (home / "_Queue").mkdir()
+    (home / "_Queue" / "20261112-134200-lecture.json").write_text("{}", encoding="utf-8")
+    assert app_live.plugged_in(None, {}) == {"started": True}
+    # the background job's own run: it checks power, the night hours and the lock itself
+    assert FakeProcess.last.args[1:] == ["-m", "stenny", "queue", "run", "--scheduled"]

@@ -96,7 +96,7 @@ See `config.example.toml` for every setting.
 
 **Pause:** press **⌘⇧Ü** (the default; choose your own in *Settings… ▸ General* or with `[app] pause_shortcut` in the config; on Windows ⌘ is Ctrl, so the default is **Ctrl+Shift+Ü**, or Ctrl+Shift with the key right of P on a keyboard without Ü). While paused, the microphone is really off and nothing is recorded.
 
-**Stop:** click the dot ▸ *Stop & Make Final Transcript*. On power, the whole recording is transcribed again at full quality (a 3-hour lecture takes about 20–25 minutes) and replaces the draft. On battery it waits until you plug in. Meanwhile Stenny's window shows the lecture as *Finishing* with a progress bar: *Transcribing* (how far into the lecture it has got), *Tidying up* (the clean transcript and the optional AI step), *Saving*, and, once it has measured the speed, about how long is left. A pass that was interrupted picks its bar up where it stopped.
+**Stop:** click the dot ▸ *Stop & Make Final Transcript*. On power, the whole recording is transcribed again at full quality (a 3-hour lecture takes about 20–25 minutes) and replaces the draft. On battery it waits until you plug in, and starts as soon as you do while Stenny is open (otherwise within 10 minutes). Meanwhile Stenny's window shows the lecture as *Finishing* with a progress bar: *Transcribing* (how far into the lecture it has got), *Tidying up* (the clean transcript and the optional AI step), *Saving*, and, once it has measured the speed, about how long is left. A pass that was interrupted picks its bar up where it stopped.
 
 **In the window:** while a lecture records, a slim bar across the top of Stenny's window shows it, whichever course is open: the time, the course and lecture, whether the live text is on, and *Show*, Pause and Stop (the same as the menu's). The recording course has a small red dot in the sidebar. After *Stop* the bar says *Making the final transcript* until it's done.
 
@@ -134,7 +134,7 @@ stenny mcp --desktop-config                       # the connector for Claude Des
 stenny api-key [status | remove]                  # the Anthropic API key, in the system keychain
 stenny match-course "VL Calculus (Room 1.01)"     # which course a calendar event belongs to
 stenny queue list | run                           # waiting final passes (run --lecture COURSE FOLDER: just that one, now)
-stenny schedule install                           # run the queue every 10 min when plugged in (launchd; Windows: Task Scheduler)
+stenny schedule install                           # run the queue every 10 min when plugged in (launchd; Windows: Task Scheduler); with Stenny open, plugging in starts it at once
 ```
 
 ## Studying with Claude
