@@ -1,6 +1,5 @@
 import json
 import shutil
-import tomllib
 
 import pytest
 
@@ -59,7 +58,6 @@ def env(tmp_path, monkeypatch):
     (system / "consent.json").write_text(json.dumps([f"record/course/{NAME}", "share/course/Other"]), encoding="utf-8")
     cfg = config_mod.load(system / "config.toml")
     from stenny import course_files
-    from stenny.vault import Vault
     course_files.rebuild(cfg.vault_for(), NAME, log=lambda *_: None)
     return cfg, trashed
 

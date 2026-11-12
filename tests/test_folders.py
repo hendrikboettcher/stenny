@@ -243,7 +243,7 @@ def old_install(places):
     calc = data / "Calculus"
     calc.mkdir(parents=True)
     (calc / "2026-10-20.opus").write_bytes(b"ogg")
-    (calc / "Calculus 2026-10-20 (raw).md").write_text(f"---\naudio: \"~/Lectures Data/Calculus/2026-10-20.opus\"\n---\n")
+    (calc / "Calculus 2026-10-20 (raw).md").write_text("---\naudio: \"~/Lectures Data/Calculus/2026-10-20.opus\"\n---\n")
     (calc / "2026-10-20.session.json").write_text(json.dumps(
         {"course": "Calculus", "recording": f"{calc}/2026-10-20.live.pcm"}))  # ASCII-escaped, as json.dumps writes it
     (calc / "2026-10-20.segments.json").write_text(json.dumps({"meta": {"lecture": {
@@ -336,7 +336,7 @@ def test_migrate_moves_lectures_data_into_the_app_data_places(old_install):
 def test_a_data_dir_of_ones_own_stays_and_gets_recordings_inside(places):
     disk = places.home / "Disk"
     write_config(places.legacy_system_dir / "config.toml",
-                 f'vault = "~/Vault"\nlectures_dir = "Lectures"\ndata_dir = "~/Disk"\n')
+                 'vault = "~/Vault"\nlectures_dir = "Lectures"\ndata_dir = "~/Disk"\n')
     (disk / "Calculus").mkdir(parents=True)
     (disk / "Calculus" / "2026-10-20.session.json").write_text(json.dumps({"recording": f"{disk}/Calculus/a.pcm"}))
     mig.migrate(log=lambda m: None)
@@ -346,7 +346,7 @@ def test_a_data_dir_of_ones_own_stays_and_gets_recordings_inside(places):
     assert config_mod.load().data_for(Course("Calculus")) == disk / "Recordings/Calculus"
     (disk / "Physics").mkdir()  # another round (say, after a partly failed one) moves only what's new
     (disk / "Physics" / "x.json").write_text(json.dumps({"a": f"{disk}/Physics/x"}))
-    write_config(places.legacy_system_dir / "config.toml", f'vault = "~/Vault"\ndata_dir = "~/Disk"\n')
+    write_config(places.legacy_system_dir / "config.toml", 'vault = "~/Vault"\ndata_dir = "~/Disk"\n')
     places.config_path.unlink()
     mig.migrate(log=lambda m: None)
     assert json.loads(session.read_text(encoding="utf-8"))["recording"] == f"{disk}/Recordings/Calculus/a.pcm"  # not twice

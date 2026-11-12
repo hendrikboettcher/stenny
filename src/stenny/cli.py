@@ -338,7 +338,6 @@ def cmd_course_files(args) -> None:
     every final pass)."""
     cfg = load_config()
     from .course_files import rebuild
-    from .vault import Vault
 
     vault = cfg.vault_for()
     names = [resolve_course(cfg, args.course, None).name] if args.course else list(cfg.courses)
@@ -435,7 +434,7 @@ def run_queue(cfg, args, items: list[Path], lecture: bool = False) -> None:
 
 def draft_path(cfg, course, folder: str) -> Path | None:
     """A live recording's transcript file (its live draft until the final pass replaces it)."""
-    from .vault import LectureFiles, Vault
+    from .vault import LectureFiles
     return LectureFiles(cfg.vault_for(course).course_dir(course.name) / folder, course.name).existing("transcript")
 
 

@@ -96,7 +96,6 @@ def test_process_writes_raw_transcript_summary_and_audio(setup):
     assert [f["reason"] for f in info["term_fixes_rejected"]] == ["not a glossary term"]
     assert (cfg.recordings_dir / "Calculus" / "2026-10-15.opus").exists()
     assert (cfg.recordings_dir / "Calculus" / "2026-10-15.segments.json").exists()
-    from stenny.vault import Vault
     assert cfg.vault_for().violations() == []
 
 
@@ -147,7 +146,6 @@ def test_add_with_slides_and_microphone_from_metadata(setup, tmp_path):
     for kind in ("transcript", "raw"):
         assert 'microphone: "iPhone 15 Pro"' in lf(folder, kind).read_text(encoding="utf-8")
     assert f'slides: "[[{lf(folder, "slides").name}]]"' in lf(folder).read_text(encoding="utf-8")
-    from stenny.vault import Vault
     assert cfg.vault_for().violations() == []
 
 
@@ -217,7 +215,6 @@ def test_refresh_errors_are_clear(setup):
     course = Course("Calculus", language="fr", languages=["fr"])
     with pytest.raises(pipeline.LectureError, match="No lecture folder"):
         pipeline.refresh(cfg, course, "2026-10-15")
-    from stenny.vault import Vault
     cfg.vault_for().write(cfg.folder / "Calculus" / "2026-10-15" / "Transcript.md", "live draft")
     with pytest.raises(pipeline.LectureError, match="final pass first"):
         pipeline.refresh(cfg, course, "2026-10-15")
@@ -293,7 +290,6 @@ def test_lecture_names_numbers_and_course_files(setup):
     assert parse_frontmatter(t2)["lecture"] == 2 and "# Calculus – Lecture 2 (2026-10-22)" in t2
     assert "# Summary: Calculus – Lecture 2 (2026-10-22)" in LectureFiles(Path(second["folder"]), "Calculus").new("summary").read_text(encoding="utf-8")
     # a live draft in progress is not part of the course files
-    from stenny.vault import Vault
     vault = cfg.vault_for()
     vault.write(LectureFiles(cfg.folder / "Calculus" / "2026-10-29", "Calculus").new("transcript"),
                 '---\nstatus: "live"\n---\n# draft\n')
@@ -328,7 +324,6 @@ def test_transcripts_say_they_are_audio_only(setup):
     cfg.keep_audio = False
     info = pipeline.process(wav, cfg, Course("Calculus", language="fr", languages=["fr"]), FakeEngine({"fr": 1.0}))
     from stenny.render import AUDIO_ONLY
-    from stenny.vault import Vault
     transcript = lf(info["folder"]).read_text(encoding="utf-8")
     assert f"> {AUDIO_ONLY}" in transcript
 
@@ -351,7 +346,6 @@ def test_topics_glossary_and_links_between_lectures(setup, monkeypatch):
 
     from stenny.glossary import Glossary
     from stenny.render import parse_frontmatter
-    from stenny.vault import Vault
     cfg, wav = setup
     cfg.keep_audio = False
     cfg.courses = {"Calculus": Course("Calculus", language="fr", languages=["fr"])}

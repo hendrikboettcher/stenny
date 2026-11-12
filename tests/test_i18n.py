@@ -150,10 +150,6 @@ def test_every_key_the_app_uses_exists():
     assert not used - keys, used - keys
 
 
-GERMAN_TERMS = {"lecture": "Vorlesung", "course": "Kurs", "talk": "Vortrag", "transcript": "Transkript",
-                "summary": "Zusammenfassung", "recording": "Aufnahme"}
-
-
 def test_german_uses_du_not_sie():
     """The German addresses the user as "du" everywhere."""
     texts = list(_locale("de").values()) + list(DE.values())

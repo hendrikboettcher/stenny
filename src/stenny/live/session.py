@@ -32,7 +32,6 @@ from ..pipeline import (ChunkCache, chunk_bounds, chunk_lengths, chunks_path, en
                         second_look, whisper_prompt, whisper_with)
 from ..render import Lecture, transcript_md
 from ..textproc import SAMPLE_RATE, chunk_end, to_paragraphs
-from ..vault import Vault
 
 BLOCK = SAMPLE_RATE // 10  # 100 ms
 POLL = 0.1         # seconds between reads of the recording file

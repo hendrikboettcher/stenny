@@ -20,7 +20,7 @@ import tomllib
 import unicodedata
 from pathlib import Path
 
-from . import course_files, courses, jobs, paths
+from . import course_files, courses, jobs
 from .config import Config, ConfigError, check_course_name
 from .i18n import tr, trash_name
 from .live import control

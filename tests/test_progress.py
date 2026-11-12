@@ -4,7 +4,6 @@ saves, and that the lecture stays "finalizing" until all of it is done."""
 import json
 import time
 from datetime import datetime
-from pathlib import Path
 
 import pytest
 from test_pipeline import RATE, FakeEngine, FakeLLM, lf, setup  # noqa: F401  (setup is a fixture)
