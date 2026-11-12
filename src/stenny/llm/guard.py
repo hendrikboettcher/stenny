@@ -97,11 +97,6 @@ def fix_basis(fix, paragraph: str, glossary: Glossary, slides=None, unsure: list
     return "slides", None
 
 
-def check_fix(fix, paragraph: str, glossary: Glossary, slides=None, unsure: list[str] = ()) -> str | None:
-    """Return a rejection reason, or None if the fix is acceptable."""
-    return fix_basis(fix, paragraph, glossary, slides, unsure)[1]
-
-
 def apply_fixes(paragraphs: list[dict], fixes, glossary: Glossary, slides=None) -> tuple[list[dict], list[dict], list[dict]]:
     """Returns (new paragraphs, applied fixes, rejected fixes with reasons). `slides` (slides.Slides)
     allows fixes toward words from the slide text; see fix_basis."""

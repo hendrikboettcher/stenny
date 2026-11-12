@@ -39,7 +39,6 @@ def listing(monkeypatch, windows):
 
 def test_windows_microphones_come_from_the_recorder(listing):
     assert sources.input_devices() == ["Microphone Array (Intel® Smart Sound Technology)", "Headset (Alex's AirPods)"]
-    assert sources.default_input_device() == "Headset (Alex's AirPods)"
     assert sources.audio_devices() == {"default": "Headset (Alex's AirPods)",
                                        "builtin": "Microphone Array (Intel® Smart Sound Technology)",
                                        "virtual": {"Microphone (Microsoft Teams Audio)"}}
@@ -57,7 +56,7 @@ def test_backup_auto_is_the_computers_own_microphone_on_windows(listing):
 
 def test_no_recorder_no_devices_and_a_clear_error(monkeypatch, windows):
     monkeypatch.setattr(sources, "find_recorder", lambda: None)
-    assert sources.input_devices() == [] and sources.default_input_device() is None
+    assert sources.input_devices() == [] and sources.audio_devices()["default"] is None
     with pytest.raises(SystemExit, match="stenny-rec.exe"):
         sources.make_mic("Microphone", "native")
 

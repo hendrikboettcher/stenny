@@ -82,11 +82,6 @@ def audio_devices() -> dict:
     return found
 
 
-def default_input_device() -> str | None:
-    """Name of the system's current input device (System Settings → Sound → Input)."""
-    return audio_devices()["default"]
-
-
 def input_devices(devices: dict | None = None) -> list[str]:
     """Real microphones only (`devices`: audio_devices(), if already known). A virtual device can still be used by
     naming it: `[live] device` in the config."""

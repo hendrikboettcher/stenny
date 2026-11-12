@@ -153,10 +153,6 @@ class Glossary:
             count += n
         return text, count
 
-    def knows(self, word: str) -> bool:
-        w = word.casefold()
-        return any(w == t.casefold() or w in t.casefold().split() for t in self.terms)
-
 
 def _kind(heading: str) -> str | None:
     """Which part of the note a heading starts: "terms", "auto", "corrections", "auto_corrections" or None."""
