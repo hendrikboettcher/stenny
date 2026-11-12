@@ -58,6 +58,8 @@ struct State {
     #[cfg_attr(windows, allow(dead_code))]
     calendar_answers: u32,                   // macOS: how many "calendar-state" lines the agent has sent
     #[cfg_attr(windows, allow(dead_code))]
+    calendar_state: String,                  // macOS: the agent's last "calendar-state" ("allowed ask")
+    #[cfg_attr(windows, allow(dead_code))]
     agent_in: Option<std::process::ChildStdin>,
     status_item: Option<MenuItem<Wry>>,      // the menu's first line, updated in place
     icon: String,                            // the icon shown, so it is only set when it changes (no flicker)
@@ -921,11 +923,25 @@ fn start_agent(app: &AppHandle) {
                     app.state::<MenuBar>().0.lock().unwrap().agent_events = events;
                     calendar(&app);
                 }
-            } else if line.starts_with("calendar-state ") {
+            } else if let Some(state) = line.strip_prefix("calendar-state ") {
                 // may Stenny read the calendar and send notifications: the agent wrote it down for the engine
-                // (calendar-mac.json); whoever waits for this look (calendar_check) goes on, and Settings looks again
-                app.state::<MenuBar>().0.lock().unwrap().calendar_answers += 1;
-                let _ = app.emit("calendar", ());
+                // (calendar-mac.json). Whoever waits for this look (calendar_check) goes on; Settings looks again
+                // only when something changed (its own look is answered with this line too)
+                let changed = {
+                    let bar = app.state::<MenuBar>();
+                    let mut st = bar.0.lock().unwrap();
+                    st.calendar_answers += 1;
+                    let changed = st.calendar_state != state;
+                    st.calendar_state = state.to_string();
+                    changed
+                };
+                if changed {
+                    let _ = app.emit("calendar", ());
+                    // calendar-titles.json follows what the Mac sees now (the engine puts it together)
+                    let bar = app.state::<MenuBar>();
+                    *bar.2.asked.lock().unwrap() = true;
+                    bar.2.signal.notify_one();
+                }
             } else if let Some(course) = line.strip_prefix("start ") {
                 start_from_notification(&app, course);
             } else if line == "login ok" {
