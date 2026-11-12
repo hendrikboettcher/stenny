@@ -1,8 +1,11 @@
 #!/bin/zsh
-# Makes dist/Stenny.zip for a GitHub release: the committed code plus the finished app, signed with
-# "Stenny Dev" so permissions survive updates. Refuses anything that wouldn't match what's on GitHub.
+# Makes dist/Stenny.zip for a GitHub release: the committed code plus the finished app (desktop/, the new app), signed
+# with "Stenny Dev" so permissions survive updates. Refuses anything that wouldn't match what's on GitHub.
 #   app/release.sh              build the zip
-#   app/release.sh --publish    also tag the version and create the GitHub release
+#   app/release.sh --publish    also tag the version and create the GitHub release, with the installers
+#                               scripts/install.sh and scripts/install.ps1 (README: Setup). CI adds the Windows setup
+#                               program to the release once it has built it (ci.yml, Installer).
+# The app goes to app/build.noindex/Stenny.app in the zip, where scripts/install.sh and an older `stenny update` look.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -10,11 +13,17 @@ VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)"
 TAG="v$VERSION"
 [[ -z "$(git status --porcelain)" ]] || { echo "❌ Commit your changes first."; exit 1; }
 [[ -z "$(git tag -l "$TAG")" ]] || { echo "❌ $TAG already exists: raise the version in pyproject.toml."; exit 1; }
+APP_VERSION="$(sed -n 's/^  "version": "\(.*\)",$/\1/p' desktop/src-tauri/tauri.conf.json)"
+[[ "$APP_VERSION" == "$VERSION" ]] \
+    || { echo "❌ The app says $APP_VERSION, pyproject.toml $VERSION: give both the same version."; exit 1; }
 security find-identity -p codesigning | grep -q '"Stenny Dev"' \
     || { echo "❌ No \"Stenny Dev\" certificate: run app/make-cert.sh, and keep it for every release."; exit 1; }
 
-app/build-ffmpeg.sh
-STENNY_SIGN_IDENTITY="Stenny Dev" app/build.sh --no-install
+app/build-ffmpeg.sh                 # app/build.noindex/tools: helpers.sh puts them into the app
+desktop/scripts/helpers.sh          # stenny-agent, stenny-rec, ffmpeg/ffprobe, the connector
+(cd desktop && npm ci && npm run tauri build -- --bundles app)
+BUILT=desktop/src-tauri/target.noindex/release/bundle/macos/Stenny.app
+codesign --force --deep --sign "Stenny Dev" "$BUILT"
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -22,7 +31,7 @@ trap 'rm -rf "$WORK"' EXIT
 TOP=stenny.noindex
 git archive --format=tar --prefix="$TOP/" HEAD | tar -x -C "$WORK"
 mkdir -p "$WORK/$TOP/app/build.noindex"
-/usr/bin/ditto app/build.noindex/Stenny.app "$WORK/$TOP/app/build.noindex/Stenny.app"
+/usr/bin/ditto "$BUILT" "$WORK/$TOP/app/build.noindex/Stenny.app"
 codesign --verify --deep --strict "$WORK/$TOP/app/build.noindex/Stenny.app"
 
 # The connector for Claude Desktop, at the top of the folder: setup opens it (SETUP.md step 13)
@@ -47,7 +56,8 @@ if [[ "${1:-}" == "--publish" ]]; then
     git tag "$TAG"
     git push origin "$TAG"
     # The LGPL asks that ffmpeg's source stays available next to the binary
-    gh release create "$TAG" dist/Stenny.zip dist/Stenny.mcpb app/build.noindex/tools-src/ffmpeg-*.tar.xz \
+    gh release create "$TAG" dist/Stenny.zip dist/Stenny.mcpb scripts/install.sh scripts/install.ps1 \
+        app/build.noindex/tools-src/ffmpeg-*.tar.xz \
         --title "Stenny ${VERSION}" --generate-notes
     echo "✅ Released $TAG"
 fi
