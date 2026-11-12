@@ -249,7 +249,7 @@ Afterwards, ask "Delete the test recordings (Recommended)" / "Keep them". If del
 
 ## 12. Finish waiting transcripts automatically
 
-On battery or when memory is low, final transcripts wait. Install the small background job that finishes them, without asking; it checks every 10 minutes and only works when the Mac is plugged in:
+On battery or when memory is low, final transcripts wait. Install the small background job that finishes them, without asking; it checks every 10 minutes and only works when the Mac is plugged in (while Stenny is open, plugging in starts it at once):
 
 ```bash
 stenny schedule install
