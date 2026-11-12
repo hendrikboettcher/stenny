@@ -377,13 +377,13 @@ async fn ui_language(app: AppHandle) -> String {
     lang.unwrap_or("en").to_string()
 }
 
-/// Settings ▸ General ▸ Language changed (and is saved in the config): every window, the menus and the agent follow.
 /// A window changed the course list (lib/engine.ts, coursesChanged): the menu bar reads it again.
 #[tauri::command]
 fn courses_changed(app: AppHandle) {
     menubar::lists_changed(&app);
 }
 
+/// Settings ▸ General ▸ Language changed (and is saved in the config): every window, the menus and the agent follow.
 #[tauri::command]
 async fn set_ui_language(app: AppHandle, language: String) {
     if i18n::set_language(&language) {

@@ -23,7 +23,8 @@ import ServiceManagement
 //        bundle id would show up in the Dock as a second Stenny, #46);
 //        "shortcut cmd+shift+ü" registers a new pause shortcut in place of the old one → "ready …" / "error …";
 //        "login" makes Stenny open at login (System Settings ▸ General ▸ Login Items) → "login ok" / "login error …";
-//        "login off" stops that; "login status" → "login on", "login off" or "login approval" (still to be allowed)
+//        "login off" stops that; "login status" → "login on", "login off" or "login approval" (still to be allowed);
+//        any other line is ignored (the app sends "login check" before "login status" when it only asks)
 //
 // It runs inside Stenny.app (Contents/MacOS), so the calendar permission is Stenny's. Notifications are not done
 // here: macOS turns down a request from a second program in the bundle at once and without a prompt, so the app asks
