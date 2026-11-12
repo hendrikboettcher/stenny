@@ -12,12 +12,17 @@ OUT="$PWD/build.noindex/tools"
 WORK="$PWD/build.noindex/tools-src"
 export MACOSX_DEPLOYMENT_TARGET=14.4
 
-if [[ -x "$OUT/ffmpeg" && -x "$OUT/ffprobe" ]]; then
-    echo "✅ Already built: $OUT"
+# kept only while they are of these versions: after a bump they are built again (the stamp is written last)
+STAMP="ffmpeg $FFMPEG_VERSION, opus $OPUS_VERSION"
+if [[ -x "$OUT/ffmpeg" && -x "$OUT/ffprobe" && "$(cat "$OUT/versions" 2>/dev/null)" == "$STAMP" ]]; then
+    echo "✅ Already built: $OUT ($STAMP)"
     exit 0
 fi
 mkdir -p "$OUT" "$WORK"
+rm -f "$OUT/versions"
 cd "$WORK"
+# release.sh uploads the ffmpeg source found here: only this version's
+for old in ffmpeg-*.tar.xz(N); do [[ "$old" == "ffmpeg-$FFMPEG_VERSION.tar.xz" ]] || rm -f "$old"; done
 [[ -f "ffmpeg-$FFMPEG_VERSION.tar.xz" ]] || curl -fL -O "https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.xz"
 [[ -f "opus-$OPUS_VERSION.tar.gz" ]] || curl -fL -O "https://downloads.xiph.org/releases/opus/opus-$OPUS_VERSION.tar.gz"
 rm -rf "ffmpeg-$FFMPEG_VERSION" "opus-$OPUS_VERSION" prefix
@@ -53,4 +58,5 @@ chmod +x "$PREFIX/bin/pkg-config"
  make -j"$(sysctl -n hw.ncpu)"
  cp ffmpeg ffprobe "$OUT/")
 strip "$OUT/ffmpeg" "$OUT/ffprobe"
-echo "✅ Built: $OUT"
+echo "$STAMP" > "$OUT/versions"
+echo "✅ Built: $OUT ($STAMP)"
