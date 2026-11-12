@@ -122,9 +122,11 @@ def devices(cfg, params: dict) -> dict:
 
 
 def settings(cfg, params: dict) -> dict:
-    """What the app reads at launch: the pause shortcut (as text, like "cmd+shift+ü") and the courses to start."""
+    """What the app reads at launch (and every minute): the pause shortcut (as text, like "cmd+shift+ü"), the
+    courses to start and whether lecture reminders are on."""
     return {"pause_shortcut": cfg.pause_shortcut, "data_dir": str(paths.DATA_DIR), "logs_dir": str(paths.LOGS_DIR),
             "language": i18n.resolve(cfg.app_language),  # the app's own language: "en" or "de"
+            "reminders": cfg.reminders,  # "Record this lecture?" when a lecture in the calendar starts
             "courses": [c.name for c in cfg.courses.values() if not c.hidden]}
 
 

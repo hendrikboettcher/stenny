@@ -8,11 +8,13 @@ requires-python = ">=3.12"
 dependencies = [
     "anthropic>=1.14.0",
     "faster-whisper>=1.1 ; sys_platform != 'darwin'",  # Windows' engine (CTranslate2: CPU, or an NVIDIA GPU)
+    "icalendar>=6",
     "keyring>=25 ; sys_platform != 'darwin'",
     "mcp>=2.3",
     "mlx-whisper>=0.4.3 ; sys_platform == 'darwin'",  # Apple Silicon (Metal); Windows gets its own engine (#2)
     "numpy>=2",
     "pypdf>=6.21.1",
+    "recurring-ical-events>=3",
 ]
 
 [project.optional-dependencies]

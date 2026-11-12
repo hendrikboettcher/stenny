@@ -63,6 +63,30 @@ export interface ConnectorStatus {
   file: string | null;
   code: { available: boolean; added: boolean };
 }
+// The calendar, as Settings ▸ Calendar and the setup card show it (src/stenny/calendars.py): counts and names only.
+// "ask": macOS hasn't been asked yet; "unknown": Stenny couldn't tell; null: not this system's (Windows has no
+// calendar access to give)
+export type Permission = "allowed" | "denied" | "ask" | "unknown";
+export interface CalendarLink {
+  id: string;
+  name: string | null;       // the calendar's own name, if it says one
+  host: string | null;       // where the link points ("calendar.google.com"); the link itself stays in the password store
+  provider: "google" | "outlook" | "icloud" | null;
+  state: "ok" | "broken" | "unreachable";
+  last_ok: number | null;    // when it last worked (seconds since 1970)
+  events: number;
+  lectures: number;          // this term's events that belong to a course
+}
+export interface CalendarStatus {
+  platform: "mac" | "windows" | "other";
+  access: Permission | null;
+  notifications: Permission | null;
+  sources: { name: string; calendars: number; lectures: number }[]; // the Mac's accounts (iCloud, Google …)
+  links: CalendarLink[];
+  lectures: number;
+  connected: boolean;        // Stenny can read at least one calendar
+  reminders: boolean;        // "Record this lecture?" is on
+}
 // The library window's "Finish setting up Stenny" card (app_server.setup_status): show is false once it's gone
 // for good, and then nothing else is checked
 export interface SetupStatus {
@@ -70,6 +94,7 @@ export interface SetupStatus {
   courses?: number;
   ai?: AiStatus;
   connector?: ConnectorStatus;
+  calendar?: CalendarStatus;
 }
 
 const inApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -85,7 +110,27 @@ export async function engine<T>(method: string, params: Record<string, unknown> 
 const where = (e: Entry) => ({ course: e.course, folder: e.folder, event: e.kind === "event" });
 
 export const library = () => engine<Library>("library");
-export const setupStatus = () => engine<SetupStatus>("setup_status");
+// in the app the Mac's helper looks at the calendar permission again first (menubar.rs, calendar_check)
+export const setupStatus = async () => {
+  if (inApp) await invoke("calendar_check").catch(() => {});
+  return engine<SetupStatus>("setup_status");
+};
+// Settings ▸ Calendar. In the app through Rust: the Mac's helper checks the permissions again first, and on Windows
+// the app adds whether it may show notifications.
+export const calendarStatus = () =>
+  inApp ? invoke<CalendarStatus>("calendar_status") : engine<CalendarStatus>("calendar_status");
+// after a link was added or removed, or the reminders switched: the menu bar follows now, not at its next look
+export const calendarChanged = () => { if (inApp) invoke("calendar_changed").catch(() => {}); };
+export const addCalendarLink = (link: string) =>
+  engine<CalendarStatus>("add_calendar_link", { link }).finally(calendarChanged);
+export const removeCalendarLink = (id: string) =>
+  engine<CalendarStatus>("remove_calendar_link", { id }).finally(calendarChanged);
+// macOS's own question for the calendar or for notifications (only while it hasn't been answered yet)
+export const calendarAllow = (what: "calendar" | "notifications") =>
+  inApp ? invoke<void>("calendar_allow", { what }) : Promise.resolve(console.log("allow", what));
+// the system's settings: the calendar's privacy list and Internet Accounts (macOS), notifications (both)
+export const openSystemSettings = (pane: "calendar" | "accounts" | "notifications") =>
+  inApp ? invoke<void>("open_system_settings", { pane }) : Promise.resolve(console.log("system settings", pane));
 // progress: the text so far of a recording whose transcript isn't done yet
 export const lecture = (e: Entry) =>
   engine<{ entry: Entry; summary: string | null; progress: string | null }>("lecture", where(e));

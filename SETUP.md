@@ -281,9 +281,9 @@ Tell the user: **Stenny works now.** Two short parts are left.
 
 ## 14. Calendar
 
-Say in a sentence or two: Stenny offers lectures from the calendar on this Mac, from 10 minutes before they start, and never starts by itself. If the timetable isn't in the Mac's Calendar, that part won't work, but recording from the menu still does. Don't teach how to subscribe to or use a calendar.
+Say in a sentence or two: Stenny offers lectures from the calendar, from 10 minutes before they start, and never starts by itself. On a Mac it reads the calendars the Mac knows. If the timetable is somewhere else (Google Calendar or Outlook in the browser, the university's timetable), or on Windows, the user pastes that calendar's iCal link in Stenny ▸ *Settings… ▸ Calendar ▸ Add a calendar link…*; the sheet there says where to find it. The link is a secret: never ask for it in the chat, they paste it into Stenny themselves. Without a calendar, recording from the menu still works. Don't teach how to use a calendar.
 
-On Windows, skip this step: Stenny can't read the calendar there yet (Settings ▸ General says so). Say in one line that they start lectures from Stenny's icon in the notification area.
+*Settings… ▸ Calendar* also shows whether Stenny may read the Mac's calendar and send notifications, with a button to System Settings if not, and how many lectures match the courses.
 
 **Check, without asking anything:** for each lecture-like title in `calendar-titles.json`, run `stenny match-course "<title>"`. If one of their courses doesn't match its events, add a word that's in the titles to that course as `calendar = ["<word>"]` and check again. Only tell the user the result, in one line. If there are no titles, skip this.
 
@@ -436,7 +436,7 @@ As in step 5. The recommended folder is `Documents\Stenny` (`stenny init` picks 
 
 ## W7. Courses
 
-As in step 8, without the calendar: ask the user to type their course names (Stenny doesn't read a Windows calendar yet). The config is `%APPDATA%\Stenny\config.toml` (`stenny where` shows it): delete the two example courses at its end, then `stenny course add …` for each course. **Check:** `stenny courses`.
+As in step 8: ask the user to type their course names. (If they already pasted a calendar link in Stenny ▸ Settings ▸ Calendar, `%LOCALAPPDATA%\Stenny\calendar-titles.json` has this term's event titles to suggest from.) The config is `%APPDATA%\Stenny\config.toml` (`stenny where` shows it): delete the two example courses at its end, then `stenny course add …` for each course. **Check:** `stenny courses`.
 
 ## W8. The AI step
 

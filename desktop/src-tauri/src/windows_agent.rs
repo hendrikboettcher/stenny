@@ -10,9 +10,13 @@
 //! - **Open at login:** the `Run` value in the user's registry, as Windows' own Startup apps list shows it; turned
 //!   off there (Task Manager ▸ Startup apps) it counts as off. The program's path is quoted (it may be under
 //!   "Program Files"); the autostart plugin writes it without quotes.
-//! - **The calendar** has no Windows counterpart yet: the WinRT calendar (`AppointmentManager`) is only for apps with
-//!   a package identity (MSIX), and Outlook's COM interface only reaches classic Outlook, with security prompts.
-//!   Settings says so (desktop/README.md).
+//! - **The calendar** is the linked ones only (an iCal link pasted in Settings ▸ Calendar, fetched by the engine:
+//!   src/stenny/calendars.py). Windows' own calendar isn't read: the WinRT calendar (`AppointmentManager`) is only
+//!   for apps with a package identity (MSIX), and Outlook's COM interface only reaches classic Outlook, with
+//!   security prompts.
+//! - **"Record this lecture?"**: a notification with a Start Recording button (`announce_lecture`), shown under
+//!   Stenny's AppUserModelID, which its installers put on the Start-menu shortcut. Windows needs that shortcut to
+//!   show the notification under Stenny's name and to bring the button's click back to the running app.
 
 use crate::i18n::tr;
 use std::ffi::c_void;
@@ -280,4 +284,49 @@ unsafe fn fill_clipboard(wide: &[u16]) -> windows::core::Result<()> {
         }
         Ok(()) // the clipboard owns the memory now
     }
+}
+
+// ---------------------------------------------------------------- the lecture notification
+
+/// The AppUserModelID Stenny's notifications are shown under: its own (the bundle identifier, which the installers
+/// put on the Start-menu shortcut) for an installed copy, PowerShell's for a build copy, which has no shortcut.
+fn notification_id(app: &AppHandle) -> String {
+    if installed() {
+        app.config().identifier.clone()
+    } else {
+        tauri_winrt_notification::Toast::POWERSHELL_APP_ID.to_string()
+    }
+}
+
+/// "Record this lecture?" with the course and the lecture's time, and one button: Start Recording, which starts the
+/// course the way the menu does (the lecturer's OK is asked first, as everywhere). Clicking the notification itself,
+/// closing it or letting it pass does nothing: Stenny never starts by itself. The click only comes back while
+/// Stenny runs, which it does (it lives in the notification area).
+pub fn announce_lecture(app: &AppHandle, course: &str, range: &str) {
+    use tauri_winrt_notification::{Duration as Shown, Toast};
+    let (handle, name) = (app.clone(), course.to_string());
+    let shown = Toast::new(&notification_id(app))
+        .title(&tr!("note.lecture.question"))
+        .text1(&format!("{course} · {range}"))
+        .duration(Shown::Long)
+        .add_button(&tr!("note.lecture.start"), "start")
+        .on_activated(move |action| {
+            if action.as_deref() == Some("start") {
+                crate::menubar::start_from_notification(&handle, &name);
+            }
+            Ok(())
+        })
+        .show();
+    if let Err(e) = shown {
+        eprintln!("lecture notification: {e}");
+    }
+}
+
+/// May Stenny show notifications: "allowed", or "denied" when they are switched off for Stenny or altogether
+/// (Windows Settings ▸ System ▸ Notifications). None if Windows doesn't say.
+pub fn notifications_state(app: &AppHandle) -> Option<&'static str> {
+    use windows::UI::Notifications::{NotificationSetting, ToastNotificationManager};
+    let id = windows::core::HSTRING::from(notification_id(app));
+    let setting = ToastNotificationManager::CreateToastNotifierWithId(&id).ok()?.Setting().ok()?;
+    Some(if setting == NotificationSetting::Enabled { "allowed" } else { "denied" })
 }

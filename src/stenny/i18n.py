@@ -235,6 +235,27 @@ DE = {
     "Claude Code couldn't add the connector: {error}": "Claude Code konnte den Connector nicht hinzufügen: {error}",
     "Claude Code couldn't remove the connector: {error}": "Claude Code konnte den Connector nicht entfernen: {error}",
     "Couldn't open Claude: {error}": "Claude ließ sich nicht öffnen: {error}",
+
+    # the calendar (calendars.py)
+    "That isn't a calendar link. It starts with https:// (or webcal://) and usually ends in .ics.":
+        "Das ist kein Kalenderlink. Er beginnt mit https:// (oder webcal://) und endet meist auf .ics.",
+    "Stenny's engine is missing a part for calendar links. Update Stenny, then try again.":
+        "Stenny fehlt ein Baustein für Kalenderlinks. Aktualisiere Stenny und versuch es dann noch einmal.",
+    "This link doesn't lead to a calendar. Copy the address in iCal format (it usually ends in .ics), not the calendar's web page.":
+        "Dieser Link führt nicht zu einem Kalender. Kopiere die Adresse im iCal-Format (sie endet meist auf .ics), nicht die Webseite des Kalenders.",
+    "The calendar behind this link couldn't be read.": "Der Kalender hinter diesem Link konnte nicht gelesen werden.",
+    "Stenny already has this calendar link.": "Diesen Kalenderlink hat Stenny schon.",
+    "That's more calendar links than Stenny keeps. Remove one first.":
+        "Mehr Kalenderlinks kann Stenny nicht aufbewahren. Entferne zuerst einen.",
+    "Google says this calendar isn't there or isn't shared. Use the “Secret address in iCal format”, not the public one.":
+        "Google meldet, dass es diesen Kalender nicht gibt oder dass er nicht freigegeben ist. Nimm die „Privatadresse im iCal-Format“, nicht die öffentliche.",
+    "The calendar's server says this link doesn't exist (any more). Copy it again from your calendar's settings.":
+        "Der Server des Kalenders meldet, dass es diesen Link nicht (mehr) gibt. Kopiere ihn noch einmal aus den Einstellungen deines Kalenders.",
+    "Stenny couldn't reach {host}. Check your internet connection and the link, then try again.":
+        "Stenny konnte {host} nicht erreichen. Prüfe deine Internetverbindung und den Link und versuch es dann noch einmal.",
+    "The link couldn't be saved in your computer's password store: {error}":
+        "Der Link konnte nicht im Passwortspeicher deines Computers gesichert werden: {error}",
+    "Stenny doesn't have this calendar link any more.": "Diesen Kalenderlink hat Stenny nicht mehr.",
 }
 
 # Where the German names the Mac and the English doesn't: the same message on Windows.
