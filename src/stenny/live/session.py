@@ -155,8 +155,10 @@ class LiveSession:
         chunks = chunks_path(self.session_path)
         chunks.unlink(missing_ok=True)  # a leftover of an earlier recording in this folder
         self.cache = ChunkCache(chunks)
-        self.prompt, _, _ = whisper_prompt(self.vault, self.folder, self.glossary, course.name)
-        self.prompt_checked = time.monotonic()
+        # Whisper's prompt is made by the transcription thread (_refresh_prompt), not here: fitting it to Whisper's
+        # window loads Whisper's tokenizer, i.e. all of mlx-whisper (3–5 s), and the microphone comes first
+        self.prompt: str | None = None
+        self.prompt_checked = float("-inf")
         self.max_len, self.min_len = chunk_lengths(course, lang)
         self.chunk_pos: dict[int, int] = {}  # per stretch (its first sample): where its next chunk starts
         self.looked: dict[int, tuple] = {}   # per stretch: what the second look last saw (chunks, complete)
@@ -481,7 +483,21 @@ class LiveSession:
         self.current_lang = language.pick(clip, self.course, self.engine, self.current_lang)
         return self.current_lang
 
+    def _refresh_prompt(self) -> None:
+        """Whisper's prompt from the glossary (and slides dropped into the lecture's folder meanwhile): made once
+        the recording runs, then looked at again every PROMPT_CHECK seconds."""
+        first = self.prompt_checked == float("-inf")
+        prompt, slides, _ = whisper_prompt(self.vault, self.folder, self.glossary, self.course.name, quiet=not first)
+        if prompt != self.prompt and not first:
+            log(f"Slides found ({slides.count if slides else 0} pages): their terms help Whisper from now on")
+        self.prompt, self.prompt_checked = prompt, time.monotonic()
+
     def _transcribe_loop(self) -> None:
+        try:
+            self._refresh_prompt()  # before the first chunk is due (~30 s in); it also loads Whisper's code for it
+        except Exception as e:  # the recording goes on; the final pass makes the prompt again
+            log(f"Whisper's prompt couldn't be made, the live text goes on without the glossary: {e}")
+            self.prompt_checked = time.monotonic()
         while self.state in ("starting", "recording", "paused"):
             may = self._may_transcribe()
             chunk = self._next_chunk() if may else None
@@ -493,10 +509,7 @@ class LiveSession:
                 continue
             s0, a, b = chunk
             if time.monotonic() - self.prompt_checked >= PROMPT_CHECK:  # slides dropped in meanwhile
-                prompt, slides, _ = whisper_prompt(self.vault, self.folder, self.glossary, self.course.name, quiet=True)
-                if prompt != self.prompt:
-                    log(f"Slides found ({slides.count if slides else 0} pages): their terms help Whisper from now on")
-                self.prompt, self.prompt_checked = prompt, time.monotonic()
+                self._refresh_prompt()
             clip = self._read(a, b)
             self.model_released = False
             try:
