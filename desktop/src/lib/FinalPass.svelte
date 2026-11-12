@@ -75,33 +75,33 @@
 {/if}
 
 <style>
-  .pass { margin-top: 12px; max-width: 520px; font-family: var(--sans); }
+  .pass { margin-top: 14px; max-width: 520px; }
   .line { display: flex; align-items: center; gap: 12px; }
   .track {
-    position: relative; flex: 1; height: 5px; border-radius: 999px; overflow: hidden;
-    background: color-mix(in srgb, var(--ink) 10%, transparent);
+    position: relative; flex: 1; height: 6px; border-radius: 999px; overflow: hidden;
+    background: color-mix(in srgb, var(--ink) 9%, transparent);
   }
   .inline { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
-  .track.short { flex: none; width: 72px; height: 4px; }
+  .track.short { flex: none; width: 72px; height: 5px; }
   .inline .percent { min-width: 0; text-align: left; }
-  .track.thin { display: block; height: 3px; flex: none; grid-column: 1 / -1; margin-top: 6px; }
+  .track.thin { display: block; height: 3px; flex: none; grid-column: 1 / -1; margin-top: 7px; }
   .fill {
-    position: absolute; inset: 0; border-radius: inherit; background: var(--warn);
+    position: absolute; inset: 0; border-radius: inherit; background: var(--accent);
     transform-origin: left center; transition: transform 4.8s linear;  /* one reading to the next, about 5 s apart */
   }
-  .percent { font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; min-width: 3.2em; text-align: right; }
+  .percent { font-size: 12px; font-weight: 500; color: var(--ink-2); font-variant-numeric: tabular-nums; min-width: 3.4em; text-align: right; }
   .steps {
-    display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin-top: 9px;
-    font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums;
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin-top: 10px;
+    font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums;
   }
   .step { display: inline-flex; align-items: baseline; gap: 6px; white-space: nowrap; }
-  .step.now { color: var(--ink); }
+  .step.now { color: var(--ink); font-weight: 500; }
   .mark { flex: none; width: 8px; height: 8px; align-self: center; }
   .dot { border-radius: 50%; border: 1.5px solid currentColor; box-sizing: border-box; opacity: 0.7; }
-  .now .dot { background: var(--warn); border-color: var(--warn); opacity: 1;
-              box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--warn) 22%, transparent); }
-  svg.mark { width: 11px; height: 11px; fill: none; stroke: var(--good); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-  .where { color: var(--muted); }
+  .now .dot { background: var(--accent); border-color: var(--accent); opacity: 1;
+              box-shadow: 0 0 0 3px var(--accent-soft); }
+  svg.mark { width: 11px; height: 11px; fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .where { color: var(--muted); font-weight: 400; }
   .left { margin-left: auto; white-space: nowrap; }
   @media (prefers-reduced-motion: reduce) { .fill { transition: none; } }
 </style>
