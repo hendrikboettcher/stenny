@@ -259,7 +259,7 @@ def remove_api_key(cfg, params: dict) -> dict:
 
 
 def claude_sign_in(cfg, params: dict) -> dict:
-    """A terminal window with `claude auth login`."""
+    """`claude auth login` in the background: the browser opens, no terminal window."""
     from . import claude_setup
     return _setup(claude_setup.claude_sign_in, cfg)
 

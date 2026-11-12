@@ -252,7 +252,7 @@
   "settings.ai.cc.missing.after": "Once it's installed, come back here to sign in.",
   "settings.ai.cc.signedOut": "Claude Code is installed but not signed in to your Claude account.",
   "settings.ai.cc.signIn": "Sign in…",
-  "settings.ai.cc.signingIn": "Finish signing in in the terminal window and your browser. Stenny checks again when you come back.",
+  "settings.ai.cc.signingIn": "Finish signing in in your browser. Stenny checks again when you come back.",
   "settings.ai.cc.unknown": "Stenny couldn't check Claude Code.",
   "settings.ai.cc.ready": "Connected as {account}",
   "settings.ai.cc.readyPlain": "Connected",

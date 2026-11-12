@@ -10,7 +10,7 @@
   // make Stenny really useful work: courses, the AI step, the connector for Claude, the calendar (for "Record this
   // lecture?"). A step is done because it works (app_server.setup_status, the same checks as Settings), never
   // because something was clicked; looked at when the window opens and whenever it gets the focus back (the user
-  // signed in in a terminal, clicked Install in Claude, or allowed the calendar in System Settings).
+  // signed in in the browser, clicked Install in Claude, or allowed the calendar in System Settings).
   // × hides it until Stenny opens again; after a few closes it also offers "Don't show this again". Once everything
   // is done: "You're all set" for a moment, then `[app] setup_checklist = false`, gone for good.
   import { onMount, untrack } from "svelte";
@@ -48,7 +48,7 @@
   let panelAt = $state({ left: 0, bottom: 0 });
   let closedBefore = $state(readCloses());
 
-  let signingIn = $state(false);      // the sign-in terminal was opened
+  let signingIn = $state(false);      // sign-in started (the browser opened)
   let installOpened = $state(false);  // Claude's Install window was opened
   let busy = $state<"signin" | "key" | "install" | "code" | "calendar" | null>(null);
   let keyInput = $state("");

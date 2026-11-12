@@ -156,11 +156,11 @@
   }
 
   // ---- the AI step and the connector: checked when their section opens and whenever the window gets the focus
-  // back (the user signed in in a terminal, or clicked Install in Claude, and came back)
+  // back (the user signed in in the browser, or clicked Install in Claude, and came back)
   let ai = $state<AiStatus | null>(null);
   let aiCheck = 0;                          // only the latest check counts
   let aiChecking = $state(false);
-  let signingIn = $state(false);            // the sign-in terminal was opened
+  let signingIn = $state(false);            // sign-in started (the browser opened)
   let keyInput = $state("");
   let keyEditing = $state(false);           // "Change" on a working key
   let keyBusy = $state(false);

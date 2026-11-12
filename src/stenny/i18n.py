@@ -222,10 +222,6 @@ DE = {
     "The key couldn't be saved: {error}": "Der Schlüssel konnte nicht gespeichert werden: {error}",
     "The key couldn't be removed: {error}": "Der Schlüssel konnte nicht entfernt werden: {error}",
     "Claude Code isn't installed yet.": "Claude Code ist noch nicht installiert.",
-    "Sign in to Claude Code for Stenny. Your browser opens in a moment.":
-        "Melde dich für Stenny bei Claude Code an. Gleich öffnet sich dein Browser.",
-    "Done. You can close this window and go back to Stenny.":
-        "Fertig. Du kannst dieses Fenster schließen und zu Stenny zurückgehen.",
     "Stenny.mcpb isn't in Stenny's folder. Download Stenny again, or build it with connector/build.sh.":
         "Stenny.mcpb fehlt in Stennys Ordner. Lade Stenny neu herunter oder bau die Datei mit connector/build.sh.",
     "The Claude desktop app isn't installed. Get it at claude.ai/download, then try again.":
