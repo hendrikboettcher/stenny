@@ -535,10 +535,7 @@ struct LectureDetail: View {
     }
 
     private func open() {
-        var components = URLComponents(string: "obsidian://open")!
-        components.queryItems = [URLQueryItem(name: "path", value: entry.transcript)]
-        if let url = components.url, NSWorkspace.shared.open(url) { return }
-        NSWorkspace.shared.open(URL(fileURLWithPath: entry.transcript))
+        Obsidian.open(entry.transcript)
     }
 }
 
