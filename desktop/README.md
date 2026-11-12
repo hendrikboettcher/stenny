@@ -5,6 +5,10 @@ replace the Swift menu bar app in `app/`. Everything about lectures comes from t
 `stenny app-server` process (src/stenny/app_server.py) that the app starts and talks to in JSON lines
 (src-tauri/src/engine.rs).
 
+The look is the website's (its assets/site.css): the tokens, Geist and the shared buttons in `src/app.css`, each
+window's own layout in its component. Geist and Geist Mono ship in `static/fonts` (SIL OFL, from Vercel's `geist`
+package), so the app looks the same offline; Geist Mono is for times, clocks and file paths.
+
 ```bash
 npm install                                   # once
 scripts/helpers.sh                            # what it bundles: stenny-agent (macOS only, tauri.macos.conf.json), stenny-rec, Stenny.mcpb (needs Node)

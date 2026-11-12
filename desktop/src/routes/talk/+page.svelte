@@ -33,7 +33,7 @@
 </script>
 
 <form onsubmit={start}>
-  <h1 class="serif">{t("talk.title")}</h1>
+  <h1>{t("talk.title")}</h1>
   <p>{t("talk.lead")}</p>
   <!-- svelte-ignore a11y_autofocus -->
   <input bind:value={title} oninput={() => (error = null)} placeholder={t("talk.placeholder")} autofocus />
@@ -57,24 +57,24 @@
 </form>
 
 <style>
-  form { padding: 22px 24px; display: flex; flex-direction: column; gap: 10px; height: 100vh; }
-  h1 { font-size: 21px; font-weight: 460; margin: 0; letter-spacing: -0.01em; }
+  form { padding: 20px 24px; display: flex; flex-direction: column; gap: 10px; height: 100vh; }
+  h1 { font-size: 22px; font-weight: 600; margin: 0; letter-spacing: -.03em; }
   p { margin: 0; color: var(--muted); }
   input {
-    font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
-    background: var(--card); color: var(--ink); -webkit-user-select: text; user-select: text;
+    font: inherit; font-size: 14px; min-height: 36px; padding: 0 12px; border: 1px solid var(--hairline); border-radius: var(--r-ctl);
+    background: var(--surface); color: var(--ink); -webkit-user-select: text; user-select: text; margin-top: 2px;
+    transition: border-color .15s ease, box-shadow .15s ease;
   }
-  input:focus { outline: 2px solid color-mix(in srgb, var(--ink) 40%, transparent); outline-offset: 0; }
+  input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  input::placeholder { color: var(--muted); }
   .error { color: var(--rec); }
-  .language { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
+  .language { display: flex; align-items: center; gap: 10px; margin-top: 2px; }
   .label { color: var(--ink-2); font-weight: 500; }
-  .hint { font-size: 12px; margin-top: -4px; }
-  .segmented { display: inline-flex; background: var(--bar); border: 1px solid var(--line); border-radius: 9px; padding: 2px; gap: 2px; }
-  .segmented button { border: 0; background: none; padding: 4px 12px; border-radius: 7px; color: var(--ink-2); }
+  .hint { font-size: 12.5px; margin-top: -2px; }
+  /* segmented tabs, as on the website: a sunken track with a white pill for the chosen one */
+  .segmented { display: inline-flex; background: var(--sunken); border-radius: var(--r-ctl); padding: 3px; gap: 2px; }
+  .segmented button { border: 0; background: none; padding: 4px 10px; border-radius: 8px; color: var(--ink-2); font-weight: 500; }
   .segmented button:hover { color: var(--ink); }
-  .segmented button.on { background: var(--card); color: var(--ink); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); font-weight: 500; }
+  .segmented button.on { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(11, 12, 14, .12); }
   .buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: auto; }
-  .pill { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 6px 15px; font-weight: 500; }
-  .pill.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
-  .pill:disabled { opacity: 0.55; }
 </style>

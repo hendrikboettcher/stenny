@@ -65,18 +65,15 @@
 {/if}
 
 <style>
+  /* a calm card under the transcript: soft blue, like the docs' callouts */
   .ask {
     display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-    background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+    background: var(--accent-soft); border-radius: 14px; padding: 13px 14px 13px 16px;
   }
   .words { flex: 1 1 240px; min-width: 0; }
-  .question { margin: 0; font-weight: 500; }
-  .hint { margin: 2px 0 0; color: var(--muted); font-size: 12.5px; }
+  .question { margin: 0; font-weight: 600; letter-spacing: -.01em; }
+  .hint { margin: 2px 0 0; color: var(--ink-2); font-size: 12.5px; }
   .error { margin: 6px 0 0; color: var(--rec); font-size: 12.5px; }
   .buttons { display: flex; gap: 8px; }
-  .pill { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 5px 14px; font-weight: 500; }
-  .pill:hover:not(:disabled) { border-color: color-mix(in srgb, var(--ink) 35%, var(--line)); }
-  .pill.main { background: var(--ink); color: var(--bg); border-color: var(--ink); }
-  .pill:disabled { opacity: 0.55; }
   .done { margin: 0; color: var(--muted); font-size: 12.5px; }
 </style>

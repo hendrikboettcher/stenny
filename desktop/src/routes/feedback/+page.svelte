@@ -34,13 +34,13 @@
 
 {#if sent}
   <div class="done">
-    <h1 class="serif">{t("feedback.thanks")}</h1>
+    <h1>{t("feedback.thanks")}</h1>
     <p>{t("feedback.sent")}</p>
     <button class="pill primary" onclick={() => getCurrentWindow().close()}>{t("common.close")}</button>
   </div>
 {:else}
   <form onsubmit={send}>
-    <h1 class="serif">{t("feedback.title")}</h1>
+    <h1>{t("feedback.title")}</h1>
     <p>{t("feedback.lead")}</p>
     <!-- svelte-ignore a11y_autofocus -->
     <textarea bind:value={message} oninput={() => (error = null)} rows="7" autofocus></textarea>
@@ -56,19 +56,21 @@
 
 <style>
   form, .done { padding: 22px 24px; display: flex; flex-direction: column; gap: 10px; height: 100vh; }
-  .done { align-items: center; justify-content: center; text-align: center; }
-  h1 { font-size: 21px; font-weight: 460; margin: 0; letter-spacing: -0.01em; }
+  .done { align-items: center; justify-content: center; text-align: center; gap: 12px; }
+  .done .pill { margin-top: 6px; }
+  h1 { font-size: 22px; font-weight: 600; margin: 0; letter-spacing: -.03em; }
   p { margin: 0; color: var(--muted); }
   textarea, input:not([type]) {
-    font: inherit; font-size: 13.5px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
-    background: var(--card); color: var(--ink); -webkit-user-select: text; user-select: text; resize: none;
+    font: inherit; font-size: 13.5px; padding: 9px 11px; border: 1px solid var(--hairline); border-radius: var(--r-ctl);
+    background: var(--surface); color: var(--ink); -webkit-user-select: text; user-select: text; resize: none;
+    transition: border-color .15s ease, box-shadow .15s ease;
   }
-  textarea:focus, input:not([type]):focus { outline: 2px solid color-mix(in srgb, var(--ink) 40%, transparent); outline-offset: 0; }
-  label { display: flex; gap: 7px; align-items: flex-start; color: var(--muted); }
-  label input { accent-color: var(--ink); margin: 2px 0 0; }
+  textarea { margin-top: 4px; line-height: 1.5; }
+  input:not([type]) { font-size: 13px; }  /* the German placeholder is long */
+  textarea:focus, input:not([type]):focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  ::placeholder { color: var(--muted); opacity: 1; }
+  label { display: flex; gap: 8px; align-items: flex-start; color: var(--muted); }
+  label input { accent-color: var(--accent); margin: 2px 0 0; }
   .error { color: var(--rec); }
   .buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: auto; }
-  .pill { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 6px 15px; font-weight: 500; }
-  .pill.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
-  .pill:disabled { opacity: 0.55; }
 </style>
