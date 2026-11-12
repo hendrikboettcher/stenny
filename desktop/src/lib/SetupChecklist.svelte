@@ -45,7 +45,13 @@
   let allSet = $state(false);
   let open = $state(false);
   let card = $state<HTMLElement | null>(null);
-  let panelAt = $state({ left: 0, bottom: 0 });
+  let panelAt = $state({ left: 0, bottom: 0 });  // next to the card, its bottom level with the card's
+  let panelH = $state(0);
+  let winW = $state(window.innerWidth);
+  let winH = $state(window.innerHeight);
+  // The panel is taller than the room above the card's bottom on a small window or screen: it moves down as far as
+  // it has to (never closer than 12px to the window's edge) and scrolls when even the whole window is too short.
+  const panelBottom = $derived(Math.max(12, Math.min(panelAt.bottom, winH - 12 - panelH)));
   let closedBefore = $state(readCloses());
 
   let signingIn = $state(false);      // the sign-in terminal was opened
@@ -204,7 +210,7 @@
   });
 </script>
 
-<svelte:window onclick={() => (open = false)}
+<svelte:window bind:innerWidth={winW} bind:innerHeight={winH} onclick={() => (open = false)}
                onkeydown={(e) => { if (e.key === "Escape" && open) { e.stopPropagation(); open = false; } }} />
 
 {#snippet mark(isDone: boolean)}
@@ -243,7 +249,9 @@
   {@const cal = status.calendar}
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div class="panel" role="dialog" aria-label={t("setup.title")} tabindex="-1"
-       style="left: {panelAt.left}px; bottom: {panelAt.bottom}px" onclick={(ev) => ev.stopPropagation()}>
+       bind:offsetHeight={panelH}
+       style="left: {panelAt.left}px; bottom: {panelBottom}px; max-width: {Math.max(280, winW - panelAt.left - 12)}px"
+       onclick={(ev) => ev.stopPropagation()}>
     <header>
       <h2>{t("setup.title")}</h2>
       <span class="line">{t("setup.progress", { done, total: TOTAL })}</span>
