@@ -218,10 +218,10 @@
     <button class="card" bind:this={card} onclick={toggle} aria-expanded={open} disabled={allSet}
             title={allSet ? undefined : t("setup.open")}>
       {#if allSet}
-        <span class="title serif">{@render mark(true)}{t("setup.allSet")}</span>
+        <span class="title">{@render mark(true)}{t("setup.allSet")}</span>
         <span class="line">{t("setup.allSet.text")}</span>
       {:else}
-        <span class="title serif">{t("setup.title")}</span>
+        <span class="title">{t("setup.title")}</span>
         <span class="line">{t("setup.progress", { done, total: TOTAL })}</span>
         <span class="bar" aria-hidden="true"><span style="width: {(done / TOTAL) * 100}%"></span></span>
       {/if}
@@ -245,7 +245,7 @@
   <div class="panel" role="dialog" aria-label={t("setup.title")} tabindex="-1"
        style="left: {panelAt.left}px; bottom: {panelAt.bottom}px" onclick={(ev) => ev.stopPropagation()}>
     <header>
-      <h2 class="serif">{t("setup.title")}</h2>
+      <h2>{t("setup.title")}</h2>
       <span class="line">{t("setup.progress", { done, total: TOTAL })}</span>
     </header>
     {#if error}<p class="error selectable">{error}</p>{/if}
@@ -253,7 +253,7 @@
       <li class:done={steps.courses}>
         {@render mark(steps.courses)}
         <div class="body">
-          <div class="name serif">{t("setup.courses.name")}</div>
+          <div class="name">{t("setup.courses.name")}</div>
           <div class="why">{t("setup.courses.why")}</div>
           {#if steps.courses}
             <div class="state">{tn("setup.courses.done", courseCount)}</div>
@@ -268,7 +268,7 @@
       <li class:done={steps.ai}>
         {@render mark(steps.ai)}
         <div class="body">
-          <div class="name serif">{t("setup.ai.name")}</div>
+          <div class="name">{t("setup.ai.name")}</div>
           <div class="why">{t("setup.ai.why")}</div>
           {#if steps.ai}
             <div class="state">
@@ -319,7 +319,7 @@
       <li class:done={steps.claude}>
         {@render mark(steps.claude)}
         <div class="body">
-          <div class="name serif">{t("setup.claude.name")}</div>
+          <div class="name">{t("setup.claude.name")}</div>
           <div class="why">{t("setup.claude.why")}</div>
           {#if steps.claude}
             <div class="state">{c.installed ? t("setup.claude.done.desktop") : t("setup.claude.done.code")}</div>
@@ -352,7 +352,7 @@
       <li class:done={steps.calendar}>
         {@render mark(steps.calendar)}
         <div class="body">
-          <div class="name serif">{t("setup.calendar.name")}</div>
+          <div class="name">{t("setup.calendar.name")}</div>
           <div class="why">{t("setup.calendar.why")}</div>
           {#if !cal.reminders}
             <div class="state">{t("setup.calendar.offChosen")}</div>
@@ -387,76 +387,73 @@
 {/if}
 
 <style>
-  /* the card: at the bottom of the sidebar, above its footer */
-  .setup { position: relative; margin: 0 10px 10px; }
+  /* the card: at the bottom of the sidebar, above its footer; white on the canvas, like the website's cards */
+  .setup { position: relative; margin: 0 12px 12px; }
   .card {
-    display: flex; flex-direction: column; gap: 3px; width: 100%; text-align: left; padding: 10px 30px 11px 12px;
-    border: 1px solid var(--line); border-radius: 10px; background: var(--card);
+    display: flex; flex-direction: column; gap: 3px; width: 100%; text-align: left; padding: 12px 30px 13px 14px;
+    border: 0; border-radius: 14px; background: var(--surface); box-shadow: var(--shadow-sm);
+    transition: box-shadow .15s ease;
   }
-  .card:hover:not(:disabled) { border-color: color-mix(in srgb, var(--ink) 25%, var(--line)); }
+  .card:hover:not(:disabled) { box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--accent); }
   .card:disabled { opacity: 1; }
-  .title { display: flex; align-items: center; gap: 6px; font-size: 14.5px; line-height: 1.25; font-weight: 460; color: var(--ink); }
-  .line { color: var(--muted); font-size: 11.5px; }
-  .bar { display: block; height: 3px; margin-top: 5px; border-radius: 2px; background: var(--line); overflow: hidden; }
-  .bar span { display: block; height: 100%; border-radius: 2px; background: var(--good); transition: width 0.4s ease; }
-  .all-set .card { padding-right: 12px; }
+  .title { display: flex; align-items: center; gap: 6px; font-size: 14px; line-height: 1.25; font-weight: 600; letter-spacing: -.01em; color: var(--ink); }
+  .line { color: var(--muted); font-size: 12px; }
+  .bar { display: block; height: 4px; margin-top: 7px; border-radius: 999px; background: var(--sunken); overflow: hidden; }
+  .bar span { display: block; height: 100%; border-radius: 999px; background: var(--accent); transition: width 0.4s ease; }
+  .all-set .card { padding-right: 14px; }
   .x {
-    position: absolute; top: 6px; right: 6px; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 5px;
+    position: absolute; top: 7px; right: 7px; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px;
     background: none; color: var(--muted); display: grid; place-items: center;
   }
-  .x:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 8%, transparent); }
+  .x:hover { color: var(--ink); background: var(--sunken); }
   .x svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
   .never {
-    display: block; border: 0; background: none; padding: 5px 2px 0; color: var(--muted); font-size: 11.5px;
-    text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 2px;
+    display: block; border: 0; background: none; padding: 6px 2px 0; color: var(--muted); font-size: 12px;
+    text-decoration: underline; text-decoration-color: var(--hairline); text-underline-offset: 2px;
   }
   .never:hover { color: var(--ink); }
 
   .mark {
-    flex: none; width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--line);
+    flex: none; width: 18px; height: 18px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--hairline);
     display: inline-grid; place-items: center;
   }
-  .mark.done { border-color: var(--good); background: var(--good); }
-  .mark svg { width: 12px; height: 12px; fill: none; stroke: var(--card); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .mark.done { box-shadow: none; background: var(--accent); }
+  .mark svg { width: 12px; height: 12px; fill: none; stroke: var(--on-accent); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
   .title .mark { width: 16px; height: 16px; }
 
-  /* the steps: a panel next to the card, like a menu */
+  /* the steps: a card next to the sidebar's card, like a menu */
   .panel {
-    position: fixed; z-index: 30; width: 380px; max-height: calc(100vh - 24px); overflow-y: auto; padding: 16px 18px 6px;
-    background: var(--card); border: 1px solid var(--line); border-radius: 12px; outline: none;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 16px 40px rgba(0, 0, 0, 0.14);
+    position: fixed; z-index: 30; width: 390px; max-height: calc(100vh - 24px); overflow-y: auto; padding: 18px 20px 8px;
+    background: var(--surface); border-radius: var(--r-card); outline: none;
+    box-shadow: var(--shadow), inset 0 0 0 1px var(--hairline);
   }
-  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
-  h2 { margin: 0; font-size: 18px; font-weight: 460; letter-spacing: -0.01em; }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+  h2 { margin: 0; font-size: 19px; font-weight: 600; letter-spacing: -.03em; }
   ol { list-style: none; margin: 0; padding: 0; }
-  li { display: flex; gap: 11px; padding: 13px 0; border-top: 1px solid var(--line); }
+  li { display: flex; gap: 12px; padding: 14px 0; border-top: 1px solid var(--hairline); }
   li:first-child { border-top: 0; }
-  li .mark { margin-top: 2px; }
+  li .mark { margin-top: 1px; }
   .body { flex: 1; min-width: 0; }
-  .name { font-size: 15px; line-height: 1.3; font-weight: 460; }
+  .name { font-size: 14.5px; line-height: 1.3; font-weight: 600; letter-spacing: -.01em; }
   li.done .name { color: var(--ink-2); }
   .why { color: var(--muted); margin-top: 2px; }
-  .state { color: var(--good); margin-top: 5px; }
+  .state { color: var(--ink-2); margin-top: 5px; font-weight: 500; }
   .note { margin: 8px 0 0; color: var(--ink-2); }
-  .do { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 9px; }
-  .key { display: flex; gap: 6px; margin-top: 9px; }
+  .do { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 10px; }
+  .key { display: flex; gap: 6px; margin-top: 10px; }
   .key input {
-    flex: 1; min-width: 0; padding: 5px 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg);
-    color: var(--ink); font: inherit;
+    flex: 1; min-width: 0; padding: 0 10px; min-height: 32px; border: 1px solid var(--hairline); border-radius: var(--r-ctl);
+    background: var(--surface); color: var(--ink); font: 400 13px var(--mono);
   }
-  .key input:focus { outline: none; border-color: color-mix(in srgb, var(--ink) 35%, var(--line)); }
-  .pill { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 5px 13px; font-weight: 500; }
-  .pill:hover:not(:disabled) { border-color: color-mix(in srgb, var(--ink) 35%, var(--line)); }
-  .pill.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
-  .pill:disabled { opacity: 0.55; }
+  .key input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
   .link {
-    border: 0; background: none; padding: 0; color: var(--muted); text-decoration: underline;
-    text-decoration-color: var(--line); text-underline-offset: 2px;
+    border: 0; background: none; padding: 0; color: var(--accent); text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, var(--accent) 35%, transparent); text-underline-offset: 3px;
   }
-  .link:hover:not(:disabled) { color: var(--ink); }
-  .more { display: block; margin-top: 9px; font-size: 12px; }
+  .link:hover:not(:disabled) { text-decoration-color: currentColor; }
+  .more { display: block; margin-top: 10px; font-size: 12.5px; }
   .error { margin: 6px 0 4px; color: var(--rec); }
   @media (prefers-reduced-motion: reduce) {
-    .bar span { transition: none; }
+    .bar span, .card { transition: none; }
   }
 </style>

@@ -600,7 +600,7 @@
     <div class="titlebar" data-tauri-drag-region></div>
     <div class="brand" data-tauri-drag-region>
       <Figure height={24} />
-      <span class="serif">Stenny</span>
+      <span>Stenny</span>
     </div>
 
     <nav>
@@ -666,8 +666,8 @@
   </aside>
 
   <div class="content">
-  <!-- the window's title bar over the list and detail (the line between them runs through it) -->
-  <div class="topbar" data-tauri-drag-region><div data-tauri-drag-region></div></div>
+  <!-- the window's title bar over the list and detail -->
+  <div class="topbar" data-tauri-drag-region></div>
   <!-- what's running, whichever course is open: only while something runs, gone otherwise -->
   {#if bar || barError}
     <div class="activity {bar?.kind ?? 'error'}" transition:barMotion>
@@ -740,7 +740,7 @@
       {#each entries as e (id(e))}
         <button class="row" class:active={id(e) === selectedId} onclick={() => (selectedId = id(e))}
                 oncontextmenu={(ev) => { selectedId = id(e); showMenu(ev, { entry: e }); }}>
-          <span class="row-title serif">{rowTitle(e)}</span>
+          <span class="row-title">{rowTitle(e)}</span>
           {#if isDraft(e)}<span class="status {e.status}">{statusLabel(e.status)}</span>{/if}
           <span class="row-detail">{rowDetail(e)}</span>
           {#if e.status === "finalizing" && e.final_pass}<FinalPass pass={e.final_pass} compact />{/if}
@@ -768,7 +768,7 @@
         {#if editing === id(selected)}
           {@const e = selected}
           <!-- the field is as wide as its text: a hidden copy of the text (::after) sizes the grid it shares -->
-          <div class="title-wrap serif" data-value={titleField || (e.kind === "event" ? "" : e.number > 0 ? t("lib.lectureN", { n: e.number }) : prettyDate(e))}>
+          <div class="title-wrap" data-value={titleField || (e.kind === "event" ? "" : e.number > 0 ? t("lib.lectureN", { n: e.number }) : prettyDate(e))}>
           <input class="title-input" size="1" bind:value={titleField} use:focusAll
                  aria-label={e.kind === "event" ? t("lib.rename.talkName") : t("lib.rename.lectureTitle")}
                  placeholder={e.kind === "event" ? "" : e.number > 0 ? t("lib.lectureN", { n: e.number }) : prettyDate(e)}
@@ -776,10 +776,10 @@
                  onblur={() => finishRename(e, true)} />
           </div>
         {:else if isBusy(selected)}
-          <h1 class="serif selectable">{headingOf(selected)}</h1>
+          <h1 class="selectable">{headingOf(selected)}</h1>
         {:else}
           {@const e = selected}
-          <h1 class="serif"><button class="title-button" title={t("lib.rename.click")}
+          <h1><button class="title-button" title={t("lib.rename.click")}
               aria-label={t("lib.rename.aria", { heading: headingOf(e) })} onclick={() => startRename(e)}>{headingOf(e)}<svg
               class="pen" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.6 2.6a1.4 1.4 0 0 1 2 0l.8.8a1.4 1.4 0 0 1 0 2L6 12.8 2.8 13.2l.4-3.2z M9.4 3.8l2.8 2.8" /></svg></button></h1>
         {/if}
@@ -787,7 +787,7 @@
 
         {#if isDraft(selected)}
           <div class="draft">
-            <p class="serif">
+            <p>
               <span class="status {selected.status}">{statusLabel(selected.status)}</span>
               <!-- a low battery or memory pauses the text so far: said calmly, the recording goes on -->
               {selected.live?.warning || (selected.draft_note ?? t("lib.comesLater"))}
@@ -838,36 +838,36 @@
         <hr />
 
         {#if summary === undefined}
-          <p class="quiet serif" class:hidden={!slow}>{t("common.loading")}</p>
+          <p class="quiet" class:hidden={!slow}>{t("common.loading")}</p>
         {:else if isDraft(selected)}
           {#if progress}
             <div class="kicker">{t("lib.soFar")}</div>
-            <div class="summary serif selectable">{@html renderMarkdown(progress)}</div>
+            <div class="summary selectable">{@html renderMarkdown(progress)}</div>
           {:else}
             <!-- live: the text comes as the recording goes on, unless that is switched off or paused (low battery) -->
-            <p class="quiet serif">{t("lib.nothingYet")} {selected.status === "live" && (selected.live?.transcribing ?? true)
+            <p class="quiet">{t("lib.nothingYet")} {selected.status === "live" && (selected.live?.transcribing ?? true)
               ? t("lib.nothingYet.live") : t("lib.nothingYet.later")}</p>
           {/if}
         {:else if summary}
           <div class="kicker">{t("lib.summary")}</div>
-          <div class="summary serif selectable">{@html renderMarkdown(summary)}</div>
+          <div class="summary selectable">{@html renderMarkdown(summary)}</div>
         {:else}
-          <p class="quiet serif">{selected.kind === "event" ? t("lib.noSummary.event") : t("lib.noSummary.lecture")}</p>
+          <p class="quiet">{selected.kind === "event" ? t("lib.noSummary.event") : t("lib.noSummary.lecture")}</p>
         {/if}
       </article>
     {:else if failed}
       <div class="center">
-        <p class="serif big">{t("lib.readFailed")}</p>
+        <p class="big">{t("lib.readFailed")}</p>
         <p class="quiet selectable">{failed}</p>
         <button class="pill" onclick={() => reload()}>{t("lib.tryAgain")}</button>
       </div>
     {:else if data && group}
       <div class="center">
-        <p class="serif big">{t("lib.emptyCourse", { course: group.course })}</p>
+        <p class="big">{t("lib.emptyCourse", { course: group.course })}</p>
         <p class="quiet">{t("lib.emptyCourse.hint", { button: t("lib.recordLecture", { n: nextNumber }) })}</p>
       </div>
     {:else if !data}
-      <div class="center"><p class="quiet serif">{t("common.loading")}</p></div>
+      <div class="center"><p class="quiet">{t("common.loading")}</p></div>
     {/if}
     <div class="bottombar" aria-hidden="true"></div>
   </main>
@@ -959,30 +959,33 @@
 {/if}
 
 <style>
-  /* the library and Settings fill the window; both are there for a moment while one dissolves into the other */
-  .view { position: fixed; inset: 0; background: var(--bg); }
-  .window { display: grid; grid-template-columns: 220px minmax(0, 1fr); height: 100vh; }
+  /* The library: the sidebar and the list on the canvas, the open lecture on a white card beside them, like the
+     docs on stenny.eu. Library and Settings fill the window; both are there for a moment while one dissolves into
+     the other. */
+  .view { position: fixed; inset: 0; background: var(--canvas); }
+  .window { display: grid; grid-template-columns: 224px minmax(0, 1fr); height: 100vh; }
   .titlebar { height: var(--titlebar); flex: none; }
-  /* the list and detail under one title bar (the line between them runs through it), the activity bar below it */
+  /* the list and detail under one title bar, the activity bar between them and it */
   .content { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-  .topbar { display: grid; grid-template-columns: 290px 1fr; height: var(--titlebar); flex: none; }
-  .topbar > div { border-right: 1px solid var(--line); }
-  .panes { display: grid; grid-template-columns: 290px minmax(0, 1fr); flex: 1; min-height: 0; }
-  /* the scrolling columns keep a solid band at the bottom, so text never runs into the window's rounded corner */
-  .bottombar { position: sticky; bottom: 0; height: 18px; flex: none; background: var(--bg); z-index: 5; }
-  .list > .bottombar { margin: 0 -10px; }
+  .topbar { height: var(--titlebar); flex: none; }
+  .panes { display: grid; grid-template-columns: 284px minmax(0, 1fr); flex: 1; min-height: 0; padding: 0 12px 12px 0; }
+  /* the scrolling columns keep a solid band at the bottom, so text never runs into a rounded corner */
+  .bottombar { position: sticky; bottom: 0; height: 16px; flex: none; background: var(--canvas); z-index: 5; }
+  .list > .bottombar { margin: 0 -12px; }
+  .detail > .bottombar { background: var(--surface); }
 
-  /* Sidebar */
-  .sidebar { background: var(--bar); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
-  .brand { display: flex; align-items: center; gap: 9px; padding: 6px 20px 22px; }
-  .brand span { font-size: 22px; font-weight: 460; letter-spacing: -0.01em; }
-  nav { overflow-y: auto; padding: 0 10px 20px; flex: 1; }
-  footer { padding: 10px 10px 14px; border-top: 1px solid var(--line); display: flex; flex-direction: column; }
-  footer button { border: 0; background: none; text-align: left; padding: 4px 10px; color: var(--muted); border-radius: 6px; }
-  footer button:hover { color: var(--ink); }
+  /* Sidebar: like the docs' page list, the open course in soft blue */
+  .sidebar { display: flex; flex-direction: column; min-height: 0; }
+  .brand { display: flex; align-items: center; gap: 9px; padding: 4px 22px 22px; color: var(--accent); }
+  .brand span { font-size: 22px; font-weight: 500; letter-spacing: -.04em; color: var(--ink); }
+  nav { overflow-y: auto; padding: 0 12px 20px; flex: 1; scrollbar-width: thin; }
+  footer { padding: 10px 12px 14px; border-top: 1px solid var(--hairline); margin: 0 12px; display: flex; flex-direction: column; }
+  footer button { border: 0; background: none; text-align: left; padding: 5px 10px; margin: 0 -12px; color: var(--muted); border-radius: 8px; }
+  footer button:hover { color: var(--ink); background: var(--sunken); }
   /* Settings… with its shortcut on the right, like in a menu */
-  footer .with-key { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-  footer kbd { font-family: var(--sans); font-size: 11.5px; color: var(--muted); opacity: 0.8; letter-spacing: 0.02em; }
+  footer .with-key { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  footer kbd { font: 500 11px/1 var(--mono); color: var(--ink-2); background: var(--sunken); border-radius: 5px; padding: 3px 6px; }
+  footer button:hover kbd { background: var(--surface); }
   /* Share Stenny: the share symbol and label turn into a check and "Link copied", crossfading in place */
   footer .share-stenny { display: flex; align-items: center; gap: 6px; }
   .share-stenny .icon, .share-stenny .labels { display: grid; }
@@ -995,21 +998,22 @@
   @media (prefers-reduced-motion: reduce) {
     .share-stenny .icon > *, .share-stenny .labels > * { transition: none; transform: none; }
   }
-  .kicker { font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
-  nav .kicker { padding: 16px 10px 6px; }
+  .kicker { font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+  nav .kicker { padding: 18px 10px 6px; }
   nav .kicker:first-of-type { padding-top: 0; }
   .group {
-    display: block; width: 100%; text-align: left; border: 0; background: none; padding: 6px 10px; border-radius: 7px;
-    font-family: var(--serif); font-size: 15px; line-height: 1.25; color: var(--ink-2); text-wrap: pretty; hyphens: auto; overflow-wrap: break-word;
+    display: block; width: 100%; text-align: left; border: 0; background: none; padding: 6px 10px; border-radius: 8px;
+    font-size: 14px; line-height: 1.3; color: var(--ink-2); text-wrap: pretty; hyphens: auto; overflow-wrap: break-word;
   }
-  .group:hover { color: var(--ink); }
-  .group-row { position: relative; border-radius: 7px; }
-  .group-row.active { background: var(--mark); }
-  .group-row.active .group { color: var(--ink); }
+  .group-row { position: relative; border-radius: 8px; margin-bottom: 1px; }
+  .group-row:hover { background: var(--sunken); }
+  .group-row:hover .group { color: var(--ink); }
+  .group-row.active { background: var(--accent-soft); }
+  .group-row.active .group { color: var(--accent); font-weight: 500; }
   .group-row .group { padding-right: 28px; }
   .more, .add {
     position: absolute; right: 4px; top: 50%; transform: translateY(-50%); border: 0; background: none;
-    color: var(--muted); width: 22px; height: 22px; border-radius: 5px; padding: 0;
+    color: var(--muted); width: 22px; height: 22px; border-radius: 6px; padding: 0;
     display: grid; place-items: center;  /* drawn icons, so they sit in the middle (text glyphs sit on the baseline) */
   }
   .more svg, .add svg { width: 14px; height: 14px; display: block; }
@@ -1017,97 +1021,108 @@
   .add svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
   .more { opacity: 0; }
   .group-row:hover .more, .more:focus-visible { opacity: 1; }
+  .group-row.active .more { color: var(--accent); }
   .more:hover, .add:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 8%, transparent); }
   /* "Courses" and its +: the + centred on the label's line, its right edge where the rows' ⋯ sits */
   nav .kicker.with-add { display: flex; align-items: center; justify-content: space-between; padding-bottom: 7px; }
   /* no negative margin above: the list scrolls, and its edge would cut the top of the hover box off */
   .add { position: static; transform: none; width: 20px; height: 20px; margin: 0 -6px 0 0; flex: none; }
-  .quiet-add { color: var(--muted); font-size: 14px; }
+  .quiet-add { color: var(--muted); }
+  .quiet-add:hover { color: var(--accent); }
   /* Talks & events' record button: a ring with a dot, where the courses have their + */
   .talks .add svg .ring { stroke-width: 1.3; }
   .talks .add svg .core { fill: currentColor; stroke: none; }
-  /* the course that records: a small red dot after its name (hollow and tan while paused) */
-  .rec-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--rec); margin-left: 7px; vertical-align: 2px; }
-  .rec-dot.paused { background: none; box-shadow: inset 0 0 0 1.5px var(--warn); }
+  /* the course that records: a small red dot after its name, blinking (hollow and orange while paused) */
+  .rec-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--rec); margin-left: 7px; vertical-align: 1px; animation: blink 1.4s ease-in-out infinite; }
+  .rec-dot.paused { background: none; box-shadow: inset 0 0 0 1.5px var(--warn); animation: none; }
 
-  /* The activity bar: what's running, across the list and detail. One line; long names end in "…", the time and
-     the buttons always stay. Calm: the only motion is the recording dot's slow pulse. */
-  .activity { flex: none; background: var(--bar); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-  .activity-row { display: flex; align-items: center; gap: 10px; height: 42px; padding: 0 12px 0 20px; white-space: nowrap; }
+  /* The activity bar: what's running, across the list and detail, on a white strip of its own. One line; long
+     names end in "…", the time and the buttons always stay. The only motion is the recording dot's blink. */
+  .activity { flex: none; display: flex; flex-direction: column; }  /* a flex box keeps the strip's margin in its height */
+  .activity-row {
+    display: flex; align-items: center; gap: 10px; height: 46px; margin: 0 12px 12px 12px; padding: 0 8px 0 16px;
+    white-space: nowrap; background: var(--surface); border-radius: 14px; box-shadow: var(--shadow-sm);
+  }
   .activity .sign { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--rec); }
-  .activity .sign.recording { animation: pulse 2.4s ease-in-out infinite; }
+  .activity .sign.recording { animation: blink 1.4s ease-in-out infinite; }
   .activity .sign.paused, .activity .sign.hollow { background: none; box-shadow: inset 0 0 0 1.5px var(--warn); }
+  .activity .sign.hollow { box-shadow: inset 0 0 0 1.5px var(--accent); }
   .activity .sign.starting, .activity .sign.warn { background: var(--warn); }
   .activity .sign.cancelling { background: var(--muted); }
   .activity svg.sign { width: 16px; height: 16px; border-radius: 0; background: none; fill: none; stroke: var(--ink-2); stroke-width: 1.2; stroke-linejoin: round; }
-  .activity .label { flex: none; font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--rec); }
+  .activity .label { flex: none; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--rec); }
   .activity.paused .label, .activity.starting .label { color: var(--warn); }
-  .activity.suggestion .label, .activity.cancelling .label { color: var(--muted); }
-  .activity .time { flex: none; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .activity.suggestion .label { color: var(--accent); }
+  .activity.cancelling .label { color: var(--muted); }
+  .activity .time { flex: none; font: 500 13px var(--mono); font-variant-numeric: tabular-nums; background: var(--sunken); border-radius: 999px; padding: 3px 9px; }
   .activity .what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--ink-2); }
   .activity .warn { color: var(--warn); }
   .activity .progress { flex: none; }
   .activity .buttons { flex: none; display: flex; align-items: center; gap: 6px; margin-left: auto; }
-  .bar-button { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 3px 12px; font-size: 12px; font-weight: 500; }
+  .bar-button {
+    border: 0; background: var(--surface); box-shadow: inset 0 0 0 1px var(--hairline); border-radius: 8px;
+    min-height: 30px; padding: 0 12px; font-size: 12.5px; font-weight: 500;
+  }
   .bar-icon {
-    width: 28px; height: 28px; padding: 0; border-radius: 999px; border: 1px solid var(--line); background: var(--card);
-    display: grid; place-items: center; color: var(--ink-2);
+    width: 30px; height: 30px; padding: 0; border-radius: 8px; border: 0; background: var(--surface);
+    box-shadow: inset 0 0 0 1px var(--hairline); display: grid; place-items: center; color: var(--ink-2);
   }
   .bar-icon svg { width: 12px; height: 12px; display: block; }
   .bar-icon .fill { fill: currentColor; }
-  .bar-button:hover, .bar-icon:hover:not(:disabled) { border-color: color-mix(in srgb, var(--ink) 35%, var(--line)); color: var(--ink); }
+  .bar-button:hover, .bar-icon:hover:not(:disabled) { background: var(--sunken); color: var(--ink); }
   .bar-icon:disabled { opacity: 0.55; }
-  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-  @media (prefers-reduced-motion: reduce) { .activity .sign.recording { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .activity .sign.recording, .rec-dot { animation: none; } }
 
   /* Record Lecture n, at the top of a course's list */
   .record {
-    display: flex; align-items: center; gap: 9px; width: 100%; margin: 0 0 16px; padding: 9px 12px; text-align: left;
-    border: 1px solid var(--line); background: var(--card); border-radius: 9px; font-weight: 500;
+    display: flex; align-items: center; gap: 10px; width: 100%; margin: 0 0 18px; padding: 0 14px; min-height: 40px;
+    text-align: left; border: 0; background: var(--surface); border-radius: var(--r-row); font-weight: 500;
+    box-shadow: inset 0 0 0 1px var(--hairline); transition: background .15s ease;
   }
-  .record:hover { border-color: color-mix(in srgb, var(--rec) 40%, var(--line)); }
+  .record:hover { background: var(--sunken); }
   .record .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--rec); flex: none; }
 
   /* List */
-  .list { border-right: 1px solid var(--line); overflow-y: auto; padding: 0 10px; }  /* the bottom band is its end space */
-  /* below the activity bar, a little room before the list and the recording begin */
-  .activity + .panes .list { padding-top: 14px; }
-  .activity + .panes article { padding-top: 18px; }
-  .list-head { padding: 0 12px 10px; }
+  .list { overflow-y: auto; padding: 0 12px; scrollbar-width: thin; }  /* the bottom band is its end space */
+  .list-head { padding: 0 12px 8px; }
   .row {
-    display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 2px 8px; width: 100%; text-align: left;
-    border: 0; background: none; padding: 10px 12px; border-radius: 9px;
+    display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 3px 8px; width: 100%; text-align: left;
+    border: 0; background: none; padding: 10px 12px; border-radius: var(--r-row); margin-bottom: 2px;
+    transition: background .15s ease;
   }
-  .row:hover { background: color-mix(in srgb, var(--mark) 50%, transparent); }
-  .row.active { background: var(--mark); }
-  .row-title { font-size: 17px; font-weight: 440; }
+  .row:hover { background: var(--sunken); }
+  .row.active { background: var(--surface); box-shadow: var(--shadow-sm); }
+  .row-title { font-size: 15px; font-weight: 500; letter-spacing: -.01em; }
   .row-detail { grid-column: 1 / -1; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
-  .empty { color: var(--muted); padding: 0 12px; font-family: var(--serif); font-size: 15px; }
+  .empty { color: var(--muted); padding: 0 12px; font-size: 14px; }
 
-  .status { font-family: var(--sans); font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--warn); }
+  .status { font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--warn); white-space: nowrap; }
   .status::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: currentColor; margin-right: 5px; vertical-align: 1px; }
   .status.live { color: var(--rec); }
+  .status.live::before { animation: blink 1.4s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) { .status.live::before { animation: none; } }
 
-  /* Detail */
-  .detail { overflow-y: auto; min-width: 0; }
-  /* the page fills the detail pane, whatever the window's width (48px either side); a word or link too long for a
-     narrow window breaks rather than pushing the page sideways */
-  article { padding: 4px 48px 56px; overflow-wrap: break-word; }
-  h1 { font-size: 34px; line-height: 1.1; font-weight: 440; letter-spacing: -0.02em; margin: 6px 0 6px; }
+  /* Detail: the open lecture on a white card */
+  /* above the list's bottom band, so its shadow falls on the list evenly */
+  .detail { position: relative; z-index: 6; overflow-y: auto; min-width: 0; background: var(--surface); border-radius: var(--r-card); box-shadow: var(--shadow); }
+  /* the page fills the card, whatever the window's width; a word or link too long for a narrow window breaks
+     rather than pushing the page sideways */
+  article { padding: 30px 44px 48px; overflow-wrap: break-word; }
+  h1 { font-size: 32px; line-height: 1.1; font-weight: 600; letter-spacing: -.035em; margin: 8px 0 8px; }
   .meta { color: var(--muted); margin: 0; font-variant-numeric: tabular-nums; }
 
-  .draft { margin-top: 22px; padding: 2px 0 2px 14px; border-left: 2px solid var(--warn); }
-  .draft p { margin: 0; font-size: 15px; line-height: 1.5; }
+  .draft { margin-top: 22px; padding: 14px 16px; border-radius: 14px; background: var(--sunken); }
+  .draft p { margin: 0; font-size: 14.5px; line-height: 1.5; }
   .draft .status { margin-right: 6px; }
-  .draft .pill, .draft .trash { margin-top: 10px; }
+  .draft .pill, .draft .trash { margin-top: 12px; }
   .draft .trash { margin-left: 4px; vertical-align: top; }
 
   /* the heading renames in place: pointing at it shows a soft background and a faint pencil, clicking edits it */
   .title-button {
     font: inherit; letter-spacing: inherit; color: inherit; text-align: left; border: 0; background: none;
-    padding: 0 8px; margin: 0 -8px; border-radius: 8px; cursor: text; max-width: calc(100% + 16px);
+    padding: 0 8px; margin: 0 -8px; border-radius: 10px; cursor: text; max-width: calc(100% + 16px);
   }
-  .title-button:hover, .title-button:focus-visible { background: color-mix(in srgb, var(--ink) 5%, transparent); }
+  .title-button:hover, .title-button:focus-visible { background: var(--sunken); }
   .pen {
     display: inline-block; width: 16px; height: 16px; margin-left: 10px; vertical-align: 4px; opacity: 0;
     fill: none; stroke: var(--muted); stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; transition: opacity 0.15s;
@@ -1116,69 +1131,70 @@
   /* exactly where the heading is: a block like the h1 (so its margin meets the kicker's the same way), and 1px less
      margin on each side to make up for the field's border, so neither the title nor the line below moves */
   .title-wrap {
-    display: grid; width: fit-content; max-width: calc(100% + 16px); margin: 5px -8px 5px;
-    font-size: 34px; line-height: 1.1; font-weight: 440; letter-spacing: -0.02em;
+    display: grid; width: fit-content; max-width: calc(100% + 16px); margin: 7px -8px 7px;
+    font-size: 32px; line-height: 1.1; font-weight: 600; letter-spacing: -.035em;
   }
   .title-wrap::after, .title-input {
     grid-area: 1 / 1; font: inherit; letter-spacing: inherit; padding: 0 7px; border: 1px solid transparent; min-width: 0;
   }
   .title-wrap::after { content: attr(data-value) "\00a0"; visibility: hidden; white-space: pre; overflow: hidden; }
   .title-input {
-    width: 100%; border-color: var(--line); border-radius: 8px; background: var(--card); color: var(--ink); outline: none;
+    width: 100%; border-color: var(--hairline); border-radius: 10px; background: var(--surface); color: var(--ink); outline: none;
   }
-  .title-input:focus { border-color: color-mix(in srgb, var(--ink) 35%, var(--line)); }
+  .title-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 
-  /* deleting: a round icon button in the actions' row, grey until pointed at */
+  /* deleting: a square icon button in the actions' row, grey until pointed at */
   .trash {
-    width: 33px; height: 33px; padding: 0; flex: none; border-radius: 999px; display: inline-grid; place-items: center;
-    border: 1px solid var(--line); background: var(--card); color: var(--muted);  /* as tall as the pills beside it */
+    width: 32px; height: 32px; padding: 0; flex: none; border-radius: var(--r-ctl); display: inline-grid; place-items: center;
+    border: 0; background: var(--surface); box-shadow: inset 0 0 0 1px var(--hairline); color: var(--muted);  /* as tall as the buttons beside it */
   }
   .trash svg { display: block; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
-  .trash:hover { color: var(--rec); border-color: color-mix(in srgb, var(--rec) 40%, var(--line)); }
+  .trash:hover { color: var(--rec); background: color-mix(in srgb, var(--rec) 8%, var(--surface)); }
 
-  .actions { display: flex; gap: 8px; margin-top: 24px; flex-wrap: wrap; }
-  .pill {
-    border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 6px 15px; font-weight: 500;
-  }
-  .pill:hover:not(:disabled) { border-color: color-mix(in srgb, var(--ink) 35%, var(--line)); }
-  .pill.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
-  .pill.small { padding: 4px 12px; font-size: 12px; }
-  .pill:disabled { opacity: 0.55; }
+  .actions { display: flex; gap: 8px; margin-top: 22px; flex-wrap: wrap; }
   .share-wrap { position: relative; }
   .menu {
-    position: absolute; top: calc(100% + 6px); left: 0; z-index: 10; min-width: 240px; padding: 5px;
-    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 12px 32px rgba(0, 0, 0, 0.12);
+    position: absolute; top: calc(100% + 6px); left: 0; z-index: 10; min-width: 250px; padding: 6px;
+    background: var(--surface); border-radius: 14px; box-shadow: var(--shadow), inset 0 0 0 1px var(--hairline);
   }
-  .menu button { display: flex; flex-direction: column; width: 100%; text-align: left; border: 0; background: none; padding: 7px 10px; border-radius: 6px; }
-  .menu button:hover { background: var(--mark); }
-  .menu small { color: var(--muted); font-size: 11.5px; }
+  .menu button { display: flex; flex-direction: column; width: 100%; text-align: left; border: 0; background: none; padding: 8px 10px; border-radius: 8px; }
+  .menu button:hover { background: var(--sunken); }
+  .menu small { color: var(--muted); font-size: 12px; }
   .menu.floating { position: fixed; top: 0; left: 0; z-index: 40; min-width: 200px; max-width: 260px; }
   .menu .danger { color: var(--rec); }
-  .menu-line { height: 1px; background: var(--line); margin: 4px 6px; }
+  .menu-line { height: 1px; background: var(--hairline); margin: 4px 6px; }
   .menu-note { margin: 0; padding: 7px 10px; color: var(--muted); font-size: 12px; line-height: 1.4; }
-  .check { display: flex; align-items: center; gap: 7px; margin-top: 12px; color: var(--muted); }
-  .check input { accent-color: var(--ink); margin: 0; }
+  .check { display: flex; align-items: center; gap: 8px; margin-top: 14px; color: var(--muted); }
+  .check input { accent-color: var(--accent); margin: 0; }
   .notice { margin: 12px 0 0; color: var(--muted); }
   .notice.error { color: var(--rec); }
-  .link { border: 0; background: none; padding: 0; text-decoration: underline; text-underline-offset: 2px; color: inherit; }
+  .link { border: 0; background: none; padding: 0; text-decoration: underline; text-underline-offset: 2px; color: var(--accent); }
 
-  hr { border: 0; border-top: 1px solid var(--line); margin: 30px 0 26px; }
+  hr { border: 0; border-top: 1px solid var(--hairline); margin: 30px 0 26px; }
   .quiet { color: var(--muted); }
   .hidden { visibility: hidden; }  /* keeps its line, so nothing moves when it shows */
   .detail .kicker { margin-bottom: 4px; }
+  article > .kicker:first-child { color: var(--accent); }
 
-  .summary { font-size: 16px; line-height: 1.6; }
-  .summary :global(h2) { font-size: 21px; font-weight: 480; margin: 22px 0 6px; letter-spacing: -0.01em; }
-  .summary :global(h3) { font-size: 17px; font-weight: 520; margin: 18px 0 4px; }
+  /* the summary: the docs' reading column, timestamps as small mono chips */
+  .summary { font-size: 15px; line-height: 1.65; max-width: 46rem; }
+  .summary :global(h2) { font-size: 19px; font-weight: 600; letter-spacing: -.02em; line-height: 1.3; margin: 26px 0 6px; }
+  .summary :global(h3) { font-size: 16px; font-weight: 600; letter-spacing: -.01em; margin: 20px 0 4px; }
   .summary :global(p) { margin: 0 0 10px; }
-  .summary :global(ul) { margin: 0 0 12px; padding-left: 20px; }
-  .summary :global(li) { margin: 0 0 5px; }
-  .summary :global(blockquote) { margin: 0 0 14px; padding-left: 12px; border-left: 2px solid var(--line); color: var(--muted); font-size: 14px; }
-  .summary :global(.ts) { font-family: var(--sans); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; margin-left: 2px; }
-  .summary :global(strong) { font-weight: 560; }
+  .summary :global(ul), .summary :global(ol) { margin: 0 0 12px; padding-left: 20px; }
+  .summary :global(li) { margin: 0 0 6px; }
+  .summary :global(li::marker) { color: var(--muted); }
+  /* the note that AI wrote it: quiet, on a grey card */
+  .summary :global(blockquote) { margin: 0 0 16px; padding: 10px 14px; border-radius: var(--r-row); background: var(--sunken); color: var(--ink-2); font-size: 13px; line-height: 1.5; }
+  .summary :global(blockquote p) { margin: 0; }
+  .summary :global(code) { font: 500 .86em var(--mono); background: var(--sunken); border-radius: 6px; padding: .15em .4em; }
+  .summary :global(.ts) {
+    font: 500 11px/1 var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap;
+    background: var(--sunken); border-radius: 6px; padding: 3px 6px; margin-left: 4px; vertical-align: 1px;
+  }
+  .summary :global(strong) { font-weight: 600; }
 
-  .center { height: calc(100% - 18px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; padding: 0 40px; }
-  .big { font-size: 20px; margin: 0; }
+  .center { height: calc(100% - 16px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 0 40px; }
+  .big { font-size: 22px; font-weight: 600; letter-spacing: -.03em; margin: 0; }
   .center p { margin: 0; }
 </style>
