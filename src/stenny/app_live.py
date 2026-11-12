@@ -51,6 +51,18 @@ def waiting() -> dict:
     return {"queued": queued, "on_power": jobs.on_ac_power()} if queued else {"queued": 0}
 
 
+def plugged_in(cfg, params: dict) -> dict:
+    """The computer was just plugged in with final passes waiting (the menu bar sees `on_power` turn true): the
+    queue's scheduled run now, instead of when the background job next fires (every 10 minutes). It is that run
+    exactly, in its own process, so it checks the same things: power, the night hours, one pass at a time."""
+    from . import jobs
+    if not jobs.pending():
+        return {"started": False}
+    subprocess.Popen([sys.executable, "-m", "stenny", "queue", "run", "--scheduled"], stdin=subprocess.DEVNULL,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    return {"started": True}
+
+
 def last_log_line() -> str | None:
     try:
         lines = [l.strip() for l in (paths.LOGS_DIR / "live.log").read_text(encoding="utf-8").splitlines() if l.strip()]
@@ -267,4 +279,5 @@ def give_consent(cfg, params: dict) -> dict:
 
 METHODS = {"status": status, "start": start, "command": command, "microphone": microphone, "devices": devices,
            "settings": settings, "match_courses": match_courses, "recover": recover, "consent": consent,
-           "give_consent": give_consent, "send_feedback": send_feedback, "check_update": check_update}
+           "give_consent": give_consent, "send_feedback": send_feedback, "check_update": check_update,
+           "plugged_in": plugged_in}
