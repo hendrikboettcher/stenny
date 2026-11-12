@@ -68,6 +68,5 @@
   }
   .sheet :global(select) { padding-right: 32px; }
   .sheet :global(input:focus), .sheet :global(select:focus) { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-  .sheet :global(.hint) { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
   @media (prefers-reduced-motion: reduce) { .backdrop, .sheet { animation: none; } }
 </style>

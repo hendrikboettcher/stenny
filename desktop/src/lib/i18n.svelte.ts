@@ -18,8 +18,6 @@ export const onWindows = typeof navigator !== "undefined" && /Windows/.test(navi
 
 let current = $state<Lang>("en");
 
-export const language = () => current;
-
 export function setLanguage(lang: string | null | undefined) {
   current = lang === "de" ? "de" : "en";
   if (typeof document !== "undefined") document.documentElement.lang = current;

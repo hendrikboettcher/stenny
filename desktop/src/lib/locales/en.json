@@ -477,7 +477,6 @@
   "setup.never": "Don't show this again",
   "setup.allSet": "You're all set",
   "setup.allSet.text": "Stenny is fully set up. Settings has everything if you want to change something.",
-  "setup.done": "Done",
   "setup.more": "More options in Settings",
   "setup.courses.name": "Add your courses",
   "setup.courses.why": "Each recording is filed under its course, with the course's language and glossary.",

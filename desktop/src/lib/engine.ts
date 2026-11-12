@@ -176,8 +176,6 @@ export const makePdf = (html: string) => (inApp ? invoke<string>("make_pdf", { h
 export const finishNow = (e: Entry) => engine<{ started: boolean }>("finish_now", where(e));
 export const openTranscript = (path: string) => (inApp ? invoke("open_transcript", { path }) : console.log("open", path));
 export const reveal = (path: string) => (inApp ? invoke("reveal", { path }) : console.log("reveal", path));
-// Stenny runs on macOS and Windows; what the file manager and the bin are called there: lib/i18n.svelte.ts
-export const onWindows = typeof navigator !== "undefined" && /Windows/.test(navigator.userAgent);
 // the system's share menu for these files: on macOS below `anchor` (the Share button), on Windows the Share panel
 export const shareFiles = (paths: string[], anchor: DOMRect) =>
   inApp
