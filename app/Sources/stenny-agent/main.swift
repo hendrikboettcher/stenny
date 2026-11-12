@@ -69,14 +69,17 @@ func keyCode(for char: String) -> Int? {
     return nil
 }
 
-/// "cmd+shift+ü" → (key code, Carbon modifiers, "⌘⇧Ü"); nil if the key isn't on this keyboard.
+/// "cmd+shift+ü" → (key code, Carbon modifiers, "⌘⇧Ü"); nil if the key isn't on this keyboard. The modifiers'
+/// other names are the ones the engine accepts too (config.py, MODIFIERS): command, control, option, alt.
 func parse(_ text: String) -> (Int, Int, String)? {
-    let parts = text.lowercased().split(separator: "+").map(String.init)
+    let parts = text.lowercased().split(separator: "+").map { $0.trimmingCharacters(in: .whitespaces) }
     guard let key = parts.last else { return nil }
+    let aliases = ["command": "cmd", "control": "ctrl", "option": "opt", "alt": "opt"]
+    let modifiers = parts.dropLast().map { aliases[$0] ?? $0 }
     var carbon = 0
     var symbols = ""
     for (name, flag, symbol) in [("ctrl", controlKey, "⌃"), ("opt", optionKey, "⌥"), ("shift", shiftKey, "⇧"),
-                                 ("cmd", cmdKey, "⌘")] where parts.dropLast().contains(name) {
+                                 ("cmd", cmdKey, "⌘")] where modifiers.contains(name) {
         carbon |= flag
         symbols += symbol
     }
