@@ -12,7 +12,7 @@
 #   2. unregisters every other Stenny.app (build folders, worktrees, old app/ builds),
 #   3. removes Stenny tiles the Dock already has twice, and restarts the Dock only if it changed one.
 # Goes to /Applications, or ~/Applications when this account may not write there or another account's copy is there
-# (never replace someone else's copy). Won't touch a running recording. macOS only: Windows' installer (NSIS) keeps one
+# (never replace someone else's copy). Won't touch a running recording or final transcript. macOS only: Windows' installer (NSIS) keeps one
 # Stenny in the Start menu and taskbar by itself.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -44,11 +44,12 @@ else
     echo "   and calendar again. Run app/make-cert.sh once to fix that."
 fi
 
-# A recording comes first: never quit Stenny in the middle of one. Only the real processes count (`stenny live`
+# A recording comes first: never quit Stenny in the middle of one, nor of a final pass (`stenny queue run`: it uses
+# the app's ffmpeg, which quitting Stenny kills, and the pass then fails). Only the real processes count (`stenny live`
 # started by Python, the recorder), not a shell or script whose command line merely mentions "stenny live".
-recording='^[^ ]*/python[0-9.]* (-m stenny|[^ ]*/stenny) live( |$)|^[^ ]*/Contents/MacOS/stenny-rec( |$)'
+recording='^[^ ]*/python[0-9.]* (-m stenny|[^ ]*/stenny) (live|queue run)( |$)|^[^ ]*/Contents/MacOS/stenny-rec( |$)'
 if pgrep -u "$(id -u)" -f "$recording" >/dev/null; then
-    echo "❌ Stenny is recording (or finishing a recording). Install again once it's done."
+    echo "❌ Stenny is recording or making a final transcript. Install again once it's done."
     exit 1
 fi
 
