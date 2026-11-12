@@ -34,12 +34,13 @@ objc2-foundation = { version = "0.3.2", features = ["NSNotification", "NSString"
 objc2-app-kit = { version = "0.3.2", features = ["NSMenu", "NSMenuItem", "NSEvent", "NSFont", "NSFontDescriptor", "NSControl", "NSButton", "NSStatusItem", "NSStatusBarButton", "NSView", "NSResponder", "objc2-core-foundation"] }
 
 # Windows: Share… through the system's Share panel (src/windows_share.rs); what stenny-agent does on a Mac — the pause
-# shortcut, open at login, the beep, the clipboard (src/windows_agent.rs) and the PDF for Share… (src/windows_pdf.rs,
+# shortcut, open at login, the beep, the clipboard, the lecture notification (src/windows_agent.rs) and the PDF for Share… (src/windows_pdf.rs,
 # WebView2's own PrintToPdf) — with the windows and webview2-com versions Tauri already uses; one Stenny at a time
 # through Tauri's single-instance plugin (a second start brings the running one's library window up)
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62", features = ["ApplicationModel_DataTransfer", "Foundation", "Storage", "Storage_Streams", "Win32_Foundation", "Win32_System_WinRT", "Win32_UI_Shell", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging", "Win32_System_Threading", "Win32_System_Diagnostics_Debug", "Win32_System_Registry", "Win32_System_DataExchange", "Win32_System_Memory", "Win32_System_Ole"] }
+windows = { version = "0.62", features = ["ApplicationModel_DataTransfer", "Foundation", "Storage", "Storage_Streams", "Win32_Foundation", "Win32_System_WinRT", "Win32_UI_Shell", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging", "Win32_System_Threading", "Win32_System_Diagnostics_Debug", "Win32_System_Registry", "Win32_System_DataExchange", "Win32_System_Memory", "Win32_System_Ole", "UI_Notifications"] }
 windows-collections = "0.3"
+tauri-winrt-notification = "0.8"  # "Record this lecture?" with its Start Recording button; the notification plugin's own
 webview2-com = "0.39"
 tauri-plugin-single-instance = "2"
 

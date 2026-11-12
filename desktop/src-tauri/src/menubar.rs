@@ -12,6 +12,7 @@ use crate::i18n::{self, tr};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
+#[cfg(not(windows))]
 use std::io::Write;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
@@ -49,11 +50,21 @@ struct State {
     lists_loaded: Option<Instant>,
     suggestion: Option<Suggestion>,          // the calendar's lecture on now (or within 10 minutes)
     course_for_title: HashMap<String, Option<String>>,
-    notified: HashSet<String>,               // calendar events already announced
+    notified: HashSet<String>,               // calendar events already announced (title and start)
+    #[cfg_attr(windows, allow(dead_code))]
+    agent_events: Vec<Value>,                // macOS: the Mac's own calendars' events on now (stenny-agent)
+    link_events: Vec<Value>,                 // the linked calendars' events on now (the engine, calendars.py)
+    no_reminders: bool,                      // "Record this lecture?" switched off in Settings ▸ Calendar
+    #[cfg_attr(windows, allow(dead_code))]
+    calendar_answers: u32,                   // macOS: how many "calendar-state" lines the agent has sent
+    #[cfg_attr(windows, allow(dead_code))]
+    calendar_state: String,                  // macOS: the agent's last "calendar-state" ("allowed ask")
+    #[cfg_attr(windows, allow(dead_code))]
     agent_in: Option<std::process::ChildStdin>,
     status_item: Option<MenuItem<Wry>>,      // the menu's first line, updated in place
     icon: String,                            // the icon shown, so it is only set when it changes (no flicker)
     pause_accel: Option<String>,             // the pause shortcut as a physical accelerator ("Cmd+F1"), if not a character
+    #[cfg_attr(windows, allow(dead_code))]
     login: Option<String>,                   // the agent's last "login on|off|approval" (Settings asks for it)
     shortcut_problem: Option<String>,        // the agent couldn't register the pause shortcut: why
     #[cfg_attr(windows, allow(dead_code))]
@@ -135,7 +146,7 @@ struct Suggestion {
 }
 
 #[derive(Default)]
-pub struct MenuBar(Mutex<State>, Wake);
+pub struct MenuBar(Mutex<State>, Wake, Wake); // the state; what wakes the status poll; what wakes the calendar links' poll
 
 /// Wakes the polling thread before its interval is up: after Start, so "recording" shows as soon as it is true.
 #[derive(Default)]
@@ -416,6 +427,9 @@ fn load_lists(app: &AppHandle) {
     let devices = e.call("devices", json!({})).unwrap_or(Value::Null);
     let bar = app.state::<MenuBar>();
     let mut st = bar.0.lock().unwrap();
+    if let Some(on) = settings.get("reminders").and_then(Value::as_bool) {
+        st.no_reminders = !on;
+    }
     if let Some(list) = settings.get("courses").and_then(Value::as_array) {
         let courses: Vec<String> = list.iter().filter_map(|c| c.as_str().map(String::from)).collect();
         if courses != st.courses {
@@ -612,6 +626,17 @@ pub fn lecturer_agreed(app: &AppHandle, use_: &str, course: &str, event: bool) -
 /// Starts a recording of a course, or of a talk (`event`: its title). Runs off the main thread (dialogs).
 pub fn start(app: &AppHandle, course: &str, event: bool) -> Result<(), String> {
     start_with(app, course, event, None).map(|_| ())
+}
+
+/// "Start Recording" in the "Record this lecture?" notification: as from the menu, on a thread of its own (it may
+/// ask whether the lecturer agreed).
+pub(crate) fn start_from_notification(app: &AppHandle, course: &str) {
+    let (app, course) = (app.clone(), course.to_string());
+    std::thread::spawn(move || {
+        if let Err(e) = start(&app, &course, false) {
+            alert(&app, "Stenny", &e)
+        }
+    });
 }
 
 /// `lang`: the language for this recording ("en", "de", "fr" or "mixed"), instead of the course's or talks' setting.
@@ -894,10 +919,31 @@ fn start_agent(app: &AppHandle) {
             } else if line == "quit" {
                 crate::quit_as_asked(&app); // macOS asked "Stenny" to quit and reached the helper
             } else if let Some(events) = line.strip_prefix("events ") {
-                calendar(&app, events);
+                if let Ok(Value::Array(events)) = serde_json::from_str::<Value>(events) {
+                    app.state::<MenuBar>().0.lock().unwrap().agent_events = events;
+                    calendar(&app);
+                }
+            } else if let Some(state) = line.strip_prefix("calendar-state ") {
+                // may Stenny read the calendar and send notifications: the agent wrote it down for the engine
+                // (calendar-mac.json). Whoever waits for this look (calendar_check) goes on; Settings looks again
+                // only when something changed (its own look is answered with this line too)
+                let changed = {
+                    let bar = app.state::<MenuBar>();
+                    let mut st = bar.0.lock().unwrap();
+                    st.calendar_answers += 1;
+                    let changed = st.calendar_state != state;
+                    st.calendar_state = state.to_string();
+                    changed
+                };
+                if changed {
+                    let _ = app.emit("calendar", ());
+                    // calendar-titles.json follows what the Mac sees now (the engine puts it together)
+                    let bar = app.state::<MenuBar>();
+                    *bar.2.asked.lock().unwrap() = true;
+                    bar.2.signal.notify_one();
+                }
             } else if let Some(course) = line.strip_prefix("start ") {
-                let (app, course) = (app.clone(), course.to_string());
-                std::thread::spawn(move || if let Err(e) = start(&app, &course, false) { alert(&app, "Stenny", &e) });
+                start_from_notification(&app, course);
             } else if line == "login ok" {
                 let prefs = {
                     let bar = app.state::<MenuBar>();
@@ -927,8 +973,7 @@ fn start_agent(app: &AppHandle) {
 }
 
 /// Windows: what stenny-agent does on a Mac happens in the app (windows_agent.rs): the pause shortcut, and opening
-/// at login by default, once, for an installed copy. No calendar there (see windows_agent.rs), so no suggestion in
-/// the menu and no "Record this lecture?" notification.
+/// at login by default, once, for an installed copy. The calendar is the linked ones only (poll_calendar_links).
 #[cfg(windows)]
 fn start_agent(app: &AppHandle) {
     let app = app.clone();
@@ -973,15 +1018,21 @@ fn remember_login_item(app: &AppHandle) {
     save_prefs(app, &prefs);
 }
 
-/// The agent's calendar events (on now or within 10 minutes): the first that belongs to a course becomes the
-/// menu's suggestion, announced once by a notification with "Start Recording" unless a recording runs.
-#[cfg_attr(windows, allow(dead_code))]
-fn calendar(app: &AppHandle, events: &str) {
-    let Ok(Value::Array(events)) = serde_json::from_str::<Value>(events) else { return };
+/// The calendar's events on now (or within 10 minutes), from the Mac's own calendars (the agent) and from the linked
+/// ones (the engine): the first that belongs to a course becomes the menu's suggestion, announced once by a
+/// notification with "Start Recording" unless a recording runs or the reminders are switched off. A lecture that is
+/// in both (the Mac's Google account and its link) counts once.
+fn calendar(app: &AppHandle) {
     let bar = app.state::<MenuBar>();
-    let unknown: Vec<String> = {
+    let (events, unknown) = {
         let st = bar.0.lock().unwrap();
-        events.iter().map(|e| str_of(e, "title").to_string()).filter(|t| !st.course_for_title.contains_key(t)).collect()
+        let mut seen = HashSet::new();
+        let mut events: Vec<Value> =
+            st.agent_events.iter().chain(st.link_events.iter()).filter(|e| seen.insert(event_key(e))).cloned().collect();
+        events.sort_by(|a, b| start_of(a).total_cmp(&start_of(b)));
+        let unknown: Vec<String> =
+            events.iter().map(|e| str_of(e, "title").to_string()).filter(|t| !st.course_for_title.contains_key(t)).collect();
+        (events, unknown)
     };
     if !unknown.is_empty() {
         if let Ok(Value::Object(matches)) = engine(app).call("match_courses", json!({"titles": unknown})) {
@@ -997,20 +1048,101 @@ fn calendar(app: &AppHandle, events: &str) {
         let mut st = bar.0.lock().unwrap();
         let first = events.iter().find_map(|e| {
             let course = st.course_for_title.get(str_of(e, "title")).cloned().flatten()?;
-            Some((Suggestion { course, range: str_of(e, "range").to_string() }, str_of(e, "id").to_string()))
+            Some((Suggestion { course, range: str_of(e, "range").to_string() }, event_key(e)))
         });
         st.suggestion = first.as_ref().map(|(s, _)| s.clone());
         let busy = !matches!(str_of(&st.status, "state"), "idle" | "");
-        if let Some((sg, id)) = first {
-            if !busy && st.notified.insert(id.clone()) {
-                announce = Some(json!({"id": id, "course": sg.course, "range": sg.range}));
+        if let Some((sg, key)) = first {
+            if !busy && !st.no_reminders && st.notified.insert(key.clone()) {
+                announce = Some((key, sg));
             }
         }
-        if let (Some(note), Some(stdin)) = (announce.take(), st.agent_in.as_mut()) {
+        #[cfg(not(windows))]
+        if let (Some((key, sg)), Some(stdin)) = (announce.take(), st.agent_in.as_mut()) {
+            let note = json!({"id": key, "course": sg.course, "range": sg.range});
             let _ = writeln!(stdin, "notify {note}");
         }
     }
+    // Windows: a notification of the app's own, with the same button (windows_agent.rs)
+    #[cfg(windows)]
+    if let Some((_, sg)) = announce.take() {
+        crate::windows_agent::announce_lecture(app, &sg.course, &sg.range);
+    }
+    let _ = announce;
     redraw(app, false);
+}
+
+fn start_of(event: &Value) -> f64 {
+    event.get("start").and_then(Value::as_f64).unwrap_or(0.0)
+}
+
+/// What makes two calendar events the same lecture, whichever calendar they come from: the title and the minute it
+/// starts. Also what an announced lecture is remembered by (an event that repeats weekly has one id for all weeks).
+fn event_key(event: &Value) -> String {
+    format!("{}|{}", str_of(event, "title"), (start_of(event) / 60.0).round() as i64)
+}
+
+/// The linked calendars (Settings ▸ Calendar ▸ Add a calendar link…), on a Mac and on Windows: every 30 seconds the
+/// engine says which of their events are on now or start within 10 minutes; it fetches a link again when its copy
+/// is a few minutes old. Woken early when a link was added or removed.
+fn poll_calendar_links(app: AppHandle) {
+    std::thread::spawn(move || loop {
+        if let Ok(reply) = engine(&app).call("calendar_events", json!({})) {
+            if let Some(events) = reply.get("events").and_then(Value::as_array) {
+                app.state::<MenuBar>().0.lock().unwrap().link_events = events.clone();
+                calendar(&app);
+            }
+        }
+        let bar = app.state::<MenuBar>();
+        let mut woken = bar.2.asked.lock().unwrap();
+        if !*woken {
+            woken = bar.2.signal.wait_timeout(woken, Duration::from_secs(30)).unwrap().0;
+        }
+        *woken = false;
+    });
+}
+
+/// A calendar link was added or removed, or the reminders switched: the menu follows now, not at its next look.
+pub fn calendar_changed(app: &AppHandle) {
+    let bar = app.state::<MenuBar>();
+    bar.0.lock().unwrap().lists_loaded = None; // the reminders switch is one of the settings
+    *bar.2.asked.lock().unwrap() = true;
+    bar.2.signal.notify_one();
+    wake(app);
+}
+
+/// Settings ▸ Calendar and the setup card look at the calendar: on a Mac the agent checks the permissions and the
+/// Mac's accounts again and writes them down for the engine (calendar-mac.json); this waits a moment for that.
+/// Nothing to wait for without an agent (a --library window, Windows).
+#[cfg(not(windows))]
+pub fn calendar_check(app: &AppHandle) {
+    let before = {
+        let bar = app.state::<MenuBar>();
+        let mut st = bar.0.lock().unwrap();
+        let Some(stdin) = st.agent_in.as_mut() else { return };
+        if writeln!(stdin, "calendar check").is_err() {
+            return;
+        }
+        st.calendar_answers
+    };
+    for _ in 0..40 {
+        std::thread::sleep(Duration::from_millis(50));
+        if app.state::<MenuBar>().0.lock().unwrap().calendar_answers != before {
+            return;
+        }
+    }
+}
+
+#[cfg(windows)]
+pub fn calendar_check(_app: &AppHandle) {}
+
+/// "Allow…" in Settings ▸ Calendar: macOS asks for the calendar ("calendar") or for notifications ("notifications")
+/// in its own dialog; the agent reports the answer ("calendar-state …"), and the windows look again.
+pub fn calendar_allow(app: &AppHandle, what: &str) {
+    #[cfg(not(windows))]
+    tell_agent(app, if what == "notifications" { "notifications allow" } else { "calendar allow" });
+    #[cfg(windows)]
+    let _ = (app, what);
 }
 
 pub fn install(app: &AppHandle) -> tauri::Result<()> {
@@ -1040,6 +1172,7 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
     }
     start_polling(app.clone());
     start_agent(app);
+    poll_calendar_links(app.clone());
     Ok(())
 }
 

@@ -57,9 +57,12 @@ helper program:
   `%LOCALAPPDATA%\Programs`, or next to its uninstaller) adds itself once, as on a Mac.
 - **PDF for Share…:** WebView2's own `PrintToPdf` in a hidden window (A4, or Letter in the US and Canada; no header
   or footer), the same contract as stenny-agent's `--pdf`.
-- **Calendar:** none yet. An app without a package identity (MSIX) can't use Windows' calendar
-  (`AppointmentManager`), and Outlook's COM interface only reaches classic Outlook, with security prompts. Settings ▸
-  General says so; there's no "Record this lecture?" notification and no suggestion in the menu.
+- **Calendar:** by link only (Settings ▸ Calendar ▸ Add a calendar link…, see "Calendar" below). An app without a
+  package identity (MSIX) can't use Windows' calendar (`AppointmentManager`), and Outlook's COM interface only
+  reaches classic Outlook, with security prompts.
+- **"Record this lecture?":** a notification with a Start Recording button (`windows_agent::announce_lecture`,
+  `tauri-winrt-notification`), under Stenny's AppUserModelID (the bundle identifier), which both installers put on
+  the Start-menu shortcut; a build copy uses PowerShell's. The button's click only comes back while Stenny runs.
 - Also: the beep when there's nothing to pause (`MessageBeep`), the clipboard for Share Stenny, Obsidian found by its
   `obsidian://` registration, one Stenny at a time (`tauri-plugin-single-instance`: starting it again brings the
   library window up), no app menu inside the windows, and the engine started without a console window.
@@ -100,6 +103,30 @@ engine finds the bundled ffmpeg next to Stenny.exe (src/stenny/paths.py, `bundle
 **Not signed:** there is no Windows code-signing certificate, so Windows SmartScreen warns about the setup program
 ("Windows protected your PC" ▸ *More info* ▸ *Run anyway*; SETUP.md says so). `bundle.windows.signCommand` /
 `certificateThumbprint` stay unset until there is one.
+
+## Calendar
+
+Settings ▸ Calendar (`src/lib/Settings.svelte`, built like "Use with Claude") and the fourth step of the setup card
+(`src/lib/SetupChecklist.svelte`) show what the engine's `calendar_status` says (`src/stenny/calendars.py`): counts
+and names only, never a list of events. Checked when the section opens, when the window gets the focus back and when
+the Mac's helper reports a change (the "calendar" event).
+
+- **Two sources, one list.** On a Mac `stenny-agent` reads the calendars the Mac knows (EventKit) and sends
+  `events […]` every 30 seconds; on both systems the engine's `calendar_events` gives the same list for the linked
+  calendars (asked every 30 seconds by `menubar::poll_calendar_links`; a link is fetched again when its copy is five
+  minutes old). `menubar::calendar` merges them (a lecture in both counts once, by title and start), matches titles
+  to courses, sets the menu's suggestion and announces a lecture once: through the agent on a Mac, through
+  `windows_agent::announce_lecture` on Windows. With `[app] reminders = false` nothing is announced; the menu's
+  suggestion stays.
+- **Permissions (macOS).** The agent writes `calendar-mac.json` into the data place (access, notifications, the
+  Mac's accounts with this term's titles) and says `calendar-state …` when that changes. `calendar check` (sent by
+  the `calendar_status` and `calendar_check` commands) makes it look again; `calendar allow` and
+  `notifications allow` ask macOS, which only works while it hasn't been answered. After that the buttons open
+  System Settings (`open_system_settings`: Privacy & Security ▸ Calendars, Notifications, Internet Accounts).
+- **Links** are secrets: one entry each in the Keychain / Credential Manager (`keychain.py`), fetched by curl, which
+  reads the link on stdin; `calendars.json` in the data place only has the host and the calendar's name.
+- **Notifications on Windows:** `windows_agent::notifications_state` (the toast notifier's setting); the button
+  opens `ms-settings:notifications`.
 
 ## Language
 

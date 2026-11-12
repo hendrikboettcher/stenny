@@ -6,20 +6,24 @@
 </script>
 
 <script lang="ts">
-  // "Finish setting up Stenny": a calm card at the bottom of the library window's sidebar until the three things that
-  // make Stenny really useful work: courses, the AI step, the connector for Claude. A step is done because it works
-  // (app_server.setup_status, the same checks as Settings), never because something was clicked; looked at when the
-  // window opens and whenever it gets the focus back (the user signed in in a terminal, or clicked Install in Claude).
+  // "Finish setting up Stenny": a calm card at the bottom of the library window's sidebar until the four things that
+  // make Stenny really useful work: courses, the AI step, the connector for Claude, the calendar (for "Record this
+  // lecture?"). A step is done because it works (app_server.setup_status, the same checks as Settings), never
+  // because something was clicked; looked at when the window opens and whenever it gets the focus back (the user
+  // signed in in a terminal, clicked Install in Claude, or allowed the calendar in System Settings).
   // × hides it until Stenny opens again; after a few closes it also offers "Don't show this again". Once everything
   // is done: "You're all set" for a moment, then `[app] setup_checklist = false`, gone for good.
   import { onMount, untrack } from "svelte";
   import { fade } from "svelte/transition";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import { engine, setupStatus, type AiStatus, type ConnectorStatus, type SetupStatus } from "$lib/engine";
+  import {
+    calendarAllow, engine, openSystemSettings, setupStatus,
+    type AiStatus, type CalendarStatus, type ConnectorStatus, type SetupStatus,
+  } from "$lib/engine";
   import { t, tn } from "$lib/i18n.svelte";
 
-  type Section = "transcripts" | "claude";
+  type Section = "transcripts" | "claude" | "calendar";
   let { courses, onaddcourse, onsettings }: {
     courses: number | null;           // the window's own course list, once loaded: adding one counts at once
     onaddcourse: () => void;
@@ -46,7 +50,7 @@
 
   let signingIn = $state(false);      // the sign-in terminal was opened
   let installOpened = $state(false);  // Claude's Install window was opened
-  let busy = $state<"signin" | "key" | "install" | "code" | null>(null);
+  let busy = $state<"signin" | "key" | "install" | "code" | "calendar" | null>(null);
   let keyInput = $state("");
   let error = $state<string | null>(null);
 
@@ -77,14 +81,18 @@
 
   const aiDone = (ai?: AiStatus) => ai?.state === "ready" || ai?.state === "off";
   const claudeDone = (c?: ConnectorStatus) => !!c && (c.installed || c.code.added);
+  // Stenny can read a calendar (the Mac's, or one by link), or the reminders are switched off, as the user chose
+  const calendarDone = (c?: CalendarStatus) => !!c && (c.connected || !c.reminders);
   let courseCount = $derived(courses ?? status?.courses ?? 0);
   let steps = $derived(
-    status?.show && status.ai && status.connector
-      ? { courses: courseCount > 0, ai: aiDone(status.ai), claude: claudeDone(status.connector) }
+    status?.show && status.ai && status.connector && status.calendar
+      ? { courses: courseCount > 0, ai: aiDone(status.ai), claude: claudeDone(status.connector),
+          calendar: calendarDone(status.calendar) }
       : null,
   );
-  let done = $derived(steps ? [steps.courses, steps.ai, steps.claude].filter(Boolean).length : 0);
-  let complete = $derived(!!steps && done === 3);
+  const TOTAL = 4;
+  let done = $derived(steps ? [steps.courses, steps.ai, steps.claude, steps.calendar].filter(Boolean).length : 0);
+  let complete = $derived(!!steps && done === TOTAL);
   let visible = $derived(!!steps && !gone && !hidden && (!complete || allSet));
 
   // seen with something to do: finishing it now gets its moment
@@ -164,6 +172,9 @@
     if (status) status = { ...status, connector };
   });
 
+  // macOS asks for the calendar in its own dialog; the answer shows at the next look (the window's focus comes back)
+  const allowCalendar = () => act("calendar", async () => { await calendarAllow("calendar"); await check(); });
+
   function link(url: string) {
     if (inApp) openUrl(url).catch((e) => (error = String(e)));
     else window.open(url, "_blank", "noopener");
@@ -211,8 +222,8 @@
         <span class="line">{t("setup.allSet.text")}</span>
       {:else}
         <span class="title">{t("setup.title")}</span>
-        <span class="line">{t("setup.progress", { done, total: 3 })}</span>
-        <span class="bar" aria-hidden="true"><span style="width: {(done / 3) * 100}%"></span></span>
+        <span class="line">{t("setup.progress", { done, total: TOTAL })}</span>
+        <span class="bar" aria-hidden="true"><span style="width: {(done / TOTAL) * 100}%"></span></span>
       {/if}
     </button>
     {#if !allSet}
@@ -226,15 +237,16 @@
   </div>
 {/if}
 
-{#if open && visible && steps && status?.ai && status.connector && !allSet}
+{#if open && visible && steps && status?.ai && status.connector && status.calendar && !allSet}
   {@const ai = status.ai}
   {@const c = status.connector}
+  {@const cal = status.calendar}
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div class="panel" role="dialog" aria-label={t("setup.title")} tabindex="-1"
        style="left: {panelAt.left}px; bottom: {panelAt.bottom}px" onclick={(ev) => ev.stopPropagation()}>
     <header>
       <h2>{t("setup.title")}</h2>
-      <span class="line">{t("setup.progress", { done, total: 3 })}</span>
+      <span class="line">{t("setup.progress", { done, total: TOTAL })}</span>
     </header>
     {#if error}<p class="error selectable">{error}</p>{/if}
     <ol>
@@ -333,6 +345,40 @@
               {/if}
             </div>
             <button class="link more" onclick={() => settings("claude")}>{t("setup.more")}</button>
+          {/if}
+        </div>
+      </li>
+
+      <li class:done={steps.calendar}>
+        {@render mark(steps.calendar)}
+        <div class="body">
+          <div class="name">{t("setup.calendar.name")}</div>
+          <div class="why">{t("setup.calendar.why")}</div>
+          {#if !cal.reminders}
+            <div class="state">{t("setup.calendar.offChosen")}</div>
+          {:else if steps.calendar}
+            <div class="state">{cal.lectures > 0 ? tn("setup.calendar.done", cal.lectures) : t("setup.calendar.done.none")}</div>
+            {#if cal.lectures === 0}<p class="note">{t("setup.calendar.noMatch")}</p>{/if}
+          {:else}
+            {#if cal.access === "denied"}
+              <p class="note">{t("setup.calendar.denied")}</p>
+            {:else if cal.links.length}
+              <p class="note">{t("setup.calendar.broken")}</p>
+            {:else if cal.platform !== "mac"}
+              <p class="note">{t("setup.calendar.link")}</p>
+            {/if}
+            <div class="do">
+              {#if cal.access === "ask"}
+                <button class="pill primary" disabled={busy === "calendar"} onclick={allowCalendar}>{t("settings.calendar.allow")}</button>
+              {:else if cal.access === "denied"}
+                <button class="pill primary" onclick={() => openSystemSettings("calendar").catch((e) => (error = String(e)))}>{t("settings.calendar.openSystem")}</button>
+              {/if}
+              <button class="pill" class:primary={cal.access !== "ask" && cal.access !== "denied"}
+                      onclick={() => settings("calendar")}>{t("settings.calendar.addLink")}</button>
+            </div>
+          {/if}
+          {#if !steps.calendar || !cal.reminders || cal.lectures === 0}
+            <button class="link more" onclick={() => settings("calendar")}>{t("setup.more")}</button>
           {/if}
         </div>
       </li>

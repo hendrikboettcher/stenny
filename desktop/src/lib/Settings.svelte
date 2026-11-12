@@ -9,15 +9,20 @@
   import { onMount, untrack } from "svelte";
   import Figure from "$lib/Figure.svelte";
   import Dialog from "$lib/Dialog.svelte";
-  import { addCourse, bringBack, deleteCourse, engine, library, removeCourse, reveal, type AiStatus, type ConnectorStatus } from "$lib/engine";
-  import { t, tn, setLanguage, languageName, trashName, revealLabel, onWindows } from "$lib/i18n.svelte";
+  import { listen } from "@tauri-apps/api/event";
+  import {
+    addCalendarLink, addCourse, bringBack, calendarAllow, calendarChanged, calendarStatus, deleteCourse, engine, library,
+    openSystemSettings, removeCalendarLink, removeCourse, reveal,
+    type AiStatus, type CalendarLink, type CalendarStatus, type ConnectorStatus,
+  } from "$lib/engine";
+  import { t, tn, setLanguage, languageName, locale, trashName, revealLabel, onWindows, type Key } from "$lib/i18n.svelte";
 
   interface Settings {
     keep_audio: boolean;
     live: { draft: boolean; backup: string };
     llm: { backend: "claude-code" | "api" | "none"; summary: boolean };
     processing: { priority: "normal" | "low" | "background"; require_ac_for_queue: boolean; night_only: boolean; night_start: string; night_end: string };
-    app: { pause_shortcut: string; language: "system" | "en" | "de"; setup_checklist: boolean };
+    app: { pause_shortcut: string; language: "system" | "en" | "de"; setup_checklist: boolean; reminders: boolean };
     ui_language: "en" | "de";        // what "system" comes to, or the language picked
     system_language: "en" | "de";
     recordings: { languages: string[]; folder: string };
@@ -27,7 +32,7 @@
   }
 
   const inApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-  const SECTIONS = ["general", "recording", "transcripts", "claude", "background", "courses"] as const;
+  const SECTIONS = ["general", "recording", "transcripts", "claude", "calendar", "background", "courses"] as const;
   const BACKENDS = ["claude-code", "api", "none"] as const;
   const URLS = {
     claudeCode: "https://claude.com/claude-code",
@@ -192,9 +197,80 @@
     }
   }
 
+  // ---- the calendar: whether Stenny may read the Mac's (and send notifications), the calendars it sees and the
+  // links pasted here. Checked like the connector: when the section opens, when the window gets the focus back
+  // (the user allowed it in System Settings, or added an account), and when the Mac's helper reports a change.
+  let cal = $state<CalendarStatus | null>(null);
+  let calError = $state<string | null>(null);
+  let calCheck = 0;                         // only the latest check counts
+  let linkAdding = $state(false);           // the "Add a calendar link" sheet
+  let linkInput = $state("");
+  let linkBusy = $state(false);
+  let linkError = $state<string | null>(null);
+  let linkRemoving = $state<CalendarLink | null>(null);
+
+  async function checkCalendar() {
+    const mine = ++calCheck;
+    try {
+      const status = await calendarStatus();
+      if (mine === calCheck) { cal = status; calError = null; }
+    } catch (e) {
+      if (mine === calCheck) calError = String(e);
+    }
+  }
+
+  async function allow(what: "calendar" | "notifications") {
+    await calendarAllow(what).catch((e) => (calError = String(e)));
+    checkCalendar(); // macOS asks in its own dialog; its answer comes back as the "calendar" event
+  }
+
+  async function addLink() {
+    linkBusy = true;
+    linkError = null;
+    try {
+      await addCalendarLink(linkInput);
+      linkAdding = false;
+      linkInput = "";
+      await checkCalendar();
+      done();
+    } catch (e) {
+      linkError = String(e);
+    } finally {
+      linkBusy = false;
+    }
+  }
+
+  async function removeLink() {
+    if (!linkRemoving) return;
+    linkBusy = true;
+    linkError = null;
+    try {
+      await removeCalendarLink(linkRemoving.id);
+      linkRemoving = null;
+      await checkCalendar();
+      done();
+    } catch (e) {
+      linkError = String(e);
+    } finally {
+      linkBusy = false;
+    }
+  }
+
+  async function setReminders(on: boolean) {
+    if (await set("app.reminders", on)) calendarChanged();
+  }
+
+  const PROVIDERS = { google: "Google Calendar", outlook: "Outlook", icloud: "iCloud" };
+  const linkName = (l: CalendarLink) => l.name || (l.provider && PROVIDERS[l.provider]) || l.host || t("settings.calendar.link");
+  // "24 lectures match your courses", or that none does, so a wrong calendar shows
+  const matches = (n: number) => (n === 0 ? t("settings.calendar.lectures.none") : tn("settings.calendar.lectures", n));
+  const when = (seconds: number) =>
+    new Date(seconds * 1000).toLocaleString(locale(), { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+
   function recheck() {
     if (section === "transcripts" && !aiChecking && !keyBusy) checkAi();
     if (section === "claude" && !connBusy) checkConnector();
+    if (section === "calendar" && !linkBusy) checkCalendar();
   }
 
   async function chooseBackend(v: (typeof BACKENDS)[number]) {
@@ -302,14 +378,19 @@
     if (!s) return;
     if (section === "transcripts" && !ai && !aiChecking) checkAi();
     if (section === "claude" && !conn) checkConnector();
+    if (section === "calendar" && !cal) untrack(checkCalendar);
   });
 
   onMount(() => {
     let unlisten: (() => void) | undefined;
+    let unlistenCalendar: (() => void) | undefined;
     let gone = false;
     if (inApp) {
       getCurrentWindow().onFocusChanged(({ payload: focused }) => { if (focused) recheck(); })
         .then((u) => (gone ? u() : (unlisten = u))).catch(() => {});
+      // the Mac's helper saw the calendar or notification permission change (menubar.rs)
+      listen("calendar", () => { if (section === "calendar") checkCalendar(); })
+        .then((u) => (gone ? u() : (unlistenCalendar = u))).catch(() => {});
     } else {
       window.addEventListener("focus", recheck);
     }
@@ -326,6 +407,7 @@
     return () => {
       gone = true;
       unlisten?.();
+      unlistenCalendar?.();
       window.removeEventListener("focus", recheck);
     };
   });
@@ -620,15 +702,6 @@
               </button>
             </div>
             {#if shortcutNote}<p class="note">{shortcutNote}</p>{/if}
-            {#if onWindows}
-              <!-- the calendar and its "Record this lecture?" notification are macOS's only for now (windows_agent.rs) -->
-              <div class="row">
-                <div class="what">
-                  <div class="name">{t("settings.reminders")}</div>
-                  <div class="hint">{t("settings.reminders.unavailable")}</div>
-                </div>
-              </div>
-            {/if}
           </div>
 
           <h2>{t("settings.places")}</h2>
@@ -768,6 +841,114 @@
             {/if}
           </div>
           <p class="foot">{t("settings.claude.where")}</p>
+        {:else if section === "calendar"}
+          <p class="lead">{t("settings.calendar.lead")}</p>
+          {#if calError}<p class="error selectable">{calError}</p>{/if}
+          {#if !cal}
+            <p class="muted">{t("settings.ai.checking")}</p>
+          {:else}
+            {@const mac = cal.platform === "mac"}
+            <div class="group">
+              {#if mac}
+                <div class="row">
+                  <div class="what">
+                    <div class="name">{t("settings.calendar.access")}</div>
+                    {#if cal.access === "allowed"}
+                      <div class="hint state"><span class="dot"></span>{t("settings.calendar.access.allowed")}</div>
+                    {:else if cal.access === "ask"}
+                      <div class="hint">{t("settings.calendar.access.ask")}</div>
+                    {:else if cal.access === "denied"}
+                      <div class="hint state"><span class="dot off"></span>{t("settings.calendar.access.denied")}</div>
+                    {:else}
+                      <div class="hint">{t("settings.calendar.access.unknown")}</div>
+                    {/if}
+                  </div>
+                  {#if cal.access === "ask"}
+                    <button class="pill primary" onclick={() => allow("calendar")}>{t("settings.calendar.allow")}</button>
+                  {:else if cal.access === "denied"}
+                    <button class="pill primary" onclick={() => openSystemSettings("calendar")}>{t("settings.calendar.openSystem")}</button>
+                  {/if}
+                </div>
+              {/if}
+              {#if cal.notifications && cal.notifications !== "unknown"}
+                <div class="row">
+                  <div class="what">
+                    <div class="name">{t("settings.calendar.notifications")}</div>
+                    {#if cal.notifications === "allowed"}
+                      <div class="hint state"><span class="dot"></span>{t("settings.calendar.notifications.allowed")}</div>
+                    {:else if cal.notifications === "ask"}
+                      <div class="hint">{t("settings.calendar.notifications.ask")}</div>
+                    {:else}
+                      <div class="hint state"><span class="dot off"></span>{t("settings.calendar.notifications.denied")}</div>
+                    {/if}
+                  </div>
+                  {#if cal.notifications === "ask"}
+                    <button class="pill" onclick={() => allow("notifications")}>{t("settings.calendar.allow")}</button>
+                  {:else if cal.notifications === "denied"}
+                    <button class="pill" onclick={() => openSystemSettings("notifications")}>{t("settings.calendar.openSystem")}</button>
+                  {/if}
+                </div>
+              {/if}
+              <div class="row">
+                <div class="what">
+                  <div class="name">{t("settings.reminders")}</div>
+                  <div class="hint">{t("settings.reminders.hint")}</div>
+                </div>
+                <input type="checkbox" class="switch" checked={s.app.reminders} onchange={(e) => setReminders(e.currentTarget.checked)} />
+              </div>
+            </div>
+
+            <h2>{t("settings.calendar.sees")}</h2>
+            <div class="group">
+              {#each cal.sources as source}
+                <div class="row">
+                  <div class="what">
+                    <div class="name">{source.name}</div>
+                    <div class="hint">{tn("settings.calendar.calendars", source.calendars)} · {matches(source.lectures)}</div>
+                  </div>
+                </div>
+              {/each}
+              {#each cal.links as link}
+                <div class="row">
+                  <div class="what">
+                    <div class="name">{linkName(link)}</div>
+                    {#if link.state === "ok"}
+                      <div class="hint">{t("settings.calendar.link.from", { host: link.host ?? "" })} · {matches(link.lectures)}</div>
+                    {:else}
+                      <div class="hint state"><span class="dot off"></span>{t(link.state === "broken" ? "settings.calendar.link.broken" : "settings.calendar.link.unreachable",
+                        { host: link.host ?? "", when: link.last_ok ? when(link.last_ok) : "" })}</div>
+                    {/if}
+                  </div>
+                  <button class="pill" onclick={() => { linkRemoving = link; linkError = null; }}>{t("settings.claude.remove")}</button>
+                </div>
+              {/each}
+              {#if !cal.sources.length && !cal.links.length}
+                <div class="row">
+                  <div class="what">
+                    <div class="hint">{t(mac && cal.access === "allowed" ? "settings.calendar.none.mac" : "settings.calendar.none")}</div>
+                  </div>
+                </div>
+              {/if}
+              <div class="row">
+                <div class="what">
+                  <div class="name">{t("settings.calendar.byLink")}</div>
+                  <div class="hint">{t("settings.calendar.byLink.hint")}</div>
+                </div>
+                <button class="pill" class:primary={!cal.connected && cal.access !== "ask" && cal.access !== "denied"}
+                        onclick={() => { linkAdding = true; linkInput = ""; linkError = null; }}>{t("settings.calendar.addLink")}</button>
+              </div>
+              {#if mac}
+                <div class="row">
+                  <div class="what">
+                    <div class="name">{t("settings.calendar.accounts")}</div>
+                    <div class="hint">{t("settings.calendar.accounts.hint")}</div>
+                  </div>
+                  <button class="pill" onclick={() => openSystemSettings("accounts")}>{t("settings.calendar.openAccounts")}</button>
+                </div>
+              {/if}
+            </div>
+            <p class="foot">{t("settings.calendar.foot")}</p>
+          {/if}
         {:else if section === "background"}
           <p class="lead">{t("settings.background.lead")}</p>
           <div class="group">
@@ -913,6 +1094,27 @@
     <label for="settings-course-alias">{t("add.alias")}</label>
     <input id="settings-course-alias" bind:value={newAlias} placeholder={t("add.aliasPlaceholder")} autocomplete="off" spellcheck="false" />
   </Dialog>
+{/if}
+
+{#if linkAdding}
+  <Dialog title={t("settings.calendar.add.title")} confirm={t("settings.calendar.add.confirm")} busy={linkBusy} error={linkError}
+          text={t("settings.calendar.add.text")} oncancel={() => (linkAdding = false)} onconfirm={addLink}>
+    <label for="settings-calendar-link">{t("settings.calendar.add.label")}</label>
+    <input id="settings-calendar-link" bind:value={linkInput} placeholder="https://…/basic.ics" autocomplete="off"
+           autocapitalize="off" spellcheck="false" />
+    <div class="where">
+      <div class="kicker">{t("settings.calendar.add.where")}</div>
+      {#each ["google", "outlook", "other"] as const as source}
+        <p><b>{t(`settings.calendar.add.${source}` as Key)}</b> {t(`settings.calendar.add.${source}.steps` as Key)}</p>
+      {/each}
+    </div>
+  </Dialog>
+{/if}
+
+{#if linkRemoving}
+  <Dialog title={t("settings.calendar.remove.title", { name: linkName(linkRemoving) })} confirm={t("settings.claude.remove.confirm")}
+          busy={linkBusy} error={linkError} text={t("settings.calendar.remove.text")}
+          oncancel={() => (linkRemoving = null)} onconfirm={removeLink} />
 {/if}
 
 {#if removing}
@@ -1072,7 +1274,8 @@
   .link:disabled { opacity: 0.5; }
   .dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--good); display: inline-block; }
   .dot.off { background: var(--muted); }
-  .hint.state { display: flex; align-items: center; gap: 7px; }
+  .hint.state { display: flex; align-items: flex-start; gap: 7px; }
+  .hint.state .dot { margin-top: 5px; } /* next to the first line, also when the hint runs over two */
   .key { display: flex; gap: 8px; margin-top: 10px; }
   .key input {
     flex: 1; min-width: 0; font: 400 12.5px var(--mono); min-height: 32px;
@@ -1080,6 +1283,11 @@
   }
   .key input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
   .lead.example { font-style: italic; margin-top: -8px; }
+  /* where to find a calendar's iCal link, in the "Add a calendar link" sheet */
+  .where { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--hairline); }
+  .where .kicker { padding: 0 0 4px; }
+  .where p { margin: 6px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+  .where b { color: var(--ink-2); font-weight: 500; }
 
   .chips { display: flex; flex-wrap: wrap; gap: 6px; flex-basis: 100%; }
   .chip { border: 0; box-shadow: inset 0 0 0 1px var(--hairline); background: var(--surface); border-radius: 999px; padding: 4px 12px; color: var(--ink-2); font-size: 12.5px; }

@@ -240,6 +240,66 @@ async fn recording_status(app: AppHandle) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || menubar::window_status(&app)).await.map_err(|e| e.to_string())
 }
 
+/// Settings ▸ Calendar: what the engine knows (calendars.py), after the Mac's helper has looked at the calendar and
+/// notification permissions again. On Windows the notifications' state is the app's to tell.
+#[tauri::command]
+async fn calendar_status(app: AppHandle, state: tauri::State<'_, Arc<Engine>>) -> Result<Value, String> {
+    let engine = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        menubar::calendar_check(&app);
+        #[allow(unused_mut)]
+        let mut status = engine.call("calendar_status", serde_json::json!({}))?;
+        #[cfg(windows)]
+        {
+            status["notifications"] = serde_json::json!(windows_agent::notifications_state(&app));
+        }
+        Ok(status)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// The setup card looks at the calendar: the Mac's helper checks the permissions again first (menubar.rs).
+#[tauri::command]
+async fn calendar_check(app: AppHandle) {
+    let _ = tauri::async_runtime::spawn_blocking(move || menubar::calendar_check(&app)).await;
+}
+
+/// "Allow…": macOS asks for the calendar ("calendar") or for notifications ("notifications") in its own dialog.
+#[tauri::command]
+fn calendar_allow(app: AppHandle, what: String) {
+    menubar::calendar_allow(&app, &what);
+}
+
+/// A calendar link was added or removed, or the reminders switched on or off: the menu bar follows now.
+#[tauri::command]
+fn calendar_changed(app: AppHandle) {
+    menubar::calendar_changed(&app);
+}
+
+/// The system's own settings, where only the user can change something: "calendar" (macOS: Privacy & Security ▸
+/// Calendars), "accounts" (macOS: Internet Accounts), "notifications" (macOS: Stenny's; Windows: all apps').
+#[tauri::command]
+fn open_system_settings(app: AppHandle, pane: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    let url = match pane.as_str() {
+        "calendar" => "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars".to_string(),
+        "accounts" => "x-apple.systempreferences:com.apple.Internet-Accounts-Settings.extension".to_string(),
+        "notifications" => {
+            format!("x-apple.systempreferences:com.apple.Notifications-Settings.extension?id={}", app.config().identifier)
+        }
+        _ => return Err(format!("unknown pane {pane}")),
+    };
+    #[cfg(not(target_os = "macos"))]
+    let url = match pane.as_str() {
+        "notifications" => "ms-settings:notifications".to_string(),
+        _ => return Err(format!("unknown pane {pane}")),
+    };
+    #[cfg(not(target_os = "macos"))]
+    let _ = &app;
+    tauri_plugin_opener::open_url(url, None::<&str>).map_err(|e| e.to_string())
+}
+
 /// Talks & events' record button: the "Record a talk" window, as the menu's Record a Talk or Event….
 #[tauri::command]
 fn show_talk(app: AppHandle) {
@@ -515,7 +575,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(Arc::new(Engine::default()))
         .manage(MenuBar::default())
-        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, share_files, copy_text, check_updates, reload_window, microphone_pref, set_microphone_pref, login_item, apply_shortcut, pause_shortcut_label, ui_language, set_ui_language, courses_changed, start_recording, recording_command, recording_status, show_talk])
+        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, share_files, copy_text, check_updates, reload_window, microphone_pref, set_microphone_pref, login_item, apply_shortcut, pause_shortcut_label, ui_language, set_ui_language, courses_changed, start_recording, recording_command, recording_status, show_talk, calendar_status, calendar_check, calendar_allow, calendar_changed, open_system_settings])
         .setup(move |app| {
             if !library_only {
                 // A Dock app with the menu bar icon next to it. Info.plist keeps LSUIElement for the helpers in the

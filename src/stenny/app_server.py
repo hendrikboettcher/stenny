@@ -294,15 +294,49 @@ def remove_from_claude_code(cfg, params: dict) -> dict:
 
 def setup_status(cfg, params: dict) -> dict:
     """The library window's "Finish setting up Stenny" card: whether it's still wanted (`[app] setup_checklist`),
-    and the real state of each step, checked now: courses, the AI step (ai_status), the connector. Nothing is
-    checked once the card is gone for good."""
+    and the real state of each step, checked now: courses, the AI step (ai_status), the connector, the calendar
+    (calendars.status). Nothing is checked once the card is gone for good."""
     if not getattr(cfg, "setup_checklist", True):
         return {"show": False}
-    from . import claude_setup
+    from . import calendars, claude_setup
     return {"show": True,
             "courses": sum(1 for c in cfg.courses.values() if not c.hidden),
             "ai": claude_setup.ai_status(cfg),
-            "connector": claude_setup.connector_status(cfg)}
+            "connector": claude_setup.connector_status(cfg),
+            "calendar": calendars.status(cfg)}
+
+
+def _calendar(fn, *args):
+    from .calendars import CalendarError
+    try:
+        return fn(*args)
+    except CalendarError as e:
+        raise AppError(str(e)) from None
+
+
+def calendar_status(cfg, params: dict) -> dict:
+    """Settings ▸ Calendar: whether Stenny may read the Mac's calendar, the calendars it sees (the Mac's accounts,
+    the pasted links) with how many lectures match the courses, and the notifications (calendars.py)."""
+    from . import calendars
+    return calendars.status(cfg)
+
+
+def add_calendar_link(cfg, params: dict) -> dict:
+    """A pasted iCal link (`link`), checked and kept in the system's password store; calendar_status again."""
+    from . import calendars
+    return _calendar(calendars.add_link, cfg, params.get("link") or "")
+
+
+def remove_calendar_link(cfg, params: dict) -> dict:
+    from . import calendars
+    return _calendar(calendars.remove_link, cfg, params.get("id") or "")
+
+
+def calendar_events(cfg, params: dict) -> dict:
+    """The linked calendars' events on now or within 10 minutes, as the Mac helper's "events" line; the app asks
+    every 30 seconds, and a link is fetched again when its copy is a few minutes old."""
+    from . import calendars
+    return {"events": calendars.upcoming()}
 
 
 def _glossary_course(cfg, params: dict) -> str | None:
@@ -369,7 +403,9 @@ METHODS = {"ping": ping, "library": library, "lecture": lecture, "make_copy": ma
            "claude_sign_in": claude_sign_in, "connector_status": connector_status,
            "install_connector": install_connector, "add_to_claude_code": add_to_claude_code,
            "open_claude": open_claude, "remove_from_claude_code": remove_from_claude_code,
-           "setup_status": setup_status, "spelling_suggestions": spelling_suggestions, "always_spell": always_spell,
+           "setup_status": setup_status, "calendar_status": calendar_status, "add_calendar_link": add_calendar_link,
+           "remove_calendar_link": remove_calendar_link, "calendar_events": calendar_events,
+           "spelling_suggestions": spelling_suggestions, "always_spell": always_spell,
            **app_live.METHODS}
 
 

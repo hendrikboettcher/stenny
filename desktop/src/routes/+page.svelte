@@ -52,7 +52,7 @@
     };
   }
   let settingsOpen = $state(false); // the footer's Settings…: the window shows Settings instead (lib/Settings.svelte)
-  let settingsSection = $state<"general" | "transcripts" | "claude">("general"); // where Settings opens
+  let settingsSection = $state<"general" | "transcripts" | "claude" | "calendar">("general"); // where Settings opens
   let linkCopied = $state(false); // the footer's Share Stenny: "Link copied" for a moment
   let copiedTimer: ReturnType<typeof setTimeout> | undefined;
   let busy = $state<string | null>(null);   // "share" | "finish"
@@ -641,7 +641,7 @@
         {/if}
       {/if}
     </nav>
-    <!-- "Finish setting up Stenny", until courses, the AI step and the connector work (lib/SetupChecklist.svelte) -->
+    <!-- "Finish setting up Stenny", until courses, the AI step, the connector and the calendar work (lib/SetupChecklist.svelte) -->
     <SetupChecklist courses={data ? groups.courses.length : null} onaddcourse={() => open({ kind: "add" })}
                     onsettings={openSettings} />
     <footer>

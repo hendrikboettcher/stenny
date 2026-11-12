@@ -11,9 +11,10 @@ Share panel in `windows_share.rs`), file paths and labels handle both ("Show in 
 whatever couldn't be tested on Windows is said so. Still Mac-only, each needing a Windows version: transcription
 (mlx-whisper, Metal; faster-whisper is there for Windows but not yet tried on a PC), the microphone recorder
 (`stenny-rec`; its WASAPI twin `stenny-rec.exe` in `desktop/stenny-rec` is there but not yet tried with a real
-microphone), the calendar and its lecture notifications (`stenny-agent`; on Windows the app does the agent's other
-work itself: pause shortcut, open at login, PDF for Share… in `windows_agent.rs` / `windows_pdf.rs`, not yet tried
-on a PC), and the old Swift app in `app/`.
+microphone), the Mac's own calendars (`stenny-agent`, EventKit; a calendar by iCal link works on both, `calendars.py`,
+and Windows has its own "Record this lecture?" notification; on Windows the app does the agent's other work itself:
+pause shortcut, open at login, PDF for Share… in `windows_agent.rs` / `windows_pdf.rs`, not yet tried on a PC), and
+the old Swift app in `app/`.
 
 ## Goals (in priority order)
 1. **Nothing from the lecture is lost.** The raw Whisper output is always kept as its own file. Post-processing may structure the text but must never invent, drop or paraphrase content.
@@ -68,7 +69,11 @@ src/stenny/
   progress.py     how far a final pass is (<folder>.progress.json in Recordings/): written by `process`, read by
                   `app_server.library` (`final_pass` on a finalizing entry) for the window's bar; cheap, never fatal
   llm/            backends (claude_code, anthropic_api, its key from keychain.py) + guard (no invented content) + guard (no invented content)
-  keychain.py     the Anthropic API key in the system keychain (macOS: /usr/bin/security, Windows: keyring), never config.toml
+  keychain.py     the Anthropic API key and the calendar links in the system keychain (macOS: /usr/bin/security,
+                  Windows: keyring), never config.toml
+  calendars.py    calendars by link (iCal, fetched by curl, repeating events expanded) as the events on now, and what
+                  Settings ▸ Calendar shows (`calendar_status`: the Mac's accounts from stenny-agent's calendar-mac.json,
+                  the links, how many lectures match the courses); puts calendar-titles.json together
   claude_setup.py what Settings checks and sets up for Claude, no tokens spent: is the AI step's option ready (Claude Code
                   installed + signed in, an API key Anthropic accepts), the connector in Claude Desktop / Claude Code
   render.py       Markdown + YAML frontmatter
@@ -109,7 +114,7 @@ Stenny folder (`folder` in config.toml, default `~/Documents/Stenny`, may be ins
 - **Slides are not part of Stenny** (#20): nothing users see (app, connector, docs, CLI help) mentions slides or assumes they exist. The slide code (`slides.py`, the hidden `--slides`) stays dormant; nothing new relies on it.
 - **The glossary fills itself; the student's entries always win.** Its sources: the student's own fixes ("Always write it like this?" → `glossary.add_correction`, their Terms/Corrections) and Claude through the connector (taken as given, into the "(added automatically)" sections, never over the student's). Claude's and the student's corrections are applied word for word, so they must pass `guard.check_correction` (a spelling of a few words, never a common word).
 - `segments.json` (in Recordings/, outside the Stenny folder) keeps every segment plus the lecture details (`meta.lecture`), so `stenny refresh` can rebuild everything after Whisper without the audio.
-- **Only what you or Claude read goes into the Stenny folder** (transcripts, summaries, glossaries, course files, topic notes). Everything else lives in the system's app-data places, and only `paths.py` knows them: config.toml + consent.json in `~/Library/Application Support/Stenny/` (Windows `%APPDATA%\Stenny\`); `Recordings/<Course>/` (audio, segments.json, sessions, raw output) and `Queue/` in `~/Library/Application Support/Stenny/` (Windows `%LOCALAPPDATA%\Stenny\`, or `data_dir` in the config); logs in `~/Library/Logs/Stenny/` (Windows `%LOCALAPPDATA%\Stenny\Logs\`); shared copies in the caches folder. `STENNY_HOME` puts them all in one folder (tests, development). Never upload audio anywhere.
+- **Only what you or Claude read goes into the Stenny folder** (transcripts, summaries, glossaries, course files, topic notes). Everything else lives in the system's app-data places, and only `paths.py` knows them: config.toml + consent.json in `~/Library/Application Support/Stenny/` (Windows `%APPDATA%\Stenny\`); `Recordings/<Course>/` (audio, segments.json, sessions, raw output), `Queue/` and the calendar's files (`calendars.json`, `Calendars/`, `calendar-mac.json`, `calendar-titles.json`; a calendar link itself only in the system keychain) in `~/Library/Application Support/Stenny/` (Windows `%LOCALAPPDATA%\Stenny\`, or `data_dir` in the config); logs in `~/Library/Logs/Stenny/` (Windows `%LOCALAPPDATA%\Stenny\Logs\`); shared copies in the caches folder. `STENNY_HOME` puts them all in one folder (tests, development). Never upload audio anywhere.
 - **No hardcoded personal paths, names or courses in code, tests or docs.** Everything comes from the config; examples stay neutral.
 - Heavy commands must respect the priority settings (`nice`/`taskpolicy`; on Windows the priority class, `winsys.py`) unless the user passes `--now`.
 - **Microphone capture goes through `stenny-rec` (AVAudioEngine; on Windows `stenny-rec.exe`, WASAPI), never through Python** and not through ffmpeg's avfoundation input, which silently dropped ~1 s every ~8 s (nor ffmpeg's Windows inputs). The two recorders speak the same command line; change both together. Check every change to live mode with `stenny check`.

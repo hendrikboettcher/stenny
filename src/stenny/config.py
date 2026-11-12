@@ -79,6 +79,7 @@ class Config:
     pause_shortcut: str = DEFAULT_PAUSE_SHORTCUT  # Stenny's global pause/resume shortcut, see parse_shortcut
     app_language: str = "system"              # the app's own language: system | en | de (i18n.py)
     setup_checklist: bool = True              # the library window's "Finish setting up Stenny" card (False: gone)
+    reminders: bool = True                    # "Record this lecture?" when a lecture in the calendar starts
     path: Path | None = None
 
     @property
@@ -279,6 +280,7 @@ def load(path: Path | None = None) -> Config:
             pause_shortcut=pause_shortcut,
             app_language=app_language,
             setup_checklist=data.get("app", {}).get("setup_checklist", True),
+            reminders=data.get("app", {}).get("reminders", True),
             path=path,
         )
     except KeyError as e:
