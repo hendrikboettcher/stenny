@@ -35,14 +35,17 @@ async fn engine(state: tauri::State<'_, Arc<Engine>>, method: String, params: Op
         .map_err(|e| e.to_string())?
 }
 
-/// Opens a transcript in Obsidian when it's installed (the vault is an Obsidian vault), else in the default app.
+/// Opens a transcript in Obsidian when it sits in one of Obsidian's vaults, else in the default app. Obsidian's
+/// `open?path=` link only works inside a vault it knows: for any other file Obsidian starts anyway and shows
+/// "Vault not found", and to the system that link counts as opened, so Stenny asks Obsidian's vault list first.
 #[tauri::command]
 fn open_transcript(path: String) -> Result<(), String> {
     #[cfg(windows)]
-    let obsidian = windows_agent::obsidian_installed();
+    let installed = windows_agent::obsidian_installed();
     #[cfg(not(windows))]
-    let obsidian = std::path::Path::new("/Applications/Obsidian.app").exists();
-    if obsidian {
+    let installed = std::path::Path::new("/Applications/Obsidian.app").exists()
+        || std::env::var_os("HOME").is_some_and(|h| std::path::Path::new(&h).join("Applications/Obsidian.app").exists());
+    if installed && inside_any(std::path::Path::new(&path), &obsidian_vaults()) {
         let url = format!("obsidian://open?path={}", urlencode(&path));
         if tauri_plugin_opener::open_url(url, None::<&str>).is_ok() {
             return Ok(());
@@ -241,6 +244,39 @@ async fn recording_status(app: AppHandle) -> Result<Value, String> {
 #[tauri::command]
 fn show_talk(app: AppHandle) {
     show_window(&app, "talk");
+}
+
+/// The folders Obsidian has as vaults: its own list, obsidian.json in its settings folder (macOS
+/// ~/Library/Application Support/obsidian, Windows %APPDATA%\obsidian, Linux ~/.config/obsidian).
+fn obsidian_vaults() -> Vec<std::path::PathBuf> {
+    use std::path::PathBuf;
+    #[cfg(windows)]
+    let settings = std::env::var_os("APPDATA").map(|d| PathBuf::from(d).join("obsidian"));
+    #[cfg(target_os = "macos")]
+    let settings = std::env::var_os("HOME").map(|h| PathBuf::from(h).join("Library/Application Support/obsidian"));
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let settings = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
+        .map(|d| d.join("obsidian"));
+    let Some(text) = settings.and_then(|d| std::fs::read_to_string(d.join("obsidian.json")).ok()) else {
+        return Vec::new();
+    };
+    let json: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
+    json["vaults"]
+        .as_object()
+        .map(|vaults| vaults.values().filter_map(|v| v["path"].as_str()).map(PathBuf::from).collect())
+        .unwrap_or_default()
+}
+
+/// The file is inside one of these folders. Case doesn't count: Mac and Windows disks ignore it, and so does Obsidian.
+fn inside_any(file: &std::path::Path, folders: &[std::path::PathBuf]) -> bool {
+    let canonical = |p: &std::path::Path| {
+        let p = std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+        std::path::PathBuf::from(p.to_string_lossy().to_lowercase())
+    };
+    let file = canonical(file);
+    folders.iter().any(|folder| file.starts_with(canonical(folder)))
 }
 
 fn urlencode(s: &str) -> String {
@@ -543,4 +579,20 @@ pub fn run() {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod obsidian_tests {
+    use super::inside_any;
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn a_transcript_counts_only_inside_a_vault() {
+        let vaults = [PathBuf::from("/nowhere/Notes/Vault")];
+        assert!(inside_any(Path::new("/nowhere/Notes/Vault/Lectures/Course/Course 2026-11-05.md"), &vaults));
+        assert!(inside_any(Path::new("/nowhere/notes/vault/Course/x.md"), &vaults));  // case doesn't count
+        assert!(!inside_any(Path::new("/nowhere/Documents/Stenny/Course/x.md"), &vaults));
+        assert!(!inside_any(Path::new("/nowhere/Notes/Vault 2/x.md"), &vaults));  // a sibling with a longer name
+        assert!(!inside_any(Path::new("/nowhere/Notes/Vault/x.md"), &[]));
+    }
 }

@@ -344,10 +344,7 @@ final class LectureController: NSObject {
 
     @objc private func openTranscript() {
         guard let path = status?.transcript, !path.isEmpty else { return }
-        var components = URLComponents(string: "obsidian://open")!
-        components.queryItems = [URLQueryItem(name: "path", value: path)]
-        if let url = components.url, NSWorkspace.shared.open(url) { return }
-        NSWorkspace.shared.open(URL(fileURLWithPath: path))
+        Obsidian.open(path)
     }
 
 
@@ -439,6 +436,9 @@ final class LectureController: NSObject {
         pauseItem.isEnabled = active
         stopItem.isEnabled = active
         openItem.isEnabled = status != nil
+        // "in Obsidian" only when it really opens there: the transcript sits in one of Obsidian's vaults
+        let transcript = status?.transcript ?? ""
+        openItem.title = !transcript.isEmpty && Obsidian.inVault(transcript) ? "Open Transcript in Obsidian" : "Open Transcript"
     }
 
     // MARK: Level meter (only while the menu is open)
@@ -502,10 +502,8 @@ final class LectureController: NSObject {
         configure(pauseItem, title: "Pause", symbol: "pause.fill", action: #selector(togglePause))
         // The shortcut shows in the menu (setShortcut); outside the menu GlobalHotKey handles it
         configure(stopItem, title: "Stop & Make Final Transcript", symbol: "stop.fill", action: #selector(stop))
-        // Obsidian is optional: without it the transcript opens in the default Markdown app
-        let hasObsidian = NSWorkspace.shared.urlForApplication(toOpen: URL(string: "obsidian://open")!) != nil
-        configure(openItem, title: hasObsidian ? "Open Transcript in Obsidian" : "Open Transcript", symbol: "doc.text",
-                  action: #selector(openTranscript))
+        // Obsidian is optional: outside its vaults the transcript opens in the default Markdown app (update() names it)
+        configure(openItem, title: "Open Transcript", symbol: "doc.text", action: #selector(openTranscript))
         configure(micItem, title: "Microphone", symbol: "mic", action: nil)
         micItem.submenu = micMenu
         micMenu.delegate = self
