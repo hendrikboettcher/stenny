@@ -21,6 +21,7 @@ use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem,
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, Wry};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind, MessageDialogResult};
+#[cfg(not(target_os = "macos"))]
 use tauri_plugin_notification::NotificationExt;
 
 const TRAY: &str = "stenny";
@@ -232,7 +233,14 @@ fn notification_area_icon(image: &Image<'_>, white: bool) -> Image<'static> {
     Image::new_owned(rgba, side as u32, side as u32)
 }
 
+/// One of Stenny's messages as a notification. On a Mac from Stenny's own process (macos_notifications.rs).
 fn notify(app: &AppHandle, message: &str) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app;
+        crate::macos_notifications::post(message);
+    }
+    #[cfg(not(target_os = "macos"))]
     let _ = app.notification().builder().title("Stenny").body(message).show();
 }
 
@@ -863,7 +871,7 @@ fn start_agent(app: &AppHandle) {
         let settings = engine(&app).call("settings", json!({})).unwrap_or(Value::Null);
         let shortcut = settings.get("pause_shortcut").and_then(Value::as_str).unwrap_or("cmd+shift+ü").to_string();
         let data_dir = settings.get("data_dir").and_then(Value::as_str).unwrap_or_default().to_string();
-        // its notifications and messages in Stenny's language ("lang …" when that changes, set_agent_language)
+        // its messages in Stenny's language ("lang …" when that changes, set_agent_language)
         let lang = i18n::language();
         let child = std::process::Command::new(exe)
             .args(["--shortcut", &shortcut, "--calendar", "--data-dir", &data_dir, "--lang", lang])
@@ -923,8 +931,15 @@ fn start_agent(app: &AppHandle) {
                     app.state::<MenuBar>().0.lock().unwrap().agent_events = events;
                     calendar(&app);
                 }
+            } else if line == "calendar-asked" {
+                // the first time, macOS asked for the calendar; now Stenny asks for notifications, from its own
+                // process (macOS turns the agent down, #60). Nothing shows once that has been answered
+                #[cfg(target_os = "macos")]
+                if crate::macos_notifications::state() == Some("ask") {
+                    crate::macos_notifications::request(&app);
+                }
             } else if let Some(state) = line.strip_prefix("calendar-state ") {
-                // may Stenny read the calendar and send notifications: the agent wrote it down for the engine
+                // may Stenny read the calendar: the agent wrote it down for the engine
                 // (calendar-mac.json). Whoever waits for this look (calendar_check) goes on; Settings looks again
                 // only when something changed (its own look is answered with this line too)
                 let changed = {
@@ -942,8 +957,6 @@ fn start_agent(app: &AppHandle) {
                     *bar.2.asked.lock().unwrap() = true;
                     bar.2.signal.notify_one();
                 }
-            } else if let Some(course) = line.strip_prefix("start ") {
-                start_from_notification(&app, course);
             } else if line == "login ok" {
                 let prefs = {
                     let bar = app.state::<MenuBar>();
@@ -1057,13 +1070,12 @@ fn calendar(app: &AppHandle) {
                 announce = Some((key, sg));
             }
         }
-        #[cfg(not(windows))]
-        if let (Some((key, sg)), Some(stdin)) = (announce.take(), st.agent_in.as_mut()) {
-            let note = json!({"id": key, "course": sg.course, "range": sg.range});
-            let _ = writeln!(stdin, "notify {note}");
-        }
     }
-    // Windows: a notification of the app's own, with the same button (windows_agent.rs)
+    // a notification of the app's own with Start Recording: macos_notifications.rs, windows_agent.rs
+    #[cfg(target_os = "macos")]
+    if let Some((key, sg)) = announce.take() {
+        crate::macos_notifications::announce_lecture(&key, &sg.course, &sg.range);
+    }
     #[cfg(windows)]
     if let Some((_, sg)) = announce.take() {
         crate::windows_agent::announce_lecture(app, &sg.course, &sg.range);
@@ -1137,10 +1149,17 @@ pub fn calendar_check(app: &AppHandle) {
 pub fn calendar_check(_app: &AppHandle) {}
 
 /// "Allow…" in Settings ▸ Calendar: macOS asks for the calendar ("calendar") or for notifications ("notifications")
-/// in its own dialog; the agent reports the answer ("calendar-state …"), and the windows look again.
+/// in its own dialog, and the windows look again once it has been answered. The calendar is the agent's (it reports
+/// "calendar-state …"); notifications are asked for by Stenny itself (macos_notifications.rs): macOS turns the agent
+/// down (#60).
 pub fn calendar_allow(app: &AppHandle, what: &str) {
+    #[cfg(target_os = "macos")]
+    if what == "notifications" {
+        crate::macos_notifications::request(app);
+        return;
+    }
     #[cfg(not(windows))]
-    tell_agent(app, if what == "notifications" { "notifications allow" } else { "calendar allow" });
+    tell_agent(app, "calendar allow");
     #[cfg(windows)]
     let _ = (app, what);
 }
@@ -1265,7 +1284,7 @@ fn tell_agent(app: &AppHandle, line: &str) -> bool {
     st.agent_in.as_mut().is_some_and(|stdin| writeln!(stdin, "{line}").is_ok())
 }
 
-/// After the language changed: the agent's notifications and messages follow ("lang de"). Never by starting it
+/// After the language changed: the agent's messages follow ("lang de"). Never by starting it
 /// again: a second process with Stenny's bundle id shows up in the Dock as another Stenny (#46).
 #[cfg(not(windows))]
 pub fn set_agent_language(app: &AppHandle) {

@@ -9,6 +9,8 @@ mod engine;
 mod i18n;
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(target_os = "macos")]
+mod macos_notifications;
 mod menubar;
 #[cfg(windows)]
 mod windows_agent;
@@ -240,8 +242,9 @@ async fn recording_status(app: AppHandle) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || menubar::window_status(&app)).await.map_err(|e| e.to_string())
 }
 
-/// Settings ▸ Calendar: what the engine knows (calendars.py), after the Mac's helper has looked at the calendar and
-/// notification permissions again. On Windows the notifications' state is the app's to tell.
+/// Settings ▸ Calendar: what the engine knows (calendars.py), after the Mac's helper has looked at the calendar
+/// permission again. Whether Stenny may show notifications is the app's own to tell, on both systems; on a Mac also
+/// why macOS turned Allow… down, if it did (`notifications_problem`).
 #[tauri::command]
 async fn calendar_status(app: AppHandle, state: tauri::State<'_, Arc<Engine>>) -> Result<Value, String> {
     let engine = state.inner().clone();
@@ -252,6 +255,14 @@ async fn calendar_status(app: AppHandle, state: tauri::State<'_, Arc<Engine>>) -
         #[cfg(windows)]
         {
             status["notifications"] = serde_json::json!(windows_agent::notifications_state(&app));
+        }
+        #[cfg(target_os = "macos")]
+        {
+            let notifications = macos_notifications::state();
+            status["notifications"] = serde_json::json!(notifications.unwrap_or("unknown"));
+            if notifications == Some("ask") {
+                status["notifications_problem"] = serde_json::json!(macos_notifications::problem());
+            }
         }
         Ok(status)
     })
@@ -381,8 +392,9 @@ async fn set_ui_language(app: AppHandle, language: String) {
 }
 
 /// After the language changed: the windows (the "language" event, routes/+layout.svelte), their titles, the app
-/// menu, the menu bar's menu, and stenny-agent (its notifications), which is told the new language: never started
-/// again, which put a second Stenny in the Dock (#46).
+/// menu, the menu bar's menu, the notifications' Start Recording (macOS; Windows writes it on each notification), and
+/// stenny-agent (its messages), which is told the new language: never started again, which put a second Stenny in the
+/// Dock (#46).
 pub fn language_changed(app: &AppHandle) {
     let _ = app.emit("language", i18n::language());
     let app2 = app.clone();
@@ -398,6 +410,8 @@ pub fn language_changed(app: &AppHandle) {
         }
     });
     menubar::redraw(app, true);
+    #[cfg(target_os = "macos")]
+    macos_notifications::set_language();
     menubar::set_agent_language(app);
 }
 
@@ -557,6 +571,11 @@ pub fn run() {
     {
         builder = builder.menu(app_menu);
     }
+    // Stenny's messages as notifications; on a Mac they are its own (macos_notifications.rs)
+    #[cfg(not(target_os = "macos"))]
+    {
+        builder = builder.plugin(tauri_plugin_notification::init());
+    }
     let app = builder
         .on_menu_event(|app, event| {
             match event.id().as_ref() {
@@ -572,7 +591,6 @@ pub fn run() {
         })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_notification::init())
         .manage(Arc::new(Engine::default()))
         .manage(MenuBar::default())
         .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, share_files, copy_text, check_updates, reload_window, microphone_pref, set_microphone_pref, login_item, apply_shortcut, pause_shortcut_label, ui_language, set_ui_language, courses_changed, start_recording, recording_command, recording_status, show_talk, calendar_status, calendar_check, calendar_allow, calendar_changed, open_system_settings])
@@ -582,6 +600,8 @@ pub fn run() {
                 // bundle (stenny-agent reads the same Info.plist, #52), so the app itself asks for its Dock icon here.
                 #[cfg(target_os = "macos")]
                 app.set_activation_policy(tauri::ActivationPolicy::Regular);
+                #[cfg(target_os = "macos")]
+                macos_notifications::install(app.handle());
                 menubar::install(app.handle())?;
             } else if let Some(window) = app.get_webview_window("library") {
                 let _ = window.show();

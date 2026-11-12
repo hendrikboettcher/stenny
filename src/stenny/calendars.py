@@ -17,7 +17,8 @@ notification and the window's activity bar work the same whatever the source (de
   where it points.
 
 On a Mac the helper (app/Sources/stenny-agent) writes what macOS knows into `calendar-mac.json`: whether Stenny may
-read the calendar and send notifications, and the Mac's accounts with this term's event titles. `status` reads it.
+read the calendar, and the Mac's accounts with this term's event titles. `status` reads it. Whether Stenny may show
+notifications is the app's to tell on both systems (desktop/src-tauri: macos_notifications.rs, windows_agent.rs).
 `calendar-titles.json` (this term's titles, for setup's course suggestions) is put together here from both.
 """
 
@@ -328,7 +329,7 @@ def _mac() -> dict | None:
     except (OSError, ValueError, AttributeError):
         note, sources = {}, []
     state = lambda key: note.get(key) if note.get(key) in STATES else "unknown"  # noqa: E731
-    return {"access": state("access"), "notifications": state("notifications"), "sources": sources}
+    return {"access": state("access"), "sources": sources}
 
 
 def _source_titles(source: dict) -> dict[str, int]:
@@ -420,7 +421,7 @@ def status(cfg, now: float | None = None) -> dict:
     working = any(r["state"] != "broken" for r in rows)
     return {"platform": "mac" if sys.platform == "darwin" else "windows" if sys.platform == "win32" else "other",
             "access": mac["access"] if mac else None,
-            "notifications": mac["notifications"] if mac else None,  # Windows: the app fills it in itself
+            "notifications": None,  # the app fills it in itself (macOS and Windows)
             "sources": sources, "links": rows,
             "lectures": _lectures(cfg, seen),
             "connected": working or bool(mac and mac["access"] == "allowed"),

@@ -23,15 +23,20 @@ tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri-plugin-dialog = "2"
-tauri-plugin-notification = "2"
 sys-locale = "0.3"  # the system's preferred languages, for "System default" (src/i18n.rs)
 
 # the menu bar's native details Tauri doesn't expose (src/macos.rs); same versions as tray-icon's
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
 block2 = "0.6"
-objc2-foundation = { version = "0.3.2", features = ["NSNotification", "NSString", "NSArray"] }
+objc2-foundation = { version = "0.3.2", features = ["NSNotification", "NSString", "NSArray", "NSBundle", "NSDictionary", "NSError", "NSSet"] }
 objc2-app-kit = { version = "0.3.2", features = ["NSMenu", "NSMenuItem", "NSEvent", "NSFont", "NSFontDescriptor", "NSControl", "NSButton", "NSStatusItem", "NSStatusBarButton", "NSView", "NSResponder", "objc2-core-foundation"] }
+# Stenny's notifications from its own process (src/macos_notifications.rs): macOS refuses them from stenny-agent (#60)
+objc2-user-notifications = { version = "0.3.2", default-features = false, features = ["std", "block2", "UNNotification", "UNNotificationAction", "UNNotificationCategory", "UNNotificationContent", "UNNotificationRequest", "UNNotificationResponse", "UNNotificationSettings", "UNNotificationTrigger", "UNUserNotificationCenter", "UNError"] }
+
+# Stenny's messages as notifications on Windows (and Linux); a Mac has its own (see above)
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+tauri-plugin-notification = "2"
 
 # Windows: Share… through the system's Share panel (src/windows_share.rs); what stenny-agent does on a Mac — the pause
 # shortcut, open at login, the beep, the clipboard, the lecture notification (src/windows_agent.rs) and the PDF for Share… (src/windows_pdf.rs,

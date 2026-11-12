@@ -40,8 +40,11 @@ shown again from the Dock, Spotlight or the menu bar (the "library-shown" event)
 selection (localStorage); the refresh every few seconds never changes it.
 
 Without `--library` it is the menu bar app (src-tauri/src/menubar.rs): the classic menu, the clock next to the icon,
-the calendar's lecture with its "Record this lecture?" notification, and the pause shortcut, the last two through
-`stenny-agent` (app/Sources/stenny-agent), which runs inside the bundle so the permissions are Stenny's.
+the calendar's lecture with its "Record this lecture?" notification, and the pause shortcut. The Mac's calendar and
+the pause shortcut come through `stenny-agent` (app/Sources/stenny-agent), which runs inside the bundle so the calendar
+permission is Stenny's. Notifications don't: macOS turns a second program in the bundle down at once, without a prompt
+(#60), so Stenny asks for them and posts them itself (src-tauri/src/macos_notifications.rs, the UserNotifications
+framework): "Record this lecture?" with Start Recording, and its other messages.
 
 On Windows the same icon sits in the notification area (white on a dark taskbar; the clock is its tooltip) and the app
 does stenny-agent's work itself (src-tauri/src/windows_agent.rs, windows_pdf.rs), with Windows' own calls and no
@@ -115,14 +118,17 @@ the Mac's helper reports a change (the "calendar" event).
   `events […]` every 30 seconds; on both systems the engine's `calendar_events` gives the same list for the linked
   calendars (asked every 30 seconds by `menubar::poll_calendar_links`; a link is fetched again when its copy is five
   minutes old). `menubar::calendar` merges them (a lecture in both counts once, by title and start), matches titles
-  to courses, sets the menu's suggestion and announces a lecture once: through the agent on a Mac, through
-  `windows_agent::announce_lecture` on Windows. With `[app] reminders = false` nothing is announced; the menu's
+  to courses, sets the menu's suggestion and announces a lecture once: `macos_notifications::announce_lecture` on a
+  Mac, `windows_agent::announce_lecture` on Windows. With `[app] reminders = false` nothing is announced; the menu's
   suggestion stays.
-- **Permissions (macOS).** The agent writes `calendar-mac.json` into the data place (access, notifications, the
-  Mac's accounts with this term's titles) and says `calendar-state …` when that changes. `calendar check` (sent by
-  the `calendar_status` and `calendar_check` commands) makes it look again; `calendar allow` and
-  `notifications allow` ask macOS, which only works while it hasn't been answered. After that the buttons open
-  System Settings (`open_system_settings`: Privacy & Security ▸ Calendars, Notifications, Internet Accounts).
+- **Permissions (macOS).** The agent writes `calendar-mac.json` into the data place (calendar access, the Mac's
+  accounts with this term's titles) and says `calendar-state …` when that changes. `calendar check` (sent by the
+  `calendar_status` and `calendar_check` commands) makes it look again; `calendar allow` asks macOS, which only works
+  while it hasn't been answered. Notifications are the app's own (`macos_notifications`): `calendar_status` adds
+  their state, Allow… calls `request`, and if macOS turns it down, its reason (`notifications_problem`) shows in the
+  row instead of a silent click. The first time, the agent says `calendar-asked` after the calendar question and
+  the app asks for notifications next. After that the buttons open System Settings (`open_system_settings`:
+  Privacy & Security ▸ Calendars, Notifications, Internet Accounts).
 - **Links** are secrets: one entry each in the Keychain / Credential Manager (`keychain.py`), fetched by curl, which
   reads the link on stdin; `calendars.json` in the data place only has the host and the calendar's name.
 - **Notifications on Windows:** `windows_agent::notifications_state` (the toast notifier's setting); the button
