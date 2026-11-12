@@ -524,7 +524,9 @@
   async function capture(e: KeyboardEvent) {
     if (!recording) {
       if (e.key === "Escape" && courseMenu) { courseMenu = null; return; }
-      if (e.key === "Escape" && !e.defaultPrevented && !deleting && !adding && !removing && !connRemove) onclose();
+      // Escape inside one of Settings' dialogs closes only that dialog (Dialog.svelte), not Settings
+      const dialogOpen = deleting || adding || removing || connRemove || linkAdding || linkRemoving;
+      if (e.key === "Escape" && !e.defaultPrevented && !dialogOpen) onclose();
       return;
     }
     e.preventDefault();
