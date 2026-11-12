@@ -343,6 +343,7 @@
   "feedback.window": "Feedback senden",
   "feedback.empty": "Schreib bitte ein paar Worte.",
   "feedback.onClipboard": "{error} Keine Sorge: Deine Nachricht liegt in der Zwischenablage.",
+  "feedback.notCopied": "{error} Deine Nachricht steht noch hier: Kopiere sie, bevor du das Fenster schließt.",
   "feedback.thanks": "Danke!",
   "feedback.sent": "Dein Feedback wurde gesendet.",
   "feedback.title": "Feedback senden",

@@ -343,6 +343,7 @@
   "feedback.window": "Send Feedback",
   "feedback.empty": "Write a few words first.",
   "feedback.onClipboard": "{error} Your message is on the clipboard, so it isn't lost.",
+  "feedback.notCopied": "{error} Your message is still here: copy it before you close this window.",
   "feedback.thanks": "Thank you!",
   "feedback.sent": "Your feedback was sent.",
   "feedback.title": "Send feedback",
