@@ -81,8 +81,9 @@ def fix_basis(fix, paragraph: str, glossary: Glossary, slides=None, unsure: list
     if len(ow) > MAX_FIX_WORDS or len(nw) > MAX_FIX_WORDS or abs(len(ow) - len(nw)) > 2:
         return None, "too large"
     similarity = difflib.SequenceMatcher(None, old.casefold(), new.casefold()).ratio()
-    # Only toward a known spelling: near spellings alone can flip meaning (converge → diverge).
-    if any(new.casefold() == t.casefold() or _occurs(new.casefold(), t.casefold()) for t in glossary.terms):
+    # Only toward a known spelling: near spellings alone can flip meaning (converge → diverge). A whole term, not a
+    # word inside one: "of" from "Law of Large Numbers" would change ordinary text.
+    if any(new.casefold() == t.casefold() for t in glossary.terms):
         return ("glossary", None) if similarity >= MIN_SIMILARITY else (None, "not a near spelling of the original")
     if slides is None:
         return None, "not a glossary term"

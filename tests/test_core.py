@@ -116,6 +116,8 @@ def test_guard_applies_near_spelling_and_glossary_fixes():
     ({"p": 0, "from": "toute suite bornée converge", "to": "toute suite bornée admet une sous-suite convergente"},
      "too large"),
     ({"p": 0, "from": "converge", "to": "diverge"}, "not a glossary term"),
+    # one word of a longer term ("suite de Cauchy") is no term: "toute" → "suite" would change ordinary text
+    ({"p": 0, "from": "toute", "to": "suite"}, "not a glossary term"),
     ({"p": 0, "from": "suite", "to": "Riemann"}, "not a near spelling of the original"),
     ({"p": 1, "from": "Cauchy", "to": "Cauchy-Schwarz"}, "'from' not found in paragraph"),
     ({"p": 0, "from": "théorème", "to": "théorème"}, "empty or no-op"),
