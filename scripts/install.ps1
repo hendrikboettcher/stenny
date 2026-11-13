@@ -112,11 +112,22 @@
         Move-Item $new $Folder
 
         # 3. uv and the engine. If that fails, the old folder comes back and nothing else has changed.
-        Step "Installing Stenny $version..." "Installiere Stenny $version..."
+        # Each part says it's starting, and nothing says "installed" before the app is: uv's own installer ends with
+        # "everything's installed!", which read as if Stenny were done minutes before it was, so its output only
+        # shows if it fails. The engine and the app install quietly, so their lines tell what's going on meanwhile.
+        Step "Installing Stenny $version (a few minutes)..." "Installiere Stenny $version (ein paar Minuten)..."
+        Say '  1/2 The engine: Python and the speech recognition libraries...' '  1/2 Die Engine: Python und die Bibliotheken fuer die Spracherkennung...'
         if (-not $uv) {
             $env:UV_NO_MODIFY_PATH = '1'; $env:INSTALLER_NO_MODIFY_PATH = '1'   # %USERPROFILE%\.local\bin, PATH unchanged
-            powershell -NoProfile -ExecutionPolicy Bypass -Command 'irm https://astral.sh/uv/install.ps1 | iex'
+            $uvOutput = powershell -NoProfile -ExecutionPolicy Bypass -Command 'irm https://astral.sh/uv/install.ps1 | iex'   # stdout only: 2>&1 would stop the script at uv's first stderr line in Windows PowerShell
             $uv = "$env:USERPROFILE\.local\bin\uv.exe"
+            if (-not (Test-Path $uv)) {
+                $uvOutput | Write-Host
+                Remove-Item $Folder -Recurse -Force
+                if ($old) { Move-Item $old $Folder }
+                Fail "Installing uv, which installs Python for Stenny, failed (see above). Nothing was changed." 'uv, das Python fuer Stenny installiert, liess sich nicht installieren (siehe oben). Es wurde nichts geaendert.'
+                return
+            }
         }
         & $uv tool install -e $Folder --force --python 3.12 --quiet
         if ($LASTEXITCODE -ne 0) {
@@ -133,11 +144,13 @@
         }
 
         # 4. The app: the setup program, silently. Installs over an older Stenny.
+        Say '  2/2 The app...' '  2/2 Die App...'
         $p = Start-Process $setup -ArgumentList '/S' -Wait -PassThru
         if ($p.ExitCode -ne 0) {
             Fail "Stenny's setup program stopped with error $($p.ExitCode)." "Stennys Setup-Programm brach mit Fehler $($p.ExitCode) ab."
             return
         }
+        Say "Stenny $version is installed." "Stenny $version ist installiert."
     } finally {
         Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
     }
@@ -151,13 +164,23 @@
     $entry = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue |
         Where-Object { $_.DisplayName -eq 'Stenny' } | Select-Object -First 1
     $exe = if ($entry -and $entry.DisplayIcon) { $entry.DisplayIcon.Trim('"').Split(',')[0] } else { $null }
-    if ($exe -and (Test-Path $exe)) { Start-Process $exe }
+    # Says it's open only if it was opened: otherwise where to find it
+    $opened = $false
+    if ($exe -and (Test-Path $exe)) { Start-Process $exe; $opened = $true }
     Step 'Downloading the speech recognition (Whisper, about 1.6 GB, once)...' 'Lade die Spracherkennung herunter (Whisper, etwa 1,6 GB, nur einmal)...'
-    Say "Keep this window open until it's done; Stenny is already open." 'Lass dieses Fenster offen, bis es fertig ist; Stenny ist schon offen.'
+    if ($opened) {
+        Say "Keep this window open until it's done; Stenny is already open." 'Lass dieses Fenster offen, bis es fertig ist; Stenny ist schon offen.'
+    } else {
+        Say "Keep this window open until it's done. Meanwhile you can open Stenny from the Start menu." 'Lass dieses Fenster offen, bis es fertig ist. Stenny kannst du schon im Startmenue oeffnen.'
+    }
     & $stenny download-model
     if ($LASTEXITCODE -ne 0) { Say '! Whisper will download with the first transcription instead.' '! Whisper wird stattdessen beim ersten Transkript heruntergeladen.' }
 
     Write-Host ''
-    Say "Stenny $version is installed: its icon is next to the clock. Its window shows what's left to set up." "Stenny $version ist installiert: das Symbol neben der Uhr. Sein Fenster zeigt, was noch einzurichten ist."
+    if ($opened) {
+        Say "Done. Stenny's icon is next to the clock; its window shows what's left to set up." 'Fertig. Stennys Symbol ist neben der Uhr; sein Fenster zeigt, was noch einzurichten ist.'
+    } else {
+        Say "Done. Open Stenny from the Start menu; its window shows what's left to set up." 'Fertig. Oeffne Stenny im Startmenue; sein Fenster zeigt, was noch einzurichten ist.'
+    }
     Say 'You can close this window.' 'Du kannst dieses Fenster schliessen.'
 }
