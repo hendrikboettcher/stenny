@@ -16,6 +16,15 @@
 
 # One script block that runs on the last line, so a download cut off halfway runs nothing.
 & {
+    # uv and Stenny's engine print UTF-8, but Windows PowerShell reads what a program prints in the console's old code
+    # page (850 in Germany): a user folder with a letter like o-umlaut came back garbled, so stenny.exe "didn't exist"
+    # and the script stopped after installing the app. UTF-8 while it runs, then back as it was: irm | iex runs it in
+    # the user's own PowerShell window.
+    $savedEncoding = [Console]::OutputEncoding
+    $savedPythonUtf8 = $env:PYTHONUTF8
+    try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch {}
+    $env:PYTHONUTF8 = '1'   # the engine's output in UTF-8 too: Python would use the ANSI code page
+    try { & {
     $ErrorActionPreference = 'Stop'
     $ProgressPreference = 'SilentlyContinue'   # Invoke-WebRequest's progress bar makes big downloads very slow
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
@@ -183,4 +192,8 @@
         Say "Done. Open Stenny from the Start menu; its window shows what's left to set up." 'Fertig. Oeffne Stenny im Startmenue; sein Fenster zeigt, was noch einzurichten ist.'
     }
     Say 'You can close this window.' 'Du kannst dieses Fenster schliessen.'
+    } } finally {
+        try { [Console]::OutputEncoding = $savedEncoding } catch {}
+        $env:PYTHONUTF8 = $savedPythonUtf8
+    }
 }
