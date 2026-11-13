@@ -29,8 +29,11 @@
 
     # 1. The PC
     Step 'Checking this PC...' 'Pruefe den PC...'
-    $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
-    if ("$arch" -ne 'X64') {
+    # Windows' own value (AMD64, ARM64 or x86), also right in an emulated or 32-bit PowerShell. Not .NET's
+    # RuntimeInformation.OSArchitecture: Windows PowerShell 5.1, the one `irm | iex` runs in, returns nothing for it.
+    $arch = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment' -ErrorAction SilentlyContinue).PROCESSOR_ARCHITECTURE
+    if (-not $arch) { $arch = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE } }
+    if ("$arch" -ne 'AMD64') {
         Fail "Stenny needs a 64-bit Intel or AMD processor; this PC has $arch." "Stenny braucht einen 64-Bit-Prozessor von Intel oder AMD; dieser PC hat $arch."
         return
     }
