@@ -27,7 +27,7 @@ def load(path: Path) -> np.ndarray:
            "-ar", str(SAMPLE_RATE), "-"]
     p = subprocess.run(cmd, capture_output=True)
     if p.returncode != 0:
-        raise RuntimeError(f"ffmpeg could not read {path}: {p.stderr.decode()[-500:]}")
+        raise RuntimeError(f"ffmpeg could not read {path}: {p.stderr.decode(errors="replace")[-500:]}")
     return np.frombuffer(p.stdout, np.int16).astype(np.float32) / 32768.0
 
 

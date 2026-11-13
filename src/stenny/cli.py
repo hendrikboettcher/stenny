@@ -872,7 +872,23 @@ def cmd_watch(args) -> None:
         time.sleep(args.interval)
 
 
+def utf8_output() -> None:
+    """What Stenny prints into a pipe or a file is UTF-8, on every system. On Windows, Python would use the ANSI
+    code page (cp1252) there, unless whoever started Stenny asked for UTF-8 (the app and install.ps1 do, Claude
+    Desktop for the connector doesn't): the caller then read "ö" wrong, and a letter outside that code page (ł, ş,
+    Cyrillic, Chinese) in a path stopped the command, so the connector took Stenny for missing. A console is
+    left as it is (Python writes Unicode to it already). Never fails on a character: those come out escaped."""
+    for stream in (sys.stdout, sys.stderr):
+        if stream is None or (stream.encoding or "").lower().replace("-", "") == "utf8":
+            continue
+        try:
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+        except (AttributeError, ValueError, OSError):
+            pass
+
+
 def main() -> None:
+    utf8_output()
     ap = argparse.ArgumentParser(prog="stenny", description="Transcribe lectures locally into Markdown files (your Stenny folder).")
     ap.add_argument("--version", action="version", version=f"stenny {package_version('stenny')}")
     sub = ap.add_subparsers(dest="cmd", required=True)
