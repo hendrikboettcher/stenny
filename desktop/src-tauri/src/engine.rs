@@ -59,6 +59,9 @@ fn start() -> Result<Running, String> {
     }
     // "System default" in Settings: the language the system prefers, as Rust sees it (src/stenny/i18n.py)
     command.env("STENNY_SYSTEM_LANGUAGE", i18n::system_language());
+    // UTF-8 for the engine's pipes and files on every system: Python on Windows would use the ANSI code page
+    // (cp1252), and the replies below are read as UTF-8 (app_server.serve sets its pipes to UTF-8 too)
+    command.env("PYTHONUTF8", "1").env("PYTHONIOENCODING", "utf-8");
     // Windows: the engine is a console program; started from Stenny it would open a console window of its own
     #[cfg(windows)]
     {
@@ -78,7 +81,17 @@ fn start() -> Result<Running, String> {
     let pending: Pending = Arc::default();
     let replies = pending.clone();
     std::thread::spawn(move || {
-        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+        // byte lines, read leniently: one reply that isn't valid UTF-8 mustn't end the reading (`lines()` would stop
+        // there for good while the engine runs on, and every request after it waited in vain)
+        let mut reader = BufReader::new(stdout);
+        let mut buf = Vec::new();
+        loop {
+            buf.clear();
+            match reader.read_until(b'\n', &mut buf) {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {}
+            }
+            let line = String::from_utf8_lossy(&buf);
             let Ok(reply) = serde_json::from_str::<Value>(&line) else { continue };
             let Some(id) = reply.get("id").and_then(Value::as_u64) else { continue };
             if let Some(tx) = replies.lock().unwrap().remove(&id) {
