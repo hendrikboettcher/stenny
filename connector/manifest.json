@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "stenny",
   "display_name": "Stenny",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Your lecture transcripts, summaries and glossaries from Stenny, for studying with Claude.",
   "long_description": "Stenny records your lectures on your Mac or Windows PC and transcribes them locally. With this extension Claude can read them: ask what the lecturer said about a topic, go through a lecture, or get quizzed, and Claude answers from your transcripts with timestamps like \"Lecture 3 [0:12:30]\".\n\nEverything stays on your computer: Claude gets clean text (no file paths, no microphone names), and the only change it can make is adding correct spellings of names and terms to a course glossary, so future transcripts get them right.\n\nNeeds Stenny installed on this computer (https://stenny.eu). Works in the Claude desktop app only, not on the web or on your phone.",
   "author": {
