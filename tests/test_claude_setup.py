@@ -24,6 +24,7 @@ case "$1 $2" in
   "auth status") if [ "$(cat {state})" = in ]; then
       echo '{{"loggedIn": true, "email": "student@example.edu", "subscriptionType": "pro"}}'
     else echo '{{"loggedIn": false}}'; fi ;;
+  "auth login") echo "Opening browser to sign in…"; echo login > {tmp_path}/login; if [ -n "$SLOW" ]; then sleep 30; fi ;;
   "mcp add") echo "$@" > {tmp_path}/added; echo '{{"mcpServers": {{"stenny": {{}}}}}}' > "$HOME/.claude.json" ;;
   "mcp remove") echo "$@" > {tmp_path}/removed; echo '{{"mcpServers": {{}}}}' > "$HOME/.claude.json" ;;
 esac
@@ -149,6 +150,21 @@ def test_app_server_reports_setup_errors_as_messages(monkeypatch, tmp_path):
     for method in ("ai_status", "set_api_key", "remove_api_key", "claude_sign_in", "connector_status",
                    "install_connector", "add_to_claude_code"):
         assert method in app_server.METHODS
+
+
+@posix
+def test_signs_in_without_a_terminal_window(fake_claude, monkeypatch, capfd):
+    """`claude auth login` runs in the background, its output kept off the app server's stdout (the replies)."""
+    claude_setup.claude_sign_in(None)
+    assert claude_setup._sign_in.wait(timeout=10) == 0
+    assert (fake_claude.dir / "login").exists()
+    assert "Opening browser" not in capfd.readouterr().out
+    monkeypatch.setenv("SLOW", "1")           # a second click while the first still waits for the browser
+    claude_setup.claude_sign_in(None)
+    first = claude_setup._sign_in
+    claude_setup.claude_sign_in(None)
+    assert first.wait(timeout=10) != 0        # ended, so only one waits for the browser
+    claude_setup._sign_in.kill()
 
 
 @posix

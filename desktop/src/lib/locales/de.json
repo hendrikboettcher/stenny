@@ -255,7 +255,7 @@
   "settings.ai.cc.missing.after": "Sobald es installiert ist, meldest du dich hier an.",
   "settings.ai.cc.signedOut": "Claude Code ist installiert, aber nicht mit deinem Claude-Konto angemeldet.",
   "settings.ai.cc.signIn": "Anmelden …",
-  "settings.ai.cc.signingIn": "Schließ die Anmeldung im Terminalfenster und in deinem Browser ab. Wenn du zurückkommst, prüft Stenny erneut.",
+  "settings.ai.cc.signingIn": "Schließ die Anmeldung in deinem Browser ab. Wenn du zurückkommst, prüft Stenny erneut.",
   "settings.ai.cc.unknown": "Stenny konnte Claude Code nicht prüfen.",
   "settings.ai.cc.ready": "Verbunden als {account}",
   "settings.ai.cc.readyPlain": "Verbunden",

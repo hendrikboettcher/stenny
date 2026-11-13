@@ -12,10 +12,10 @@ The app shows the states; the words for them are the app's (desktop/src/lib/loca
 import hashlib
 import json
 import os
-import shlex
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -117,24 +117,34 @@ def remove_api_key(cfg) -> dict:
     return ai_status(cfg)
 
 
+_sign_in: subprocess.Popen | None = None  # the running `claude auth login`, if any
+SIGN_IN_FOR = 15 * 60                      # then it's given up on (the user can click Sign in… again)
+
+
 def claude_sign_in(cfg) -> dict:
-    """Opens a terminal window with `claude auth login`: the browser opens, the user signs in, and the window
-    says when to come back. Settings checks again when its window gets the focus back."""
+    """Runs `claude auth login` out of sight (no terminal window): it opens the browser, the user signs in and
+    clicks Authorize, and the browser hands the login back to it on localhost. Settings checks again when its
+    window gets the focus back. A second click starts over; one left unfinished is ended after SIGN_IN_FOR."""
+    global _sign_in
     exe = find_claude()
     if not exe:
         raise SetupError(tr("Claude Code isn't installed yet."))
-    if sys.platform == "win32":
-        subprocess.Popen(["cmd", "/k", exe, "auth", "login"], creationflags=subprocess.CREATE_NEW_CONSOLE,
-                         env=claude_env(exe))
-        return {"opened": True}
-    script = Path(tempfile.gettempdir()) / "Stenny - Claude sign-in.command"
-    script.write_text("#!/bin/zsh\nclear\n"
-                      f"echo {shlex.quote(tr('Sign in to Claude Code for Stenny. Your browser opens in a moment.'))}\n"
-                      f"echo\n{shlex.quote(exe)} auth login\necho\n"
-                      f"echo {shlex.quote(tr('Done. You can close this window and go back to Stenny.'))}\n",
-                      encoding="utf-8")
-    script.chmod(0o755)
-    subprocess.run(["open", str(script)], check=False, timeout=10)
+    if _sign_in and _sign_in.poll() is None:
+        _sign_in.kill()
+    log = Path(tempfile.gettempdir()) / "stenny-claude-sign-in.log"  # what it printed, for troubleshooting
+    with open(log, "wb") as out:   # never inherit stdout: the app server's stdout carries its replies
+        _sign_in = proc = subprocess.Popen(
+            [exe, "auth", "login"], stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT,
+            cwd=tempfile.gettempdir(), env=claude_env(exe),
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+
+    def end_later():
+        try:
+            proc.wait(timeout=SIGN_IN_FOR)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+    threading.Thread(target=end_later, daemon=True, name="claude-sign-in").start()
     return {"opened": True}
 
 
