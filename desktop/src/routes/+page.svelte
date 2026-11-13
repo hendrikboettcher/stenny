@@ -124,7 +124,8 @@
     try {
       next = await library();
     } catch (e) {
-      if (mine === reloads) failed = String(e);
+      // a newer reload may still be waiting, but if nothing has loaded yet the window says why, not "Loading …"
+      if (mine === reloads || !data) failed = String(e);
       return;
     }
     if (mine !== reloads) return;

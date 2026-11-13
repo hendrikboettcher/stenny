@@ -440,12 +440,20 @@ def _answer(line: str) -> dict:
     return handle(cfg, request)
 
 
-def serve(stdin=sys.stdin, stdout=sys.stdout) -> None:
+def serve(stdin=None, stdout=None) -> None:
     """Reads requests until stdin closes (the app quit), each in its own thread: a slow one (the microphone
     list, a share copy) mustn't hold up the recording's status. Replies carry their request's id, so their order
     doesn't matter. The config is read again for every request, so a course added in the config shows up
     without restarting. Anything else printed goes to stderr, so stdout carries only replies.
-    First it moves an older install into today's places, or starts a config if there is none (migrate.on_start)."""
+    First it moves an older install into today's places, or starts a config if there is none (migrate.on_start).
+    The pipes are UTF-8 on every system: on Windows Python would use the ANSI code page (cp1252) for them, and the
+    app reads UTF-8, so the first "ü" or "…" in a reply stopped every answer (the window stayed on "Loading …")."""
+    if stdin is None:
+        sys.stdin.reconfigure(encoding="utf-8", errors="replace")
+        stdin = sys.stdin
+    if stdout is None:
+        sys.stdout.reconfigure(encoding="utf-8")
+        stdout = sys.stdout
     lock = threading.Lock()
     sys.stdout = sys.stderr
     from .migrate import on_start
