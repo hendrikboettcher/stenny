@@ -15,6 +15,8 @@ mod menubar;
 #[cfg(windows)]
 mod windows_agent;
 #[cfg(windows)]
+mod windows_drag;
+#[cfg(windows)]
 mod windows_pdf;
 #[cfg(windows)]
 mod windows_share;
@@ -140,6 +142,29 @@ async fn lecturer_agreed(app: AppHandle, purpose: String, course: String, event:
 #[tauri::command]
 fn show_feedback(app: AppHandle) {
     show_window(&app, "feedback");
+}
+
+/// Settings ▸ Claude and the setup card on Windows: Stenny.mcpb dragged out of the window into Claude's window,
+/// which installs it (windows_drag.rs). Asked for on the page's `dragstart`, with the mouse button still down; returns
+/// once the file is dropped. A Mac has no need: Claude there shows its Install window for the opened file.
+#[tauri::command]
+async fn drag_file(window: tauri::WebviewWindow, path: String) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let hwnd = window.hwnd().map_err(|e| e.to_string())?.0 as isize;
+        let (tx, rx) = std::sync::mpsc::channel();
+        window
+            .run_on_main_thread(move || {
+                let _ = tx.send(windows_drag::drag_file(hwnd, &path));
+            })
+            .map_err(|e| e.to_string())?;
+        rx.recv().map_err(|e| e.to_string())?
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (window, path);
+        Err("Dragging a file out of Stenny is only there on Windows.".into())
+    }
 }
 
 /// Share Stenny in the library window's footer: text to the clipboard (pbcopy; the web view's own clipboard
@@ -593,7 +618,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(Arc::new(Engine::default()))
         .manage(MenuBar::default())
-        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, share_files, copy_text, check_updates, reload_window, microphone_pref, set_microphone_pref, login_item, apply_shortcut, pause_shortcut_label, ui_language, set_ui_language, courses_changed, start_recording, recording_command, recording_status, calendar_status, calendar_check, calendar_allow, calendar_changed, open_system_settings])
+        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, share_files, drag_file, copy_text, check_updates, reload_window, microphone_pref, set_microphone_pref, login_item, apply_shortcut, pause_shortcut_label, ui_language, set_ui_language, courses_changed, start_recording, recording_command, recording_status, calendar_status, calendar_check, calendar_allow, calendar_changed, open_system_settings])
         .setup(move |app| {
             if !library_only {
                 // A Dock app with the menu bar icon next to it. Info.plist keeps LSUIElement for the helpers in the

@@ -4,11 +4,13 @@
   Anthropic API key that Anthropic accepts, or Off. Nothing here spends tokens: Claude Code is asked with
   `claude auth status`, a key is checked by listing the models (free).
 - the API key: saved to the system keychain once Anthropic accepts it (keychain.py), never to config.toml.
-- the connector: whether Claude Desktop has it, and adding it there: Stenny.mcpb opened with Claude, which shows its
-  own Install dialog (Claude removes its extensions itself), on a Mac and on Windows. Windows may not know that
-  Claude opens a .mcpb, so Stenny then hands the file to Claude's launcher itself; the app says where Claude installs
-  it by hand if nothing shows up. Stenny 0.5.7 wrote itself into Claude's claude_desktop_config.json on Windows
-  instead, which Claude rewrites when it quits: such an entry is still recognised, and taken out again. Adding it to
+- the connector: whether Claude Desktop has it, and adding it there. On a Mac Stenny.mcpb is opened with Claude,
+  which shows its own Install dialog (Claude removes its extensions itself). On Windows Claude can't be handed the
+  file while it runs: Windows has no "open this file" message for a running app (macOS's open-file), and a second
+  start of Claude only brings its window up and drops the file (only a cold start reads it). So the app has the user
+  drag Stenny into Claude's window, or paste its path into Claude's Install extension dialog
+  (desktop/src/lib/ClaudeDrag.svelte). Stenny 0.5.7 wrote itself into Claude's claude_desktop_config.json on Windows
+  instead, which Claude rewrites when it quits: such an entry is still recognised, and can be taken out. Adding it to
   Claude Code (`claude mcp add`) and removing it from Claude Code again.
 
 The app shows the states; the words for them are the app's (desktop/src/lib/locales)."""
@@ -321,54 +323,17 @@ def connector_status(cfg) -> dict:
     }
 
 
-def _windows_opens_mcpb() -> bool:
-    """Windows knows a program for .mcpb files (Claude registers it, in some versions). Without one, opening the file
-    shows Windows' "How do you want to open this file?" list, which may not even have Claude in it."""
-    import winreg
-    for key in (r".mcpb", r".mcpb\OpenWithProgids"):
-        try:
-            with winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, key) as k:
-                if key.endswith("Progids"):
-                    return winreg.QueryInfoKey(k)[1] > 0
-                if winreg.QueryValue(k, None):
-                    return True
-        except OSError:
-            continue
-    return False
-
-
-def _open_with_claude_windows(file: Path) -> None:
-    """Stenny.mcpb to Claude: as a double-click does when Windows knows .mcpb; else straight to Claude's launcher,
-    which hands it on to the app as a double-click would; an app package (Store) Claude only gets opened, and the
-    app says where Claude installs it by hand."""
-    if _windows_opens_mcpb():
-        os.startfile(file)  # noqa: S606
-        return
-    exe = claude_desktop_exe()
-    if exe:
-        subprocess.Popen([str(exe), str(file)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,  # noqa: S603
-                         stderr=subprocess.DEVNULL, creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
-        return
-    os.startfile("claude://")  # noqa: S606
-
-
 def install_connector(cfg) -> dict:
-    """Opens Stenny.mcpb with Claude Desktop, which asks the user to Install it ({"opened": True}), on a Mac and on
-    Windows. A Stenny 0.5.7 entry in Claude's settings file goes first, so Claude doesn't get Stenny twice."""
+    """Mac: opens Stenny.mcpb with Claude Desktop, which asks the user to Install it ({"opened": True}). Windows has
+    no such way in (see the top): the app has the user drag Stenny over instead."""
+    if sys.platform == "win32":
+        raise SetupError(tr("On Windows, drag Stenny into Claude's window."))
     file = connector_file()
     if not file:
         raise SetupError(tr("Stenny.mcpb isn't in Stenny's folder. Download Stenny again, or build it with "
                             "connector/build.sh."))
     if not claude_desktop_installed():
         raise SetupError(tr("The Claude desktop app isn't installed. Get it at claude.ai/download, then try again."))
-    if sys.platform == "win32":
-        if in_desktop_config():
-            remove_from_desktop_config(cfg)
-        try:
-            _open_with_claude_windows(file)
-        except OSError as e:
-            raise SetupError(tr("Claude couldn't open the connector: {error}", error=e)) from None
-        return {"opened": True}
     p = subprocess.run(["open", "-a", "Claude", str(file)], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15)
     if p.returncode != 0:
         raise SetupError(tr("Claude couldn't open the connector: {error}", error=p.stderr.strip()))

@@ -1013,7 +1013,7 @@
 
   /* Sidebar: like the docs' page list, the open course in soft blue */
   .sidebar { display: flex; flex-direction: column; min-height: 0; }
-  .brand { display: flex; align-items: center; gap: 9px; padding: 4px 22px 22px; color: var(--accent); }
+  .brand { display: flex; align-items: center; gap: 9px; padding: 4px 22px 22px; color: var(--ink); }
   .brand span { font-size: 22px; font-weight: 500; letter-spacing: -.04em; color: var(--ink); }
   nav { overflow-y: auto; padding: 0 12px 20px; flex: 1; scrollbar-width: thin; }
   footer { padding: 10px 12px 14px; border-top: 1px solid var(--hairline); margin: 0 12px; display: flex; flex-direction: column; }

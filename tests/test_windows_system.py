@@ -321,39 +321,6 @@ def test_claude_desktop_as_an_app_package(claude_windows, monkeypatch):
     monkeypatch.setattr(os, "startfile", refuse, raising=False)
     with pytest.raises(claude_setup.SetupError, match="Couldn't open Claude: No application"):
         claude_setup.open_claude(None)
-    # no app opens a .mcpb on this PC (the error users saw), and an app package's Claude has no launcher to hand the
-    # file to: Claude is opened, and Stenny's window says where Claude installs it by hand
-    monkeypatch.setattr(os, "startfile", lambda target: claude_windows.opened.append(str(target)), raising=False)
-    claude_windows.opened.clear()
-    monkeypatch.setattr(claude_setup, "_windows_opens_mcpb", lambda: False)
-    monkeypatch.setattr(claude_setup, "find_claude", lambda: None)
-    file = claude_windows.local / "Stenny/Stenny.mcpb"
-    file.parent.mkdir(parents=True)
-    file.write_bytes(b"zip")
-    monkeypatch.setattr(claude_setup, "connector_file", lambda: file)
-    assert claude_setup.install_connector(None) == {"opened": True}
-    assert claude_windows.opened == ["claude://"]
-
-
-def test_stenny_mcpb_goes_to_claude_on_windows(claude_windows, monkeypatch):
-    """Windows knows .mcpb: opened as a double-click would. It doesn't: handed to Claude's launcher."""
-    exe = claude_windows.local / "AnthropicClaude/claude.exe"
-    exe.parent.mkdir(parents=True)
-    exe.write_bytes(b"")
-    file = claude_windows.local / "Stenny/Stenny.mcpb"
-    file.parent.mkdir(parents=True)
-    file.write_bytes(b"zip")
-    monkeypatch.setattr(claude_setup, "connector_file", lambda: file)
-    started = []
-    monkeypatch.setattr(claude_setup.subprocess, "Popen", lambda args, **kw: started.append(args))
-
-    monkeypatch.setattr(claude_setup, "_windows_opens_mcpb", lambda: True)
-    assert claude_setup.install_connector(None) == {"opened": True}
-    assert claude_windows.opened == [str(file)] and started == []
-
-    monkeypatch.setattr(claude_setup, "_windows_opens_mcpb", lambda: False)
-    claude_setup.install_connector(None)
-    assert started == [[str(exe), str(file)]] and claude_windows.opened == [str(file)]
 
 
 def test_feedback_names_the_pc(win, monkeypatch):

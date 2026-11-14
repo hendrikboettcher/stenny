@@ -228,6 +228,8 @@ DE = {
         "Die Claude-Desktop-App ist nicht installiert. Lade sie unter claude.ai/download herunter und versuch es dann "
         "noch mal.",
     "Claude couldn't open the connector: {error}": "Claude konnte den Connector nicht öffnen: {error}",
+    "On Windows, drag Stenny into Claude's window.":
+        "Unter Windows ziehst du Stenny in Claudes Fenster.",
     "Claude's settings couldn't be read: {error}": "Claudes Einstellungen ließen sich nicht lesen: {error}",
     "Claude's settings file isn't valid JSON, so Stenny left it alone. Fix or delete it, then try again: {file}":
         "Claudes Einstellungsdatei ist kein gültiges JSON, darum hat Stenny sie nicht angefasst. Korrigiere oder "
