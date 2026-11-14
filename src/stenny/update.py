@@ -14,8 +14,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from importlib.metadata import version as package_version
 from pathlib import Path
+
+from .version import version
 
 REPO = "hendrikboettcher/stenny"
 LATEST_API = f"https://api.github.com/repos/{REPO}/releases/latest"
@@ -29,7 +30,7 @@ class UpdateError(Exception):
 
 
 def current_version() -> str:
-    return package_version("stenny")
+    return version()
 
 
 def parse(version: str) -> tuple[int, ...]:
@@ -53,9 +54,20 @@ def _curl(*args: str) -> subprocess.CompletedProcess:
     return p
 
 
-def check() -> dict:
+def older(engine: str, app: str | None) -> str:
+    """What Stenny is at: the older of the engine and the app. They are updated separately (git pull doesn't rebuild
+    the app), and an update replaces both, so one of them being behind is reason enough to offer it."""
+    try:
+        return min(engine, app, key=parse) if app else engine
+    except ValueError:  # not a version (a dev build's own string): the engine's is the one to go by
+        return engine
+
+
+def check(app_version: str | None = None) -> dict:
+    """{"current", "latest", "update_available"}; "current" is the older of the engine and the app (the app passes
+    its own version), shown as it is: users don't need to know Stenny has two parts."""
     latest = json.loads(_curl(LATEST_API).stdout)["tag_name"].lstrip("v")
-    current = current_version()
+    current = older(current_version(), app_version)
     return {"current": current, "latest": latest, "update_available": parse(latest) > parse(current)}
 
 

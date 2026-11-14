@@ -11,13 +11,13 @@ import re
 import subprocess
 import sys
 import threading
-from importlib.metadata import version as package_version
 from pathlib import Path
 
 from . import app_live, i18n, settings, share
 from . import config as config_mod
 from .config import ConfigError
 from .i18n import tr
+from .version import version
 from .textproc import fmt_hms
 
 
@@ -399,7 +399,7 @@ def always_spell(cfg, params: dict) -> dict:
 
 
 def ping(cfg, params: dict) -> dict:
-    return {"version": package_version("stenny")}
+    return {"version": version()}
 
 
 METHODS = {"ping": ping, "library": library, "lecture": lecture, "make_copy": make_copy, "finish_now": finish_now,

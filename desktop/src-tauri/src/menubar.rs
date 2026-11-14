@@ -822,8 +822,12 @@ fn on_menu(app: &AppHandle, id: &str) {
 /// runs the same line that installs Stenny (scripts/install.sh, install.ps1) in a Terminal / PowerShell window of its
 /// own: it updates the engine and the app together (they must match), quits Stenny and opens it again, and its
 /// progress and any error stay readable there. Stenny can't do that from inside: it is what gets replaced.
+///
+/// The app passes its own version: app and engine are updated separately, so the dialog's "You have …" is the older
+/// of the two (update.check), and an app behind its engine is offered the update too.
 pub fn check_updates(app: &AppHandle) {
-    let result = engine(app).call("check_update", json!({}));
+    let app_version = app.package_info().version.to_string();
+    let result = engine(app).call("check_update", json!({ "app_version": app_version }));
     let dialog = app.dialog();
     match result {
         Err(e) => {

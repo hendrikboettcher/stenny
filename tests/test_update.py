@@ -95,3 +95,31 @@ def test_on_windows_the_tools_are_next_to_stenny_exe(tmp_path, monkeypatch):
     own.parent.mkdir(parents=True)
     own.write_text("", encoding="utf-8")
     assert paths.tool("ffmpeg") == str(own)  # the user's own install first
+
+
+def test_the_version_is_the_one_in_pyproject_toml():
+    """Not the editable install's metadata, which keeps the version it was installed with (a git pull made the update
+    check say "You have 0.4.0" on a 0.5.9 engine)."""
+    import tomllib
+
+    from stenny.version import PYPROJECT, version
+    assert version() == tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))["project"]["version"]
+
+
+def test_current_is_the_older_of_engine_and_app():
+    """App and engine are updated separately; the dialog says "You have <older>", without naming which part."""
+    assert update.older("0.5.9", "0.5.1") == "0.5.1"
+    assert update.older("0.5.1", "0.5.9") == "0.5.1"
+    assert update.older("0.5.10", "0.5.9") == "0.5.9"
+    assert update.older("0.5.9", None) == "0.5.9"      # `stenny update --check`: no app asking
+    assert update.older("0.5.9", "dev") == "0.5.9"     # not a version: the engine's counts
+
+
+def test_an_older_app_is_offered_the_update(monkeypatch):
+    class Done:
+        stdout = '{"tag_name": "v0.5.9"}'
+    monkeypatch.setattr(update, "_curl", lambda *a: Done())
+    monkeypatch.setattr(update, "current_version", lambda: "0.5.9")
+    assert update.check("0.5.1") == {"current": "0.5.1", "latest": "0.5.9", "update_available": True}
+    assert update.check("0.5.9")["update_available"] is False
+    assert update.check()["current"] == "0.5.9"

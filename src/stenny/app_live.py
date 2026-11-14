@@ -185,7 +185,7 @@ def system_details() -> str:
 def send_feedback(cfg, params: dict) -> dict:
     """Posts the message (and, if the user ticked the box, Stenny's version, the computer's model and the last lines
     of Stenny's log) to stenny.eu, like the Swift app did."""
-    from importlib.metadata import version
+    from .version import version
 
     message = (params.get("message") or "").strip()
     if not message:
@@ -196,7 +196,7 @@ def send_feedback(cfg, params: dict) -> dict:
             log = (paths.LOGS_DIR / "stenny.log").read_text(encoding="utf-8").splitlines()[-40:]
         except OSError:
             log = []
-        body.update(version=version("stenny"), system=system_details(), log="\n".join(log))
+        body.update(version=version(), system=system_details(), log="\n".join(log))
     # curl, not urllib: uv's Python doesn't reliably find macOS's certificates (see update.py); Windows 10 and 11
     # come with a curl.exe of their own
     curl = "curl.exe" if sys.platform == "win32" else "/usr/bin/curl"
@@ -218,10 +218,11 @@ def send_feedback(cfg, params: dict) -> dict:
 
 
 def check_update(cfg, params: dict) -> dict:
-    """{"current", "latest", "update_available"} from GitHub's releases (update.check)."""
+    """{"current", "latest", "update_available"} from GitHub's releases (update.check); params: the app's own
+    "app_version", so an app older than the engine is offered the update too."""
     from . import update
     try:
-        return update.check()
+        return update.check(params.get("app_version"))
     except Exception as e:  # noqa: BLE001 — no internet, GitHub down
         raise LiveError(tr("Couldn't check for updates. Check your internet connection and try again.")) from e
 
