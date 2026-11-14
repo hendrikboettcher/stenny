@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
 
@@ -24,6 +24,8 @@ struct Running {
 pub struct Engine {
     running: Mutex<Option<Running>>,
     next_id: AtomicU64,
+    /// An update is replacing the engine's files (src/updater.rs): no new engine until it's done or failed.
+    closed: AtomicBool,
 }
 
 /// The engine inside this app (#92, desktop/scripts/bundle-engine.sh): its own Python, Contents/Resources/engine on
@@ -136,6 +138,9 @@ impl Engine {
         {
             let mut running = self.running.lock().unwrap();
             let alive = matches!(running.as_mut().map(|r| r.child.try_wait()), Some(Ok(None)));
+            if !alive && self.closed.load(Ordering::SeqCst) {
+                return Err(tr!("updates.installing"));
+            }
             if !alive {
                 *running = Some(start()?);
             }
@@ -154,6 +159,23 @@ impl Engine {
             Some(message) => Err(message.to_string()),
             None => Ok(reply.get("result").cloned().unwrap_or(Value::Null)),
         }
+    }
+}
+
+impl Engine {
+    /// Ends the engine process now and starts no new one (the updater, before the files it runs from are
+    /// replaced): requests get "installing the update" until `reopen`.
+    pub fn stop(&self) {
+        self.closed.store(true, Ordering::SeqCst);
+        if let Some(mut r) = self.running.lock().unwrap().take() {
+            let _ = r.child.kill();
+            let _ = r.child.wait();
+        }
+    }
+
+    /// The update didn't install: the next request starts the engine again.
+    pub fn reopen(&self) {
+        self.closed.store(false, Ordering::SeqCst);
     }
 }
 

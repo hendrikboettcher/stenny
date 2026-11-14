@@ -818,7 +818,8 @@ fn on_menu(app: &AppHandle, id: &str) {
     });
 }
 
-/// "Check for Updates…" in the library window's footer: whether a newer Stenny is out, and if so "Update Now", which
+/// Check for Updates… the way before Tauri's updater (src/updater.rs falls back to it while releases without a
+/// `latest.json` are the newest, or the updater can't install): whether a newer Stenny is out, and if so "Update Now", which
 /// runs the same line that installs Stenny (scripts/install.sh, install.ps1) in a Terminal / PowerShell window of its
 /// own: it updates the engine and the app together (they must match), quits Stenny and opens it again, and its
 /// progress and any error stay readable there. Stenny can't do that from inside: it is what gets replaced.
@@ -867,7 +868,7 @@ const RELEASES: &str = "https://github.com/hendrikboettcher/stenny/releases/late
 /// The install line in a window of its own (README: Install). On a Mac a .command file, which Terminal opens and runs
 /// without asking for any permission; on Windows a PowerShell window that stays open at the end (-NoExit).
 #[cfg(target_os = "macos")]
-fn open_installer() -> Result<(), String> {
+pub(crate) fn open_installer() -> Result<(), String> {
     use std::os::unix::fs::PermissionsExt;
     let file = std::env::temp_dir().join("Update Stenny.command");
     let script = format!("#!/bin/zsh\ncurl -fsSL {RELEASES}/download/install.sh | zsh\n");
@@ -882,7 +883,7 @@ fn open_installer() -> Result<(), String> {
 }
 
 #[cfg(windows)]
-fn open_installer() -> Result<(), String> {
+pub(crate) fn open_installer() -> Result<(), String> {
     use std::os::windows::process::CommandExt;
     const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
     std::process::Command::new("powershell.exe")
@@ -895,7 +896,7 @@ fn open_installer() -> Result<(), String> {
 }
 
 #[cfg(not(any(target_os = "macos", windows)))]
-fn open_installer() -> Result<(), String> {
+pub(crate) fn open_installer() -> Result<(), String> {
     Err("no installer for this system".into())
 }
 
