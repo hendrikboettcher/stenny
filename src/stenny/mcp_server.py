@@ -5,7 +5,6 @@ Filesystem connector. The instructions replace the per-course Claude project tex
 so a plain chat needs no project. The tools themselves are in connector.py.
 """
 
-from importlib.metadata import version
 
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
@@ -14,6 +13,7 @@ from mcp.types import ToolAnnotations
 from . import connector
 from . import config as config_mod
 from .config import ConfigError
+from .version import version
 
 INSTRUCTIONS = """Stenny records the student's university lectures (and some talks) on their computer and \
 transcribes them locally with Whisper. These tools read those transcripts, their AI summaries and each \
@@ -74,7 +74,7 @@ def _run(fn, *args, **kwargs) -> str:
 
 
 def build() -> MCPServer:
-    server = MCPServer("Stenny", title="Stenny lectures", version=version("stenny"), instructions=INSTRUCTIONS,
+    server = MCPServer("Stenny", title="Stenny lectures", version=version(), instructions=INSTRUCTIONS,
                        website_url="https://stenny.eu")
 
     @server.tool(annotations=READ, structured_output=False)
