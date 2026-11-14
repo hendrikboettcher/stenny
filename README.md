@@ -69,7 +69,7 @@ On Windows, in PowerShell:
 irm https://github.com/hendrikboettcher/stenny/releases/latest/download/uninstall.ps1 | iex
 ```
 
-It quits Stenny and removes the app, the engine and its code, the background job, the connector in Claude Code, the saved API key and calendar links, the logs, the cache and the Whisper model. Stenny's settings and the recordings' audio go to the Trash (Windows: Recycle Bin), so you can still bring them back. **Your transcripts stay** in your Stenny folder, and uv stays too, in case other programs use it. In Claude Desktop, remove the extension yourself: *Settings ▸ Extensions ▸ Stenny*. The scripts are [scripts/uninstall.sh](scripts/uninstall.sh) and [scripts/uninstall.ps1](scripts/uninstall.ps1); `stenny uninstall` alone shows what the engine part would remove.
+It quits Stenny and removes the app, the engine and its code, the background job, the connector in Claude Code (and on Windows in Claude Desktop), the saved API key and calendar links, the logs, the cache and the Whisper model. Stenny's settings and the recordings' audio go to the Trash (Windows: Recycle Bin), so you can still bring them back. **Your transcripts stay** in your Stenny folder, and uv stays too, in case other programs use it. In Claude Desktop on a Mac, remove the extension yourself: *Settings ▸ Extensions ▸ Stenny* (on Windows the uninstall takes Stenny out of Claude's settings itself). The scripts are [scripts/uninstall.sh](scripts/uninstall.sh) and [scripts/uninstall.ps1](scripts/uninstall.ps1); `stenny uninstall` alone shows what the engine part would remove.
 
 ### By hand
 
@@ -112,7 +112,7 @@ See `config.example.toml` for every setting.
 
 ## Daily use
 
-**Start:** click Stenny's stick figure in the menu bar ▸ *Start Lecture* ▸ your course. If your calendar has the lecture, Stenny offers it at the top of the menu from 10 minutes before, and a notification asks *Record this lecture?* with a **Start Recording** button. It never starts by itself. *Settings… ▸ Calendar* shows which calendars Stenny sees and how many of their events match your courses. If your lectures are in Google Calendar or Outlook in the browser, or in your university's timetable, paste that calendar's iCal link there (*Add a calendar link…*); on Windows that is the way to connect a calendar. The link is kept in the Keychain (Windows: Credential Manager), and Stenny only reads titles and times. Stenny's window starts it too: *Record Lecture 6* (the next number) at the top of a course's lectures, and the record button next to *Talks & events* for a talk.
+**Start:** click Stenny's stick figure in the menu bar ▸ *Start Lecture* ▸ your course. If your calendar has the lecture, Stenny offers it at the top of the menu from 10 minutes before, and a notification asks *Record this lecture?* with a **Start Recording** button. It never starts by itself. *Settings… ▸ Calendar* shows which calendars Stenny sees and how many of their events match your courses. If your lectures are in Google Calendar or Outlook in the browser, or in your university's timetable, paste that calendar's iCal link there (*Add a calendar link…*); on Windows that is the way to connect a calendar. The link is kept in the Keychain (Windows: Credential Manager), and Stenny only reads titles and times. Stenny's window starts it too: *Record Lecture 6* (the next number) at the top of a course's lectures, and, once you've recorded a talk, the record button next to *Talks & events* for another one. The first talk starts from the menu bar's *Record a Talk or Event…*. Either way Stenny's window asks for the talk's title and language.
 
 **While recording:** the stick figure turns into a dot with the time; click it for the menu. With *Transcribe while recording* on (Settings ▸ Recording, the default), the text so far appears in Stenny's window as the lecture goes on, plugged in or on battery. Below 20 % battery it pauses and says so; the recording goes on, and the final transcript has everything. The open menu shows a level meter: green is fine, orange means the microphone is too far away.
 
@@ -185,7 +185,13 @@ offers a *Study a course* prompt.
 To add it, open Stenny's *Settings… ▸ Use with Claude* and click **Install…** (it also shows whether Claude has it,
 and adds it to Claude Code with one more click). Or double-click `Stenny.mcpb` in Stenny's folder (it comes with the
 download; `connector/build.sh` makes it from the code), or drag it onto Claude's Settings window, and click
-**Install**. Setup does this for you. It shows up under Settings ▸ Customize ▸ Connectors. The extension starts the `stenny` installed on
+**Install**. Setup does this for you. It shows up under Settings ▸ Customize ▸ Connectors.
+
+On Windows the button is **Add to Claude**: nothing there opens a `.mcpb` with Claude reliably, so Stenny writes
+itself into Claude's own settings file (`claude_desktop_config.json`, `mcpServers` ▸ `stenny`; `stenny mcp
+--add-to-claude` does the same) and leaves everything else in it as it was. Quit Claude (right-click its icon at the
+right of the taskbar ▸ Quit) and open it again; Stenny then shows up under Settings ▸ Developer. *Remove…* takes it
+out again, and so does uninstalling Stenny. The extension starts the `stenny` installed on
 your computer, so it always reads the same lectures as the app. It only works in the desktop app on this computer:
 Claude on the web and on your phone can't reach it.
 

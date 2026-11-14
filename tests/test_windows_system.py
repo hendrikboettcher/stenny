@@ -1,3 +1,4 @@
+import json
 """The engine's system calls on Windows (#2): priority, AC power, keeping awake, memory, the queue in Task Scheduler,
 opening Claude. Most tests pretend to be on Windows with a fake kernel32, so they run on a Mac too; the ones marked
 `windows` call the real Windows functions (CI's windows-latest)."""
@@ -320,11 +321,15 @@ def test_claude_desktop_as_an_app_package(claude_windows, monkeypatch):
     monkeypatch.setattr(os, "startfile", refuse, raising=False)
     with pytest.raises(claude_setup.SetupError, match="Couldn't open Claude: No application"):
         claude_setup.open_claude(None)
-    connector = claude_windows.local / "Stenny.mcpb"
-    connector.write_bytes(b"zip")
-    monkeypatch.setattr(claude_setup, "connector_file", lambda: connector)
-    with pytest.raises(claude_setup.SetupError, match="Claude couldn't open the connector: No application"):
-        claude_setup.install_connector(None)
+    # no app opens a .mcpb on this PC (the error users saw): the connector goes into Claude's settings instead, in
+    # both folders a Claude could read them from, and nothing is opened
+    monkeypatch.setattr(claude_setup, "find_claude", lambda: None)
+    monkeypatch.setattr(claude_setup, "stenny_command", lambda: ["C:/stenny.exe"])
+    status = claude_setup.install_connector(None)
+    assert status["installed"] and status["via"] == "config"
+    for folder in (package / "LocalCache/Roaming/Claude", claude_windows.roaming / "Claude"):
+        config = json.loads((folder / "claude_desktop_config.json").read_text(encoding="utf-8"))
+        assert config["mcpServers"]["stenny"] == {"command": "C:/stenny.exe", "args": ["mcp"]}
 
 
 def test_feedback_names_the_pc(win, monkeypatch):

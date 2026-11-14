@@ -796,7 +796,7 @@ fn on_menu(app: &AppHandle, id: &str) {
         "toggle" => send(&app, "toggle"),
         "stop" => send(&app, "stop"),
         "cancel" => cancel_recording(&app),
-        "talk" => crate::show_window(&app, "talk"),
+        "talk" => crate::show_talk(&app),
         "open" => crate::show_window(&app, "library"),
         "open-text" => crate::show_recording(&app),
         "transcript" => open_transcript(&app),

@@ -74,7 +74,9 @@ The library window shows what's running in an activity bar across the list and d
 recording or paused with the menu bar's clock, the course · lecture and whether live text is on, Show (selects it),
 Pause/Resume and Stop; then "Making the final transcript" (the live process's final pass, or one from the queue);
 the calendar's lecture with a Record button while nothing runs. The recording course gets a red dot in the sidebar. A
-course's list starts with "Record Lecture n", Talks & events with a record button (the "Record a talk" window). The
+course's list starts with "Record Lecture n", Talks & events (shown once there is a talk) with a record button: a sheet in the window asks for the talk's title and
+language, as the menu bar's Record a Talk or Event… does (it brings the library up, "record-talk"). No window of its
+own: on Windows a second window made from the event loop froze Stenny (lib.rs, `present`). The
 window never records by itself: it goes through the menu bar's own code (`start_recording`, `recording_command`,
 `recording_status` in src-tauri/src/lib.rs → menubar.rs `start_with`, `command`, `window_status`), so the lecturer's
 consent, the microphone and the language work as from the menu; the status is the menu bar's last poll, no extra work.

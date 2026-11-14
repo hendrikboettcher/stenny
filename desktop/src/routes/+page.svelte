@@ -13,7 +13,7 @@
   import {
     library, lecture, makeCopy, makePdf, finishNow, openTranscript, reveal, shareFiles, lecturerAgreed,
     renameLecture, deleteLecture, renameCourse, addCourse, removeCourse, deleteCourse, copyText,
-    recordingStatus, startRecording, recordingCommand, showTalkWindow,
+    recordingStatus, startRecording, recordingCommand,
     type Entry, type Library, type LiveStatus,
   } from "$lib/engine";
   import { t, tn, locale, languageName, trashName, revealLabel, type Key } from "$lib/i18n.svelte";
@@ -63,7 +63,8 @@
   type Ask =
     | { kind: "add" } | { kind: "rename-group"; group: Group } | { kind: "remove-course"; group: Group }
     | { kind: "delete-group"; group: Group }
-    | { kind: "rename-lecture"; entry: Entry } | { kind: "delete-lecture"; entry: Entry };
+    | { kind: "rename-lecture"; entry: Entry } | { kind: "delete-lecture"; entry: Entry }
+    | { kind: "talk" };
   let menu = $state<Menu | null>(null);
   let ask = $state<Ask | null>(null);
   let askBusy = $state(false);
@@ -72,6 +73,14 @@
   let alias = $state("");
   let language = $state("en");
   const LANGUAGES = ["en", "de", "fr", "mixed", "auto"];
+  // Record a talk or event: a sheet in this window (never a window of its own), from Talks & events' record button or
+  // the menu bar's item ("record-talk"); the language last picked is picked again
+  const TALK_LANGUAGES = ["mixed", "en", "de", "fr"];
+  const rememberedTalkLanguage = (() => { try { return localStorage.getItem("talkLanguage"); } catch { return null; } })();
+  let talkLanguage = $state(TALK_LANGUAGES.includes(rememberedTalkLanguage ?? "") ? rememberedTalkLanguage! : "mixed");
+  function recordTalk() {
+    if (canRecord) open({ kind: "talk" });
+  }
 
   const id = (e: Entry) => `${e.kind}/${e.course}/${e.folder}`;
   const same = (a: Group | null, b: Group | null) => !!a && !!b && a.course === b.course && a.event === b.event;
@@ -382,6 +391,8 @@
     const unlisten: (() => void)[] = [];
     if ("__TAURI_INTERNALS__" in window) {
       listen("open-settings", () => openSettings()).then((u) => unlisten.push(u));
+      // the menu bar's Record a Talk or Event… (src-tauri/src/lib.rs, `show_talk`)
+      listen("record-talk", () => recordTalk()).then((u) => unlisten.push(u));
       listen<RecordingEvent>("recording", (e) => recordingChanged(e.payload)).then((u) => unlisten.push(u));
       // shown again from the Dock, Spotlight or the menu bar (src-tauri/src/lib.rs, `present`)
       listen("library-shown", () => reload({ cameBack: true })).then((u) => unlisten.push(u));
@@ -476,6 +487,11 @@
         await deleteCourse(a.group.course, a.group.event);
         if (same(group, a.group)) group = null;
         await reload();
+      } else if (a.kind === "talk") {
+        if (!field.trim()) throw t("talk.needsTitle");
+        try { localStorage.setItem("talkLanguage", talkLanguage); } catch {}
+        await invoke("start_talk", { title: field, language: talkLanguage });
+        follow = true;
       } else if (a.kind === "rename-lecture") {
         await renameLecture(a.entry, field);
         await reload();
@@ -626,20 +642,18 @@
       {#if data && !groups.courses.length}
         <button class="group quiet-add" onclick={() => open({ kind: "add" })}>{t("lib.addFirstCourse")}</button>
       {/if}
-      <!-- talks: recording one opens the small "Record a Talk or Event" window, as the menu's item does -->
-      {#if data && (groups.talks.length || canRecord)}
+      <!-- talks, once there is one (the first is recorded from the menu bar's Record a Talk or Event…); recording
+           another asks for its title here, in this window -->
+      {#if data && groups.talks.length}
         <div class="kicker with-add talks">
           <span>{t("common.talksEvents")}</span>
           {#if canRecord}
-            <button class="add" aria-label={t("lib.recordTalk")} title={t("lib.recordTalk")} onclick={showTalkWindow}>
+            <button class="add" aria-label={t("lib.recordTalk")} title={t("lib.recordTalk")} onclick={recordTalk}>
               <svg viewBox="0 0 16 16" aria-hidden="true"><circle class="ring" cx="8" cy="8" r="5.25" /><circle class="core" cx="8" cy="8" r="2.25" /></svg>
             </button>
           {/if}
         </div>
         {#each groups.talks as g (g.course + g.event)}{@render row(g)}{/each}
-        {#if !groups.talks.length}
-          <button class="group quiet-add" onclick={showTalkWindow}>{t("lib.recordTalk")}</button>
-        {/if}
       {/if}
     </nav>
     <!-- "Finish setting up Stenny", until courses, the AI step, the connector and the calendar work (lib/SetupChecklist.svelte) -->
@@ -732,7 +746,7 @@
     {#if group}
       <!-- start a recording from here, the same way as from the menu bar; only one at a time -->
       {#if canRecord}
-        <button class="record" onclick={() => (group!.event ? showTalkWindow() : record(group!))}>
+        <button class="record" onclick={() => (group!.event ? recordTalk() : record(group!))}>
           <span class="dot" aria-hidden="true"></span>
           {group.event ? t("lib.recordTalk") : t("lib.recordLecture", { n: nextNumber })}
         </button>
@@ -950,6 +964,24 @@
             text={n > 0 ? t("renameLecture.text.number", { n }) : t("renameLecture.text.other")}
             oncancel={() => (ask = null)} onconfirm={answer}>
       <input bind:value={field} aria-label={t("renameLecture.aria")} placeholder={t("renameLecture.placeholder")} autocomplete="off" />
+    </Dialog>
+  {:else if ask.kind === "talk"}
+    <Dialog title={t("talk.title")} confirm={t("talk.start")} busy={askBusy} error={askError} text={t("talk.lead")}
+            oncancel={() => (ask = null)} onconfirm={answer}>
+      <input bind:value={field} oninput={() => (askError = null)} aria-label={t("talk.placeholder")}
+             placeholder={t("talk.placeholder")} autocomplete="off" />
+      <div class="talk-language">
+        <span class="label">{t("common.language")}</span>
+        <div class="segmented" role="radiogroup" aria-label={t("common.language")}>
+          {#each TALK_LANGUAGES as code}
+            <button type="button" role="radio" aria-checked={talkLanguage === code} class:on={talkLanguage === code}
+                    onclick={() => (talkLanguage = code)}>{languageName(code)}</button>
+          {/each}
+        </div>
+      </div>
+      <p class="talk-hint">
+        {talkLanguage === "mixed" ? t("talk.mixed") : t("talk.whole", { language: languageName(talkLanguage) ?? talkLanguage })}
+      </p>
     </Dialog>
   {:else if ask.kind === "delete-lecture"}
     <Dialog title={t("deleteLecture.title", { name: lectureName(ask.entry), trash: trashName() })}
@@ -1169,6 +1201,14 @@
   .menu-note { margin: 0; padding: 7px 10px; color: var(--muted); font-size: 12px; line-height: 1.4; }
   .check { display: flex; align-items: center; gap: 8px; margin-top: 14px; color: var(--muted); }
   .check input { accent-color: var(--accent); margin: 0; }
+  /* Record a talk or event: the language as segmented tabs, as on the website (a sunken track, a white pill) */
+  .talk-language { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+  .talk-language .label { color: var(--ink-2); font-weight: 500; }
+  .segmented { display: inline-flex; background: var(--sunken); border-radius: var(--r-ctl); padding: 3px; gap: 2px; }
+  .segmented button { border: 0; background: none; padding: 4px 10px; border-radius: 8px; color: var(--ink-2); font-weight: 500; }
+  .segmented button:hover { color: var(--ink); }
+  .segmented button.on { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(11, 12, 14, .12); }
+  .talk-hint { margin: 8px 0 0; font-size: 12.5px; color: var(--muted); }
   .notice { margin: 12px 0 0; color: var(--muted); }
   .notice.error { color: var(--rec); }
   .link { border: 0; background: none; padding: 0; text-decoration: underline; text-underline-offset: 2px; color: var(--accent); }

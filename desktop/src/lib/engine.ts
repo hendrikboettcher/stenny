@@ -58,6 +58,9 @@ export interface AiStatus {
 export interface ConnectorStatus {
   desktop: boolean;
   installed: boolean;
+  // how Claude Desktop has it: Stenny.mcpb installed in Claude (Mac), or written into Claude's settings file (Windows)
+  via: "extension" | "config" | null;
+  direct: boolean;  // Stenny adds it by itself (Windows): no Stenny.mcpb needed
   enabled: boolean;
   version: string | null;
   file: string | null;
@@ -170,7 +173,6 @@ export const startRecording = (course: string, event: boolean) => {
 export const recordingCommand = (cmd: "toggle" | "stop") =>
   inApp ? invoke<LiveStatus>("recording_command", { cmd }) : engine<LiveStatus>("command", { cmd });
 // "Record a Talk or Event": its own small window, as from the menu
-export const showTalkWindow = () => (inApp ? invoke<void>("show_talk") : Promise.resolve(console.log("talk window")));
 // A PDF from an HTML copy (stenny-agent on a Mac, WebView2 on Windows: make_pdf in src-tauri/src/lib.rs); in a browser the HTML stays
 export const makePdf = (html: string) => (inApp ? invoke<string>("make_pdf", { html }) : Promise.resolve(html));
 export const finishNow = (e: Entry) => engine<{ started: boolean }>("finish_now", where(e));
