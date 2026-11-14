@@ -347,7 +347,7 @@
                 <button class="pill primary" onclick={() => link(URLS.desktop)}>{t("settings.claude.getDesktop")}</button>
               {:else if c.file}
                 <button class="pill primary" disabled={busy === "install"} onclick={install}>{t("settings.claude.install")}</button>
-                <!-- Windows: for Claude's own Install Extension…, if its Install window didn't come up -->
+                <!-- Windows: to drag onto Claude's Settings ▸ Extensions, if its Install window didn't come up -->
                 {#if installOpened && onWindows}
                   <button class="pill" onclick={() => reveal(c.file!)}>{t("settings.claude.showFile")}</button>
                 {/if}

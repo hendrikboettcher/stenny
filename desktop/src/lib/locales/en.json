@@ -282,7 +282,7 @@
   "settings.claude.notInstalled": "Not installed yet. Claude shows its own Install window: click Install there.",
   "settings.claude.install": "Install…",
   "settings.claude.opened": "Claude has opened its Install window. Click Install there; Stenny checks again when you come back.",
-  "settings.claude.opened.windows": "Claude should now show its Install window: click Install there. Nothing came up? In Claude, open Settings ▸ Extensions ▸ Advanced settings ▸ Install Extension… and choose Stenny.mcpb.",
+  "settings.claude.opened.windows": "Claude should now show its Install window: click Install there. Nothing came up? Open Claude's Settings ▸ Extensions and drag Stenny.mcpb onto it, or click Advanced settings ▸ Install extension there and choose Stenny.mcpb.",
   "settings.claude.showFile": "Show Stenny.mcpb",
   "settings.claude.noDesktop": "The Claude desktop app isn't on this Mac yet. Get it first, then install the connector here.",
   "settings.claude.noDesktop.windows": "The Claude desktop app isn't on this computer yet. Get it first, then install the connector here.",
