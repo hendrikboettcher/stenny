@@ -141,8 +141,8 @@ jobs:
         shell: bash
         working-directory: desktop/src-tauri/engine
         run: |
-          find . -type f -newer stenny-engine.json | tee written.txt
-          [[ ! -s written.txt ]]
+          find . -type f -newer stenny-engine.json | tee "$RUNNER_TEMP/written.txt"
+          [[ ! -s "$RUNNER_TEMP/written.txt" ]]
 
   app:
     name: App (${{ matrix.os }})
