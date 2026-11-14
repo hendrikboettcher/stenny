@@ -501,7 +501,7 @@ As in step 13, with the Claude desktop app for Windows (claude.ai/download). The
 cmd //c start "" "$LOCALAPPDATA\Stenny\Stenny.mcpb"
 ```
 
-If Windows says no app is associated with it, or Claude doesn't show its Install window, the user adds it in Claude's **Settings ▸ Extensions ▸ Advanced settings ▸ Install Extension…** (open its folder for them with `explorer.exe "<folder>"`). **Check:** as in step 13.
+If Windows says no app is associated with it, or Claude doesn't show its Install window, the user adds it in Claude's **Settings ▸ Extensions**: drag `Stenny.mcpb` onto that page, or click **Advanced settings ▸ Install extension** there (open its folder for them with `explorer.exe "<folder>"`). **Check:** as in step 13.
 
 ## W13. Recommended, not required
 

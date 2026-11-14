@@ -821,7 +821,7 @@
                   <button class="pill primary" disabled={connBusy !== null} onclick={installConnector}>
                     {connBusy === "install" ? t("common.oneMoment") : t("settings.claude.install")}
                   </button>
-                  <!-- Windows: for Claude's own Install Extension…, if its Install window didn't come up -->
+                  <!-- Windows: to drag onto Claude's Settings ▸ Extensions, if its Install window didn't come up -->
                   {#if connOpened && onWindows}
                     <button class="pill" onclick={() => reveal(conn!.file!)}>{t("settings.claude.showFile")}</button>
                   {/if}
