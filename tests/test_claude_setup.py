@@ -136,6 +136,7 @@ def test_adds_the_connector_to_claude_code_once(fake_claude, monkeypatch):
     assert not (fake_claude.dir / "added").exists()  # already there: not added twice
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows adds itself to Claude's settings, no Stenny.mcpb")
 def test_installing_needs_the_file_and_claude(monkeypatch):
     monkeypatch.setattr(claude_setup, "connector_file", lambda: None)
     with pytest.raises(claude_setup.SetupError, match="Stenny.mcpb"):
@@ -148,7 +149,7 @@ def test_app_server_reports_setup_errors_as_messages(monkeypatch, tmp_path):
                               {"id": 7, "method": "set_api_key", "params": {"key": "nope"}})
     assert reply["id"] == 7 and "sk-ant-" in reply["error"]
     for method in ("ai_status", "set_api_key", "remove_api_key", "claude_sign_in", "connector_status",
-                   "install_connector", "add_to_claude_code"):
+                   "install_connector", "add_to_claude_code", "remove_from_claude_desktop"):
         assert method in app_server.METHODS
 
 
@@ -184,3 +185,49 @@ def test_the_connector_bundled_with_the_app_comes_first(tmp_path, monkeypatch):
     assert claude_setup.connector_file() == bundled
     monkeypatch.setenv("STENNY_CONNECTOR", str(tmp_path / "missing.mcpb"))
     assert claude_setup.connector_file() != tmp_path / "missing.mcpb"
+
+
+def test_windows_adds_the_connector_to_claudes_settings_file(tmp_path, monkeypatch):
+    """Windows can't open Stenny.mcpb with Claude, so Stenny writes itself into claude_desktop_config.json (in each
+    place a Claude reads it from), keeping everything else in the file; and takes itself out again."""
+    roaming, packaged = tmp_path / "Roaming/Claude", tmp_path / "Packages/Claude_x/LocalCache/Roaming/Claude"
+    packaged.mkdir(parents=True)
+    roaming.mkdir(parents=True)
+    (roaming / "claude_desktop_config.json").write_text(
+        '\ufeff{"preferences": {"quickEntry": true}, "mcpServers": {"other": {"command": "x"}}}', encoding="utf-8")
+    monkeypatch.setattr(claude_setup, "_claude_config_dirs", lambda: [roaming, packaged])
+    monkeypatch.setattr(claude_setup, "claude_data_dir", lambda: roaming)
+    monkeypatch.setattr(claude_setup, "claude_desktop_installed", lambda: True)
+    monkeypatch.setattr(claude_setup, "stenny_command", lambda: ["C:/Users/s/.local/bin/stenny.exe"])
+    monkeypatch.setattr(claude_setup, "find_claude", lambda: None)
+    monkeypatch.setattr(claude_setup, "connector_file", lambda: None)
+    monkeypatch.setattr(claude_setup.sys, "platform", "win32")
+    before = claude_setup.connector_status(None)
+    assert before["installed"] is False and before["direct"] is True and before["via"] is None
+
+    status = claude_setup.install_connector(None)
+    assert status["installed"] and status["enabled"] and status["via"] == "config"
+    kept = json.loads((roaming / "claude_desktop_config.json").read_text(encoding="utf-8"))
+    assert kept["preferences"] == {"quickEntry": True} and kept["mcpServers"]["other"] == {"command": "x"}
+    entry = {"command": "C:/Users/s/.local/bin/stenny.exe", "args": ["mcp"]}
+    assert kept["mcpServers"]["stenny"] == entry
+    assert json.loads((packaged / "claude_desktop_config.json").read_text(encoding="utf-8")) == {"mcpServers": {"stenny": entry}}
+
+    status = claude_setup.remove_from_desktop_config(None)
+    assert status["installed"] is False
+    assert json.loads((roaming / "claude_desktop_config.json").read_text(encoding="utf-8"))["mcpServers"] == {"other": {"command": "x"}}
+
+
+def test_a_broken_claude_settings_file_is_left_alone(tmp_path, monkeypatch):
+    (tmp_path / "claude_desktop_config.json").write_text('{"mcpServers": {', encoding="utf-8")
+    monkeypatch.setattr(claude_setup, "_claude_config_dirs", lambda: [tmp_path])
+    with pytest.raises(claude_setup.SetupError, match="JSON"):
+        claude_setup.add_to_desktop_config(None)
+    assert (tmp_path / "claude_desktop_config.json").read_text(encoding="utf-8") == '{"mcpServers": {'
+    assert claude_setup.in_desktop_config() is False
+
+
+def test_stenny_is_started_as_stenny_exe_when_argv_leaves_out_the_exe(tmp_path, monkeypatch):
+    (tmp_path / "stenny.exe").write_bytes(b"")
+    monkeypatch.setattr(claude_setup.sys, "argv", [str(tmp_path / "stenny"), "app-server"])
+    assert claude_setup.stenny_command() == [str((tmp_path / "stenny.exe").resolve())]

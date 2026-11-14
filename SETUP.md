@@ -495,13 +495,13 @@ Step 12. If `stenny schedule install` says it can't do that on Windows yet, skip
 
 ## W12. Let Claude read the transcripts
 
-As in step 13, with the Claude desktop app for Windows (claude.ai/download). The extension comes with the app as `%LOCALAPPDATA%\Stenny\Stenny.mcpb`; without the app, download it: `curl -fL -o "$USERPROFILE/Downloads/Stenny.mcpb" https://github.com/hendrikboettcher/stenny/releases/latest/download/Stenny.mcpb`. Open it with Claude:
+With the Claude desktop app for Windows (claude.ai/download), but not with Stenny.mcpb: Windows doesn't open a `.mcpb` with Claude, and Claude's own *Install Extension…* fails on some versions. Stenny writes itself into Claude's settings instead (the app's *Settings ▸ Use with Claude ▸ Add to Claude* does the same):
 
 ```bash
-cmd //c start "" "$LOCALAPPDATA\Stenny\Stenny.mcpb"
+stenny mcp --add-to-claude
 ```
 
-If Claude doesn't open it, the user can add it in Claude's **Settings ▸ Extensions ▸ Advanced settings ▸ Install Extension…** (open its folder for them with `explorer.exe "<folder>"`). **Check:** as in step 13.
+Then the user quits Claude (right-click its icon at the right of the taskbar ▸ Quit) and opens it again. **Check:** Stenny is listed in Claude under **Settings ▸ Developer**, and a new chat can answer "Which courses does Stenny have?".
 
 ## W13. Recommended, not required
 

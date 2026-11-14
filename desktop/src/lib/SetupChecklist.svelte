@@ -172,7 +172,12 @@
     keyInput = "";
     if (status) status = { ...status, ai };
   });
-  const install = () => act("install", async () => { await engine("install_connector"); installOpened = true; });
+  // a Mac opens Claude's Install window; Windows is added to Claude's settings file right away
+  const install = () => act("install", async () => {
+    const r = await engine<ConnectorStatus | { opened: boolean }>("install_connector");
+    if ("installed" in r) { if (status) status = { ...status, connector: r }; }
+    else installOpened = true;
+  });
   const addToCode = () => act("code", async () => {
     const connector = await engine<ConnectorStatus>("add_to_claude_code");
     if (status) status = { ...status, connector };
@@ -330,12 +335,13 @@
           <div class="name">{t("setup.claude.name")}</div>
           <div class="why">{t("setup.claude.why")}</div>
           {#if steps.claude}
-            <div class="state">{c.installed ? t("setup.claude.done.desktop") : t("setup.claude.done.code")}</div>
+            <div class="state">{c.via === "config" ? t("setup.claude.done.config") : c.installed ? t("setup.claude.done.desktop") : t("setup.claude.done.code")}</div>
+            {#if c.via === "config"}<p class="note">{t("setup.claude.restart")}</p>{/if}
             {#if c.installed && !c.enabled}<p class="note">{t("settings.claude.disabled")}</p>{/if}
           {:else}
             {#if !c.desktop}
               <p class="note">{t("setup.claude.noDesktop")}</p>
-            {:else if !c.file}
+            {:else if !c.file && !c.direct}
               <p class="note">{t("settings.claude.noFile")}</p>
             {:else if installOpened}
               <p class="note">{t("settings.claude.opened")}</p>
@@ -343,7 +349,7 @@
             <div class="do">
               {#if !c.desktop}
                 <button class="pill primary" onclick={() => link(URLS.desktop)}>{t("settings.claude.getDesktop")}</button>
-              {:else if c.file}
+              {:else if c.file || c.direct}
                 <button class="pill primary" disabled={busy === "install"} onclick={install}>{t("settings.claude.install")}</button>
               {/if}
               {#if c.code.available}

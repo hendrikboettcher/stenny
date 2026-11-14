@@ -4,7 +4,6 @@
   "description": "What Stenny's library window may do",
   "windows": [
     "library",
-    "talk",
     "feedback"
   ],
   "permissions": [

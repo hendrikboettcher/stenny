@@ -3,10 +3,10 @@ scripts/uninstall.ps1 run it first, then remove the app and the engine itself an
 Trash (Recycle Bin on Windows), so they can still be brought back.
 
 Removed here: the background job for final transcripts (launchd agent / Task Scheduler task), the connector in Claude
-Code, the saved secrets (Anthropic API key, calendar links) and what can be made again: logs, cache, the Whisper
+Code and the one Stenny wrote into Claude Desktop's settings (Windows), the saved secrets (Anthropic API key, calendar links) and what can be made again: logs, cache, the Whisper
 model. Listed for the Trash: the settings (config place) and the data place (the recordings' audio, the queue, the
 calendars). Never touched: the Stenny folder, with the transcripts, summaries and glossaries, which are the student's.
-Claude Desktop's extension can only be removed in Claude Desktop, so it is reported, not removed."""
+Claude Desktop's extension (Mac) can only be removed in Claude Desktop, so it is reported, not removed."""
 
 import shutil
 import sys
@@ -76,6 +76,14 @@ def run(act: bool) -> dict:
             if act:
                 claude_setup.remove_from_claude_code(cfg)
             removed.append("Claude Code connector")
+        except claude_setup.SetupError as e:
+            problems.append(str(e))
+    # the connector Stenny wrote into Claude Desktop's settings itself (Windows)
+    if claude_setup.in_desktop_config():
+        try:
+            if act:
+                claude_setup.remove_from_desktop_config(cfg)
+            removed.append("Claude Desktop connector")
         except claude_setup.SetupError as e:
             problems.append(str(e))
     desktop_extension = claude_setup.installed_extension() is not None

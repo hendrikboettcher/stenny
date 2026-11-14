@@ -228,6 +228,14 @@ DE = {
         "Die Claude-Desktop-App ist nicht installiert. Lade sie unter claude.ai/download herunter und versuch es dann "
         "noch mal.",
     "Claude couldn't open the connector: {error}": "Claude konnte den Connector nicht öffnen: {error}",
+    "Claude's settings couldn't be read: {error}": "Claudes Einstellungen ließen sich nicht lesen: {error}",
+    "Claude's settings file isn't valid JSON, so Stenny left it alone. Fix or delete it, then try again: {file}":
+        "Claudes Einstellungsdatei ist kein gültiges JSON, darum hat Stenny sie nicht angefasst. Korrigiere oder "
+        "lösche sie, dann versuch es noch mal: {file}",
+    "Stenny couldn't be added to Claude's settings: {error}":
+        "Stenny ließ sich nicht in Claudes Einstellungen eintragen: {error}",
+    "Stenny couldn't be removed from Claude's settings: {error}":
+        "Stenny ließ sich nicht aus Claudes Einstellungen entfernen: {error}",
     "Claude Code couldn't add the connector: {error}": "Claude Code konnte den Connector nicht hinzufügen: {error}",
     "Claude Code couldn't remove the connector: {error}": "Claude Code konnte den Connector nicht entfernen: {error}",
     "Couldn't open Claude: {error}": "Claude ließ sich nicht öffnen: {error}",

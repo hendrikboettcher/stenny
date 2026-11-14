@@ -271,7 +271,8 @@ def connector_status(cfg, params: dict) -> dict:
 
 
 def install_connector(cfg, params: dict) -> dict:
-    """Stenny.mcpb opened with Claude Desktop, which shows its own Install dialog."""
+    """Mac: Stenny.mcpb opened with Claude Desktop, which shows its own Install dialog. Windows: Stenny written into
+    Claude's settings file, answered with the connector's status."""
     from . import claude_setup
     return _setup(claude_setup.install_connector, cfg)
 
@@ -285,6 +286,12 @@ def open_claude(cfg, params: dict) -> dict:
     """The Claude desktop app, where the connector is removed again."""
     from . import claude_setup
     return _setup(claude_setup.open_claude, cfg)
+
+
+def remove_from_claude_desktop(cfg, params: dict) -> dict:
+    """Stenny out of Claude's settings file again (where it was added by itself, on Windows)."""
+    from . import claude_setup
+    return _setup(claude_setup.remove_from_desktop_config, cfg)
 
 
 def remove_from_claude_code(cfg, params: dict) -> dict:
@@ -402,6 +409,7 @@ METHODS = {"ping": ping, "library": library, "lecture": lecture, "make_copy": ma
            "ai_status": ai_status, "set_api_key": set_api_key, "remove_api_key": remove_api_key,
            "claude_sign_in": claude_sign_in, "connector_status": connector_status,
            "install_connector": install_connector, "add_to_claude_code": add_to_claude_code,
+           "remove_from_claude_desktop": remove_from_claude_desktop,
            "open_claude": open_claude, "remove_from_claude_code": remove_from_claude_code,
            "setup_status": setup_status, "calendar_status": calendar_status, "add_calendar_link": add_calendar_link,
            "remove_calendar_link": remove_calendar_link, "calendar_events": calendar_events,

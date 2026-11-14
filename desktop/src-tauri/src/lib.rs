@@ -1,4 +1,4 @@
-//! Stenny's app: a Dock app with a menu bar icon (menubar.rs) and its windows (the library, "Record a talk"). The windows'
+//! Stenny's app: a Dock app with a menu bar icon (menubar.rs) and its windows (the library, "Send Feedback"). The windows'
 //! interface is the web code in desktop/src; everything about lectures comes from the engine
 //! (`stenny app-server`, see engine.rs).
 //!
@@ -205,7 +205,7 @@ async fn check_updates(app: AppHandle) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || menubar::check_updates(&app)).await.map_err(|e| e.to_string())
 }
 
-/// From the "Record a talk" window: start recording a talk with this title, in this language (None: mixed).
+/// From the library's Record a talk or event sheet: start recording a talk with this title, in this language (None: mixed).
 #[tauri::command]
 async fn start_talk(app: AppHandle, title: String, language: Option<String>) -> Result<(), String> {
     let title = title.trim().to_string();
@@ -311,10 +311,11 @@ fn open_system_settings(app: AppHandle, pane: String) -> Result<(), String> {
     tauri_plugin_opener::open_url(url, None::<&str>).map_err(|e| e.to_string())
 }
 
-/// Talks & events' record button: the "Record a talk" window, as the menu's Record a Talk or Event….
-#[tauri::command]
-fn show_talk(app: AppHandle) {
-    show_window(&app, "talk");
+/// The menu bar's Record a Talk or Event…: the library comes up and asks for the talk's title in a sheet of its own
+/// (routes/+page.svelte, "record-talk"), never in a window of its own.
+pub fn show_talk(app: &AppHandle) {
+    present(app, "library", false);
+    let _ = app.emit_to("library", "record-talk", ());
 }
 
 /// The folders Obsidian has as vaults: its own list, obsidian.json in its settings folder (macOS
@@ -399,7 +400,7 @@ pub fn language_changed(app: &AppHandle) {
     let _ = app.emit("language", i18n::language());
     let app2 = app.clone();
     let _ = app.run_on_main_thread(move || {
-        for (label, key) in [("feedback", "feedback.window"), ("talk", "talk.window")] {
+        for (label, key) in [("feedback", "feedback.window")] {
             if let Some(window) = app2.get_webview_window(label) {
                 let _ = window.set_title(&i18n::text(key, &[]));
             }
@@ -492,7 +493,7 @@ fn reload_window(window: tauri::WebviewWindow) {
     reload(&window);
 }
 
-/// Shows a window, creating it the first time: "library" or "talk".
+/// Shows a window, creating it the first time: "library" or "feedback".
 pub fn show_window(app: &AppHandle, label: &str) {
     present(app, label, false);
 }
@@ -518,26 +519,25 @@ fn present(app: &AppHandle, label: &str, to_recording: bool) {
             }
             return;
         }
-        let built = match label.as_str() {
-            "feedback" => WebviewWindowBuilder::new(&app2, "feedback", WebviewUrl::App("feedback".into()))
+        if label != "feedback" {
+            return;
+        }
+        // Built off the main thread: on Windows, making a WebView2 window from the event loop (here, or in a sync
+        // command) deadlocks it: the new window stays white and Stenny stops answering, even to Quit. Tauri builds
+        // it on the main thread itself and waits here.
+        let app3 = app2.clone();
+        std::thread::spawn(move || {
+            let built = WebviewWindowBuilder::new(&app3, "feedback", WebviewUrl::App("feedback".into()))
                 .title(tr!("feedback.window"))
                 .inner_size(460.0, 430.0)
                 .resizable(false)
                 .minimizable(false)
                 .center()
-                .build(),
-            "talk" => WebviewWindowBuilder::new(&app2, "talk", WebviewUrl::App("talk".into()))
-                .title(tr!("talk.window"))
-                .inner_size(460.0, 330.0)
-                .resizable(false)
-                .minimizable(false)
-                .center()
-                .build(),
-            _ => return,
-        };
-        if let Ok(window) = built {
-            let _ = window.set_focus();
-        }
+                .build();
+            if let Ok(window) = built {
+                let _ = window.set_focus();
+            }
+        });
     });
 }
 
@@ -593,7 +593,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(Arc::new(Engine::default()))
         .manage(MenuBar::default())
-        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, share_files, copy_text, check_updates, reload_window, microphone_pref, set_microphone_pref, login_item, apply_shortcut, pause_shortcut_label, ui_language, set_ui_language, courses_changed, start_recording, recording_command, recording_status, show_talk, calendar_status, calendar_check, calendar_allow, calendar_changed, open_system_settings])
+        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, share_files, copy_text, check_updates, reload_window, microphone_pref, set_microphone_pref, login_item, apply_shortcut, pause_shortcut_label, ui_language, set_ui_language, courses_changed, start_recording, recording_command, recording_status, calendar_status, calendar_check, calendar_allow, calendar_changed, open_system_settings])
         .setup(move |app| {
             if !library_only {
                 // A Dock app with the menu bar icon next to it. Info.plist keeps LSUIElement for the helpers in the

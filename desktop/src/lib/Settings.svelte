@@ -323,8 +323,10 @@
     connBusy = "install";
     connError = null;
     try {
-      await engine("install_connector");
-      connOpened = true;
+      // a Mac opens Claude's Install window; Windows is added to Claude's settings file right away
+      const r = await engine<ConnectorStatus | { opened: boolean }>("install_connector");
+      if ("installed" in r) { conn = r; done(); }
+      else connOpened = true;
     } catch (e) {
       connError = String(e);
     } finally {
@@ -347,7 +349,8 @@
 
   // Removing the connector again. Claude Code: after an "are you sure", `claude mcp remove`. Claude Desktop keeps its
   // extensions in memory and removes them itself, so its dialog says where and opens Claude; coming back re-checks.
-  let connRemove = $state<"desktop" | "code" | null>(null);
+  // "config": what Stenny wrote into Claude's settings file itself (Windows), it takes out again.
+  let connRemove = $state<"desktop" | "config" | "code" | null>(null);
   let connRemoveBusy = $state(false);
   let connRemoveError = $state<string | null>(null);
 
@@ -357,8 +360,9 @@
     connRemoveError = null;
     try {
       if (connRemove === "desktop") await engine("open_claude");
+      else if (connRemove === "config") conn = await engine<ConnectorStatus>("remove_from_claude_desktop");
       else conn = await engine<ConnectorStatus>("remove_from_claude_code");
-      const removed = connRemove === "code";
+      const removed = connRemove !== "desktop";
       connRemove = null;
       if (removed) done();
     } catch (e) {
@@ -803,10 +807,10 @@
                 {#if !conn}
                   <div class="hint">{t("settings.ai.checking")}</div>
                 {:else if conn.installed}
-                  <div class="hint state"><span class="dot" class:off={!conn.enabled}></span>{conn.enabled ? t("settings.claude.installed") : t("settings.claude.disabled")}</div>
+                  <div class="hint state"><span class="dot" class:off={!conn.enabled}></span>{conn.via === "config" ? t("settings.claude.added") : conn.enabled ? t("settings.claude.installed") : t("settings.claude.disabled")}</div>
                 {:else if !conn.desktop}
                   <div class="hint">{t("settings.claude.noDesktop")}</div>
-                {:else if !conn.file}
+                {:else if !conn.file && !conn.direct}
                   <div class="hint">{t("settings.claude.noFile")}</div>
                 {:else}
                   <div class="hint">{connOpened ? t("settings.claude.opened") : t("settings.claude.notInstalled")}</div>
@@ -815,14 +819,14 @@
               {#if conn && !conn.installed}
                 {#if !conn.desktop}
                   <button class="pill" onclick={() => openLink(URLS.desktop)}>{t("settings.claude.getDesktop")}</button>
-                {:else if conn.file}
+                {:else if conn.file || conn.direct}
                   <button class="pill primary" disabled={connBusy !== null} onclick={installConnector}>
                     {connBusy === "install" ? t("common.oneMoment") : t("settings.claude.install")}
                   </button>
                 {/if}
               {:else if conn?.installed}
                 <button class="pill" disabled={connBusy !== null}
-                        onclick={() => { connRemove = "desktop"; connRemoveError = null; }}>{t("settings.claude.remove")}</button>
+                        onclick={() => { connRemove = conn?.via === "config" ? "config" : "desktop"; connRemoveError = null; }}>{t("settings.claude.remove")}</button>
               {/if}
             </div>
             {#if conn?.code.available}
@@ -1081,7 +1085,7 @@
 {/if}
 
 {#if connRemove}
-  <Dialog title={t(`settings.claude.remove.${connRemove}.title`)} danger={connRemove === "code"}
+  <Dialog title={t(`settings.claude.remove.${connRemove}.title`)} danger={connRemove !== "desktop"}
           confirm={connRemove === "desktop" ? t("settings.claude.openClaude") : t("settings.claude.remove.confirm")}
           busy={connRemoveBusy} error={connRemoveError} text={t(`settings.claude.remove.${connRemove}.text`)}
           oncancel={() => (connRemove = null)} onconfirm={removeConnector} />

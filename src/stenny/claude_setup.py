@@ -4,8 +4,12 @@
   Anthropic API key that Anthropic accepts, or Off. Nothing here spends tokens: Claude Code is asked with
   `claude auth status`, a key is checked by listing the models (free).
 - the API key: saved to the system keychain once Anthropic accepts it (keychain.py), never to config.toml.
-- the connector: whether Claude Desktop has the Stenny extension, opening Stenny.mcpb with Claude (which shows
-  its own Install dialog), and adding it to Claude Code (`claude mcp add`); removing it from Claude Code again (Claude Desktop removes its own).
+- the connector: whether Claude Desktop has it, and adding it there. On a Mac Stenny.mcpb is opened with Claude
+  (which shows its own Install dialog; Claude removes its extensions itself). On Windows nothing opens a .mcpb
+  reliably (no file type registered for it, and Claude's own Install Extension fails on its app package), so Stenny
+  writes itself into Claude's claude_desktop_config.json (`mcpServers.stenny`), Claude's documented way to add a
+  local MCP server, and takes itself out of it again; Claude reads it when it starts. Adding it to Claude Code
+  (`claude mcp add`) and removing it from Claude Code again.
 
 The app shows the states; the words for them are the app's (desktop/src/lib/locales)."""
 
@@ -211,11 +215,98 @@ def connector_file() -> Path | None:
 
 
 def stenny_command() -> list[str]:
-    """How another program starts this Stenny: the `stenny` command we run as, else this Python with -m."""
+    """How another program starts this Stenny: the `stenny` command we run as (on Windows stenny.exe, which
+    sys.argv[0] may name without its .exe), else this Python with -m."""
     argv0 = Path(sys.argv[0])
-    if argv0.stem in ("stenny", "lecture") and argv0.exists():
-        return [str(argv0.resolve())]
+    if argv0.stem in ("stenny", "lecture"):
+        for exe in (argv0, argv0.with_suffix(".exe")):
+            if exe.is_file():
+                return [str(exe.resolve())]
     return [sys.executable, "-m", "stenny"]
+
+
+# ---- Claude Desktop's own settings file (Windows' way in) ---------------------------------------------------------
+
+DESKTOP_CONFIG = "claude_desktop_config.json"
+
+
+def _claude_config_dirs() -> list[Path]:
+    """Every folder a Claude desktop app reads claude_desktop_config.json from: on Windows %APPDATA%\\Claude and the
+    app package's own (both, if both are there: which one the installed Claude reads can't be told from outside)."""
+    if sys.platform == "win32":
+        roaming = Path(os.environ.get("APPDATA") or Path.home() / "AppData/Roaming") / "Claude"
+        found = [d for d in (roaming, *(p / "LocalCache/Roaming/Claude" for p in _claude_packages())) if d.is_dir()]
+        return found or [claude_data_dir()]
+    return [claude_data_dir()]
+
+
+def _read_desktop_config(file: Path) -> dict:
+    try:
+        text = file.read_text(encoding="utf-8-sig")
+    except FileNotFoundError:
+        return {}
+    except OSError as e:
+        raise SetupError(tr("Claude's settings couldn't be read: {error}", error=e)) from None
+    try:
+        data = json.loads(text) if text.strip() else {}
+    except ValueError:
+        data = None
+    if not isinstance(data, dict) or not isinstance(data.get("mcpServers", {}), dict):
+        # someone's own edits gone wrong: never write over them
+        raise SetupError(tr("Claude's settings file isn't valid JSON, so Stenny left it alone. Fix or delete it, "
+                            "then try again: {file}", file=file))
+    return data
+
+
+def _write_desktop_config(file: Path, data: dict) -> None:
+    file.parent.mkdir(parents=True, exist_ok=True)
+    part = file.with_name(file.name + ".stenny-part")
+    part.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    os.replace(part, file)
+
+
+def desktop_config_entry() -> dict:
+    """Stenny's entry in claude_desktop_config.json's mcpServers."""
+    command, *rest = stenny_command()
+    return {"command": command, "args": [*rest, "mcp"]}
+
+
+def in_desktop_config() -> bool:
+    for folder in _claude_config_dirs():
+        try:
+            if "stenny" in (_read_desktop_config(folder / DESKTOP_CONFIG).get("mcpServers") or {}):
+                return True
+        except SetupError:
+            continue
+    return False
+
+
+def add_to_desktop_config(cfg) -> dict:
+    """Stenny in Claude Desktop's mcpServers, everything else in the file as it was. Claude reads it when it starts."""
+    files = [folder / DESKTOP_CONFIG for folder in _claude_config_dirs()]
+    datas = [_read_desktop_config(f) for f in files]   # all read first: one bad file changes none of them
+    entry = desktop_config_entry()
+    for file, data in zip(files, datas):
+        data.setdefault("mcpServers", {})["stenny"] = entry
+        try:
+            _write_desktop_config(file, data)
+        except OSError as e:
+            raise SetupError(tr("Stenny couldn't be added to Claude's settings: {error}", error=e)) from None
+    return connector_status(cfg)
+
+
+def remove_from_desktop_config(cfg) -> dict:
+    for folder in _claude_config_dirs():
+        file = folder / DESKTOP_CONFIG
+        data = _read_desktop_config(file)
+        if "stenny" not in (data.get("mcpServers") or {}):
+            continue
+        del data["mcpServers"]["stenny"]
+        try:
+            _write_desktop_config(file, data)
+        except OSError as e:
+            raise SetupError(tr("Stenny couldn't be removed from Claude's settings: {error}", error=e)) from None
+    return connector_status(cfg)
 
 
 def _claude_code_has_it() -> bool:
@@ -228,12 +319,17 @@ def _claude_code_has_it() -> bool:
 
 
 def connector_status(cfg) -> dict:
+    """`via`: how Claude Desktop has it, "extension" (Stenny.mcpb) or "config" (claude_desktop_config.json);
+    `direct`: Stenny adds it by itself (Windows), so it needs no Stenny.mcpb."""
     ext = installed_extension()
+    configured = ext is None and in_desktop_config()
     file = connector_file()
     return {
         "desktop": claude_desktop_installed(),
-        "installed": ext is not None,
-        "enabled": bool(ext and ext["enabled"]),
+        "installed": ext is not None or configured,
+        "via": "extension" if ext else "config" if configured else None,
+        "direct": sys.platform == "win32",
+        "enabled": bool(ext and ext["enabled"]) or configured,
         "version": ext and ext["version"],
         "file": str(file) if file else None,
         "code": {"available": find_claude() is not None, "added": _claude_code_has_it()},
@@ -241,22 +337,21 @@ def connector_status(cfg) -> dict:
 
 
 def install_connector(cfg) -> dict:
-    """Opens Stenny.mcpb with Claude Desktop, which asks the user to Install it."""
+    """Mac: opens Stenny.mcpb with Claude Desktop, which asks the user to Install it ({"opened": True}). Windows:
+    Stenny adds itself to Claude's settings file (the connector's status, `via` "config")."""
+    if sys.platform == "win32":
+        if not claude_desktop_installed():
+            raise SetupError(tr("The Claude desktop app isn't installed. Get it at claude.ai/download, then try again."))
+        return add_to_desktop_config(cfg)
     file = connector_file()
     if not file:
         raise SetupError(tr("Stenny.mcpb isn't in Stenny's folder. Download Stenny again, or build it with "
                             "connector/build.sh."))
     if not claude_desktop_installed():
         raise SetupError(tr("The Claude desktop app isn't installed. Get it at claude.ai/download, then try again."))
-    if sys.platform == "win32":
-        try:
-            os.startfile(file)  # noqa: S606 — Claude Desktop registers .mcpb
-        except OSError as e:
-            raise SetupError(tr("Claude couldn't open the connector: {error}", error=e)) from None
-    else:
-        p = subprocess.run(["open", "-a", "Claude", str(file)], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15)
-        if p.returncode != 0:
-            raise SetupError(tr("Claude couldn't open the connector: {error}", error=p.stderr.strip()))
+    p = subprocess.run(["open", "-a", "Claude", str(file)], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15)
+    if p.returncode != 0:
+        raise SetupError(tr("Claude couldn't open the connector: {error}", error=p.stderr.strip()))
     return {"opened": True}
 
 
