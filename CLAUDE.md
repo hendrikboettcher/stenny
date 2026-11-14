@@ -78,6 +78,9 @@ src/stenny/
                   installed + signed in, an API key Anthropic accepts), the connector in Claude Desktop / Claude Code
   render.py       Markdown + YAML frontmatter
   vault.py        safe writes into the Stenny folder (courses, Talks/, _Glossaries …), folder rule enforcement
+  uninstall.py    `stenny uninstall`: the background job, Claude Code's connector, saved secrets, logs, cache and the
+                  Whisper model removed; settings and data listed for the Trash; never the Stenny folder.
+                  scripts/uninstall.sh / uninstall.ps1 run it, then remove the app and the engine
   migrate.py      `stenny migrate`: an older install (~/Lectures Data, talks in <vault>/Recordings) into today's
                   places, once; the app runs it at start (`on_start`, also makes a config if there is none)
   jobs.py         queue, AC-power check, priority wrappers, keep awake; the queue's background job (launchd agent,

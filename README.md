@@ -55,6 +55,22 @@ That's all; it asks nothing and needs no password. It checks the computer, downl
 
 To get a new version later: *Check for Updates…* at the bottom of Stenny's window, `stenny update` (Mac), or the line above again. Claude Code can still set Stenny up step by step with you, too: [SETUP.md](SETUP.md).
 
+### Uninstall
+
+On a Mac, in Terminal:
+
+```bash
+curl -fsSL https://github.com/hendrikboettcher/stenny/releases/latest/download/uninstall.sh | zsh
+```
+
+On Windows, in PowerShell:
+
+```powershell
+irm https://github.com/hendrikboettcher/stenny/releases/latest/download/uninstall.ps1 | iex
+```
+
+It quits Stenny and removes the app, the engine and its code, the background job, the connector in Claude Code, the saved API key and calendar links, the logs, the cache and the Whisper model. Stenny's settings and the recordings' audio go to the Trash (Windows: Recycle Bin), so you can still bring them back. **Your transcripts stay** in your Stenny folder, and uv stays too, in case other programs use it. In Claude Desktop, remove the extension yourself: *Settings ▸ Extensions ▸ Stenny*. The scripts are [scripts/uninstall.sh](scripts/uninstall.sh) and [scripts/uninstall.ps1](scripts/uninstall.ps1); `stenny uninstall` alone shows what the engine part would remove.
+
 ### By hand
 
 ```bash
@@ -140,6 +156,7 @@ stenny mcp --desktop-config                       # the connector for Claude Des
 stenny api-key [status | remove]                  # the Anthropic API key, in the system keychain
 stenny match-course "VL Calculus (Room 1.01)"     # which course a calendar event belongs to
 stenny queue list | run                           # waiting final passes (run --lecture COURSE FOLDER: just that one, now)
+stenny uninstall [--yes]                          # what Stenny set up here, removed (keeps transcripts; see Uninstall)
 stenny schedule install                           # run the queue every 10 min when plugged in (launchd; Windows: Task Scheduler); with Stenny open, plugging in starts it at once
 ```
 

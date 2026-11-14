@@ -872,6 +872,31 @@ def cmd_watch(args) -> None:
         time.sleep(args.interval)
 
 
+def cmd_uninstall(args) -> None:
+    """Undoes what the engine set up (uninstall.py). Without --yes only says what it would do. The app and the engine
+    itself stay: scripts/uninstall.sh and scripts/uninstall.ps1 remove those too."""
+    from . import uninstall
+    result = uninstall.run(act=args.yes)
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False))
+        return
+    print(("Removed:" if args.yes else "Would remove:"))
+    for item in result["removed"]:
+        print(f"  {item}")
+    if result["trash"]:
+        print("Move these to the Trash yourself (your settings and the recordings' audio):")
+        for item in result["trash"]:
+            print(f"  {item}")
+    if result["folder"]:
+        print(f"Your transcripts stay in {result['folder']}.")
+    if result["claude_desktop_extension"]:
+        print("Claude Desktop still has the Stenny extension: remove it in Claude Desktop, Settings ▸ Extensions.")
+    for problem in result["problems"]:
+        print(f"! {problem}")
+    if not args.yes:
+        print("Nothing was changed. Run `stenny uninstall --yes` to do it; then `uv tool uninstall stenny` and remove the app.")
+
+
 def utf8_output() -> None:
     """What Stenny prints into a pipe or a file is UTF-8, on every system. On Windows, Python would use the ANSI
     code page (cp1252) there, unless whoever started Stenny asked for UTF-8 (the app and install.ps1 do, Claude
@@ -1033,6 +1058,12 @@ def main() -> None:
     p.set_defaults(func=cmd_queue)
 
     scheduler = "Task Scheduler task" if sys.platform == "win32" else "launchd agent"
+    p = sub.add_parser("uninstall", help="remove what Stenny set up on this computer (keeps your transcripts); "
+                                          "scripts/uninstall.sh / uninstall.ps1 remove the app and engine too")
+    p.add_argument("--yes", action="store_true", help="do it (without: only say what it would do)")
+    p.add_argument("--json", action="store_true", help="the result as JSON (for the uninstall scripts)")
+    p.set_defaults(func=cmd_uninstall)
+
     p = sub.add_parser("schedule", help=f"install/remove the {scheduler} that runs the queue")
     p.add_argument("action", choices=["install", "uninstall"])
     p.set_defaults(func=cmd_schedule)
