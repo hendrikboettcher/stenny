@@ -467,8 +467,9 @@
   "updates.upToDate.title": "Stenny ist auf dem neuesten Stand",
   "updates.upToDate": "Du verwendest die neueste Version ({version}).",
   "updates.available.title": "Stenny {version} ist verfügbar",
-  "updates.available": "Installiert ist Version {version}.",
-  "updates.download": "Herunterladen",
+  "updates.available": "Installiert ist Version {version}. „Jetzt aktualisieren“ öffnet ein Fenster, das sie installiert: Stenny schließt sich und öffnet sich danach von selbst, deine Vorlesungen bleiben, wie sie sind. Das dauert ein paar Minuten.",
+  "updates.updateNow": "Jetzt aktualisieren",
+  "updates.recording": "Stenny nimmt gerade auf. Aktualisiere, wenn die Aufnahme fertig ist.",
   "updates.notNow": "Später",
 
   "error.noAgentPdf": "Das PDF konnte nicht erstellt werden: stenny-agent fehlt.",
