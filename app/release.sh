@@ -55,10 +55,26 @@ if [[ "${1:-}" == "--publish" ]]; then
     git push origin HEAD
     git tag "$TAG"
     git push origin "$TAG"
+    # How to update comes first: Stenny's Check for Updates… led here before it could update by itself (up to
+    # 0.5.7), and the files below can't simply be downloaded (the engine and the app must be updated together, and a
+    # browser download is blocked). gh puts these notes before the generated list of changes.
+    repo_url="https://github.com/hendrikboettcher/stenny/releases/latest/download"
+    notes="$(cat <<NOTES
+**Update or install:** in Stenny, *Check for Updates…* ▸ *Update Now*, or run the line that installed it again:
+
+- **Mac**, in Terminal: \`curl -fsSL $repo_url/install.sh | zsh\`
+- **Windows**, in PowerShell: \`irm $repo_url/install.ps1 | iex\`
+
+It updates the engine and the app together and keeps your lectures. Please don't download the files below by hand: the line does that.
+
+**Aktualisieren oder installieren:** in Stenny *Nach Updates suchen …* ▸ *Jetzt aktualisieren*, oder führ die Zeile, mit der du Stenny installiert hast, noch mal aus (Mac: im Terminal, Windows: in PowerShell, siehe oben). Deine Vorlesungen bleiben, wie sie sind.
+
+NOTES
+)"
     # The LGPL asks that ffmpeg's source stays available next to the binary
     gh release create "$TAG" dist/Stenny.zip dist/Stenny.mcpb scripts/install.sh scripts/install.ps1 \
         scripts/uninstall.sh scripts/uninstall.ps1 \
         app/build.noindex/tools-src/ffmpeg-*.tar.xz \
-        --title "Stenny ${VERSION}" --generate-notes
+        --title "Stenny ${VERSION}" --notes "$notes" --generate-notes
     echo "✅ Released $TAG"
 fi

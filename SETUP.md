@@ -323,7 +323,7 @@ Say clearly: **✅ Setup is finished.** Then, short:
 - If a step above was skipped (no course, the AI step not signed in, the connector not installed), the window's *Finish setting up Stenny* card lists what's left, with a button for each, until it's done.
 - If memory or disk runs low, the recording goes on first: the live text pauses, or the final transcript waits. If something crashes, Stenny saves the audio and starts recording again by itself.
 - **Ask the lecturer first.** Many universities need the lecturer's consent before a lecture is recorded. Keep recordings and transcripts to themselves.
-- New versions: *Check for Updates…* at the bottom of Stenny's window (its icon ▸ *Open Stenny…*).
+- New versions: *Check for Updates…* at the bottom of Stenny's window (its icon ▸ *Open Stenny…*) ▸ *Update Now*, which runs the install line again in a Terminal window: it updates the engine and the app together and reopens Stenny.
 - Docs: https://stenny.eu/docs/quickstart/
 
 **Stenny is made to be built on.** It's open source and lives in this folder. Whenever they want something different, they can reopen this chat (or this folder in Claude Code) and ask in plain language: "add a course", "change my pause shortcut", or a new feature. Changing the menu bar app itself needs Apple's Command Line Tools, which Claude Code can set up then. An update replaces the folder and keeps the old one next to it, so their changes can be carried over.
@@ -513,7 +513,7 @@ As in step 17, with Windows' words: the taskbar's notification area instead of t
 
 ## Updating on Windows
 
-`stenny update` doesn't work on Windows (Windows won't let it replace the program that is running it), and *Check for Updates…* only says whether there is a new version. When the user asks you to update Stenny, run the installer again (W2): it waits for no recording or final transcript to be running (it stops and says so), quits Stenny, replaces the code (the old folder goes to the Recycle Bin), the engine and the app, and starts Stenny again. **Check:** `stenny --version` shows the new version, and `stenny mcp --desktop-config` works.
+`stenny update` doesn't work on Windows (Windows won't let it replace the program that is running it), and *Check for Updates…* ▸ *Update Now* runs the installer again in a PowerShell window of its own. When the user asks you to update Stenny, run the installer again (W2): it waits for no recording or final transcript to be running (it stops and says so), quits Stenny, replaces the code (the old folder goes to the Recycle Bin), the engine and the app, and starts Stenny again. **Check:** `stenny --version` shows the new version, and `stenny mcp --desktop-config` works.
 
 ## Troubleshooting on Windows
 

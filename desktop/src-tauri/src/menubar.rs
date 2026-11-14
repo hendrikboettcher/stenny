@@ -818,8 +818,10 @@ fn on_menu(app: &AppHandle, id: &str) {
     });
 }
 
-/// "Check for Updates…" in the library window's footer: whether a newer Stenny is out. Installing it comes with the app's own updater; until
-/// then "Download" opens the release page.
+/// "Check for Updates…" in the library window's footer: whether a newer Stenny is out, and if so "Update Now", which
+/// runs the same line that installs Stenny (scripts/install.sh, install.ps1) in a Terminal / PowerShell window of its
+/// own: it updates the engine and the app together (they must match), quits Stenny and opens it again, and its
+/// progress and any error stay readable there. Stenny can't do that from inside: it is what gets replaced.
 pub fn check_updates(app: &AppHandle) {
     let result = engine(app).call("check_update", json!({}));
     let dialog = app.dialog();
@@ -833,16 +835,64 @@ pub fn check_updates(app: &AppHandle) {
         }
         Ok(r) => {
             let (current, latest) = (str_of(&r, "current").to_string(), str_of(&r, "latest").to_string());
-            let download = dialog
+            let update = app
+                .dialog()
                 .message(tr!("updates.available", version = current))
                 .title(tr!("updates.available.title", version = latest))
-                .buttons(MessageDialogButtons::OkCancelCustom(tr!("updates.download"), tr!("updates.notNow")))
+                .buttons(MessageDialogButtons::OkCancelCustom(tr!("updates.updateNow"), tr!("updates.notNow")))
                 .blocking_show();
-            if download {
-                let _ = tauri_plugin_opener::open_url("https://github.com/hendrikboettcher/stenny/releases/latest", None::<&str>);
+            if !update {
+                return;
+            }
+            // a recording comes first: the installer would refuse anyway, but say it here, before a window opens
+            if is_active(&app.state::<MenuBar>().0.lock().unwrap().status) {
+                alert(app, &tr!("updates.available.title", version = latest), &tr!("updates.recording"));
+                return;
+            }
+            if let Err(e) = open_installer() {
+                // whatever went wrong, the page with the release is still there
+                let _ = tauri_plugin_opener::open_url(RELEASES, None::<&str>);
+                alert(app, &tr!("updates.failed"), &e);
             }
         }
     }
+}
+
+const RELEASES: &str = "https://github.com/hendrikboettcher/stenny/releases/latest";
+
+/// The install line in a window of its own (README: Install). On a Mac a .command file, which Terminal opens and runs
+/// without asking for any permission; on Windows a PowerShell window that stays open at the end (-NoExit).
+#[cfg(target_os = "macos")]
+fn open_installer() -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+    let file = std::env::temp_dir().join("Update Stenny.command");
+    let script = format!("#!/bin/zsh\ncurl -fsSL {RELEASES}/download/install.sh | zsh\n");
+    std::fs::write(&file, script).map_err(|e| e.to_string())?;
+    std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
+    let status = std::process::Command::new("/usr/bin/open").args(["-a", "Terminal"]).arg(&file).status();
+    match status {
+        Ok(s) if s.success() => Ok(()),
+        Ok(s) => Err(format!("open: {s}")),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[cfg(windows)]
+fn open_installer() -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
+    std::process::Command::new("powershell.exe")
+        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-NoExit", "-Command"])
+        .arg(format!("irm {RELEASES}/download/install.ps1 | iex"))
+        .creation_flags(CREATE_NEW_CONSOLE)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
+fn open_installer() -> Result<(), String> {
+    Err("no installer for this system".into())
 }
 
 /// The pause shortcut and other outside callers: pause or resume the running recording, or beep.
