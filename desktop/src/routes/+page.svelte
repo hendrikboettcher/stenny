@@ -642,9 +642,10 @@
       {#if data && !groups.courses.length}
         <button class="group quiet-add" onclick={() => open({ kind: "add" })}>{t("lib.addFirstCourse")}</button>
       {/if}
-      <!-- talks, once there is one (the first is recorded from the menu bar's Record a Talk or Event…); recording
-           another asks for its title here, in this window -->
-      {#if data && groups.talks.length}
+      <!-- talks: always there, with a way to record the first one, as for courses. Not only once there is a talk: the
+           first was then recorded only from the menu bar's item, which Windows hides behind the ^ arrow, so after a
+           fresh install talks were nowhere. Recording one asks for its title here, in this window. -->
+      {#if data}
         <div class="kicker with-add talks">
           <span>{t("common.talksEvents")}</span>
           {#if canRecord}
@@ -654,6 +655,9 @@
           {/if}
         </div>
         {#each groups.talks as g (g.course + g.event)}{@render row(g)}{/each}
+        {#if !groups.talks.length && canRecord}
+          <button class="group quiet-add" onclick={recordTalk}>{t("lib.recordTalk")}</button>
+        {/if}
       {/if}
     </nav>
     <!-- "Finish setting up Stenny", until courses, the AI step, the connector and the calendar work (lib/SetupChecklist.svelte) -->

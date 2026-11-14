@@ -58,9 +58,9 @@ export interface AiStatus {
 export interface ConnectorStatus {
   desktop: boolean;
   installed: boolean;
-  // how Claude Desktop has it: Stenny.mcpb installed in Claude (Mac), or written into Claude's settings file (Windows)
+  // how Claude Desktop has it: Stenny.mcpb installed in Claude, or an entry in Claude's settings file (Stenny 0.5.7 on
+  // Windows wrote one; "Remove…" takes it out)
   via: "extension" | "config" | null;
-  direct: boolean;  // Stenny adds it by itself (Windows): no Stenny.mcpb needed
   enabled: boolean;
   version: string | null;
   file: string | null;
