@@ -3,7 +3,8 @@
   "bundle": {
     "resources": {
       "resources/Stenny.mcpb": "Stenny.mcpb",
-      "resources/ffmpeg-license.txt": "ffmpeg-license.txt"
+      "resources/ffmpeg-license.txt": "ffmpeg-license.txt",
+      "engine/": "engine/"
     },
     "windows": {
       "webviewInstallMode": {

@@ -39,7 +39,8 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "resources/Stenny.mcpb": "Stenny.mcpb"
+      "resources/Stenny.mcpb": "Stenny.mcpb",
+      "engine/": "engine/"
     },
     "externalBin": [
       "binaries/stenny-rec",

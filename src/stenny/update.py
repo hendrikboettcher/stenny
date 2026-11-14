@@ -16,13 +16,14 @@ import sys
 import tempfile
 from pathlib import Path
 
+from . import paths
 from .version import version
 
 REPO = "hendrikboettcher/stenny"
 LATEST_API = f"https://api.github.com/repos/{REPO}/releases/latest"
 ZIP_URL = f"https://github.com/{REPO}/releases/latest/download/Stenny.zip"
 RELEASES = f"https://github.com/{REPO}/releases/latest"
-FOLDER = Path(__file__).resolve().parents[2]
+FOLDER = Path(__file__).resolve().parents[2]  # a release's folder; meaningless for the engine inside the app (in_app)
 
 
 class UpdateError(Exception):
@@ -107,6 +108,11 @@ def supported() -> None:
 def update(folder: Path = FOLDER) -> Path:
     """Installs the newest release into `folder`, reopens the app and returns where the old folder went."""
     supported()
+    if paths.in_app():
+        # no folder of code to swap: the engine came inside Stenny.app, and the app is what gets updated (#92)
+        raise UpdateError(
+            "This Stenny's engine is part of the app, so the app is what gets updated: in Stenny, Check for Updates…, "
+            f"or run this line in Terminal: curl -fsSL {RELEASES}/download/install.sh | zsh")
     if (folder / ".git").exists():
         raise UpdateError(f"{folder} is a git checkout: use `git pull` and `app/build.sh` there.")
     if not (folder / "pyproject.toml").exists():

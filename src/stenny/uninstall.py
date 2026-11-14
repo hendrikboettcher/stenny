@@ -2,7 +2,8 @@
 scripts/uninstall.ps1 run it first, then remove the app and the engine itself and put the places it lists into the
 Trash (Recycle Bin on Windows), so they can still be brought back.
 
-Removed here: the background job for final transcripts (launchd agent / Task Scheduler task), the connector in Claude
+Removed here: the background job for final transcripts (launchd agent / Task Scheduler task), the terminal's `stenny`
+that the app's engine put into ~/.local/bin (launcher.py, only Stenny's own), the connector in Claude
 Code and the one Stenny wrote into Claude Desktop's settings (Windows), the saved secrets (Anthropic API key, calendar links) and what can be made again: logs, cache, the Whisper
 model. Listed for the Trash: the settings (config place) and the data place (the recordings' audio, the queue, the
 calendars). Never touched: the Stenny folder, with the transcripts, summaries and glossaries, which are the student's.
@@ -12,7 +13,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from . import calendars, claude_setup, jobs, keychain, paths
+from . import calendars, claude_setup, jobs, keychain, launcher, paths
 from . import config as config_mod
 from .llm.claude_code import find_claude
 
@@ -87,6 +88,15 @@ def run(act: bool) -> dict:
         except claude_setup.SetupError as e:
             problems.append(str(e))
     desktop_extension = claude_setup.installed_extension() is not None
+
+    # the terminal's `stenny` that the app's engine wrote (launcher.py), never anyone else's
+    if launcher.ours(launcher.path()):
+        try:
+            if act:
+                launcher.remove()
+            removed.append(paths.tilde(launcher.path()))
+        except OSError as e:
+            problems.append(f"{launcher.path()} couldn't be removed: {e}")
 
     # saved secrets: the API key and every calendar link
     accounts = [keychain.ACCOUNT, *(calendars._account(link["id"]) for link in calendars._load())]

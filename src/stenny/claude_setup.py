@@ -25,7 +25,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import keychain
+from . import keychain, paths
 from .i18n import tr
 from .llm.claude_code import claude_env, find_claude
 
@@ -209,16 +209,22 @@ def installed_extension(data: Path | None = None) -> dict | None:
 
 
 def connector_file() -> Path | None:
-    """Stenny.mcpb: the one bundled with the app ($STENNY_CONNECTOR, set by desktop/src-tauri/src/engine.rs), else
-    next to Stenny's code in a download (setup's folder), or built there by connector/build.sh."""
+    """Stenny.mcpb: the one bundled with the app ($STENNY_CONNECTOR, set by desktop/src-tauri/src/engine.rs, or the
+    app's own when this engine is inside it), else next to Stenny's code in a download (setup's folder), or built
+    there by connector/build.sh."""
     root = Path(__file__).resolve().parents[2]
     bundled = [Path(os.environ["STENNY_CONNECTOR"])] if os.environ.get("STENNY_CONNECTOR") else []
+    if own := paths.app_file("Stenny.mcpb"):
+        bundled.append(own)
     return next((p for p in (*bundled, root / "Stenny.mcpb", root / "dist/Stenny.mcpb") if p.is_file()), None)
 
 
 def stenny_command() -> list[str]:
-    """How another program starts this Stenny: the `stenny` command we run as (on Windows stenny.exe, which
-    sys.argv[0] may name without its .exe), else this Python with -m."""
+    """How another program starts this Stenny: the app's own Python when the engine is inside the app (its path stays
+    the same across updates), the `stenny` command we run as (on Windows stenny.exe, which sys.argv[0] may name
+    without its .exe), else this Python with -m."""
+    if own := paths.engine_command():
+        return own
     argv0 = Path(sys.argv[0])
     if argv0.stem in ("stenny", "lecture"):
         for exe in (argv0, argv0.with_suffix(".exe")):
