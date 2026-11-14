@@ -72,7 +72,7 @@ fi
 
 # 1. In place: the bundle folder stays the same one, so the Dock's tile still points at it
 mkdir -p "$target"
-/usr/bin/rsync -a --delete "$app/" "$target/"
+/usr/bin/rsync -a --checksum --delete "$app/" "$target/"   # by content: a re-signed file can keep its size and time
 touch "$target"
 
 # 2. One Stenny for macOS: forget every other Stenny.app (build folders, worktrees, scratch builds, app/build.noindex)

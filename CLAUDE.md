@@ -99,7 +99,9 @@ app/              Swift menu bar app (SwiftPM + build.sh): starts `stenny live`,
 desktop/          the new app (in development, replaces app/): Tauri 2 + Svelte 5/TypeScript, stenny.eu style; talks to
                   the engine only through `stenny app-server` (src-tauri/src/engine.rs); see desktop/README.md.
                   The engine comes inside the app: scripts/bundle-engine.sh (a standalone Python + uv.lock's packages
-                  → src-tauri/engine, a Tauri resource), scripts/sign-mac.sh signs its native libraries on a Mac
+                  → src-tauri/engine, a Tauri resource), scripts/sign-mac.sh signs its native libraries on a Mac.
+                  Check for Updates…: Tauri's updater (src-tauri/src/updater.rs; latest.json from app/release.sh +
+                  CI, scripts/latest-json.py; the updater key in ~/.tauri/stenny-updater.key and CI's secrets)
                   Windows installer: tauri.windows.conf.json (per-user NSIS + MSI), scripts/ffmpeg-windows.sh
 desktop/stenny-rec/  `stenny-rec.exe`, the microphone recorder on Windows (Rust, WASAPI): the Swift stenny-rec's
                   command line, file (16 kHz mono s16le, appended) and exit codes; stops on `stop` on stdin (Windows

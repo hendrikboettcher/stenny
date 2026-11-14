@@ -1,0 +1,2 @@
+Signed with Stenny's updater key (desktop/README.md, Updates), so a test can tell that the public key in
+tauri.conf.json belongs to the private key releases are signed with (src/updater.rs, tests). Never edit this file.

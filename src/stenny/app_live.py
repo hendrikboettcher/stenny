@@ -227,6 +227,17 @@ def check_update(cfg, params: dict) -> dict:
         raise LiveError(tr("Couldn't check for updates. Check your internet connection and try again.")) from e
 
 
+def update_blocked(cfg, params: dict) -> dict:
+    """What an update must wait for (the app's Check for Updates…, desktop/src-tauri/src/updater.rs): replacing the
+    app replaces the engine and ffmpeg a recording or a final pass is running from. {"recording": bool,
+    "final_pass": bool}; a recording that is still starting counts as one."""
+    from . import jobs
+    recording = status(cfg, {}).get("state") in ("recording", "paused", "starting")
+    with jobs.QueueLock() as free:  # held by a running final pass (a scheduled one or right after a recording)
+        final_pass = free is None
+    return {"recording": recording, "final_pass": final_pass}
+
+
 # ---------------------------------------------------------------- "Did the lecturer agree?"
 
 CONSENT = "consent.json"
@@ -281,4 +292,5 @@ def give_consent(cfg, params: dict) -> dict:
 METHODS = {"status": status, "start": start, "command": command, "microphone": microphone, "devices": devices,
            "settings": settings, "match_courses": match_courses, "recover": recover, "consent": consent,
            "give_consent": give_consent, "send_feedback": send_feedback, "check_update": check_update,
+           "update_blocked": update_blocked,
            "plugged_in": plugged_in}

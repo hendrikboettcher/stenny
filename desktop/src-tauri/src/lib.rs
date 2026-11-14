@@ -12,6 +12,7 @@ mod macos;
 #[cfg(target_os = "macos")]
 mod macos_notifications;
 mod menubar;
+mod updater;
 #[cfg(windows)]
 mod windows_agent;
 #[cfg(windows)]
@@ -203,7 +204,7 @@ fn pause_shortcut_label(app: AppHandle) -> Option<String> {
 
 #[tauri::command]
 async fn check_updates(app: AppHandle) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || menubar::check_updates(&app)).await.map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(move || updater::check_updates(&app)).await.map_err(|e| e.to_string())
 }
 
 /// From the library's Record a talk or event sheet: start recording a talk with this title, in this language (None: mixed).
@@ -592,6 +593,7 @@ pub fn run() {
         })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Arc::new(Engine::default()))
         .manage(MenuBar::default())
         .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, share_files, copy_text, check_updates, reload_window, microphone_pref, set_microphone_pref, login_item, apply_shortcut, pause_shortcut_label, ui_language, set_ui_language, courses_changed, start_recording, recording_command, recording_status, calendar_status, calendar_check, calendar_allow, calendar_changed, open_system_settings])

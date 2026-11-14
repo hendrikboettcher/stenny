@@ -14,6 +14,11 @@ edition = "2024"
 name = "stenny_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+# the updater key check (src/updater.rs, tests): the minisign and base64 the updater plugin itself uses
+[dev-dependencies]
+minisign-verify = "0.3"
+base64 = "0.23"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -24,6 +29,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri-plugin-dialog = "2"
 sys-locale = "0.3"  # the system's preferred languages, for "System default" (src/i18n.rs)
+tauri-plugin-updater = "2"  # Check for Updates…: a signed update from GitHub's releases (src/updater.rs, #92)
 
 # the menu bar's native details Tauri doesn't expose (src/macos.rs); same versions as tray-icon's
 [target.'cfg(target_os = "macos")'.dependencies]

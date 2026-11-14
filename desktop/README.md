@@ -91,7 +91,7 @@ config.toml through the engine (src/stenny/settings.py; the AI step's and the co
 src/stenny/claude_setup.py, checked again whenever the window gets the focus back), the microphone and login item through the app (menubar.rs,
 the same choices as the menu bar's; a new pause shortcut is registered by the running stenny-agent (`shortcut …`), or again on Windows). Also in the menu and the library
 window's footer: Send Feedback… (to stenny.eu, like the website's form) and
-Check for Updates… (installing comes with the app's own updater). An installed copy (in an Applications folder)
+Check for Updates… (see *Updates* below). An installed copy (in an Applications folder)
 adds itself to the login items once, through stenny-agent (on Windows: the Run value, see above); after that it's the
 user's choice.
 
@@ -127,6 +127,33 @@ Nothing is frozen, so mlx (Metal) and CTranslate2 load their libraries as always
 - **Signing on a Mac:** `codesign --deep` doesn't reach code among the resources, so `scripts/sign-mac.sh` signs the
   engine's ~165 native libraries and its Python one by one with the app's identity, then the app, and verifies all of
   it. `install-mac.sh` and `app/release.sh` use it.
+
+## Updates
+
+Check for Updates… uses Tauri's updater (src-tauri/src/updater.rs, #92): it reads `latest.json` from the newest
+GitHub release (tauri.conf.json, `plugins.updater`), downloads that system's update and checks it against the
+updater's public key (also in tauri.conf.json) before installing. App and engine are updated together, since the
+engine is inside the app. It never installs during a recording or a final pass (the engine's `update_blocked`); if
+one starts while it downloads, it waits until it's done.
+
+- **macOS, in place:** the plugin would swap the whole Stenny.app, which leaves the Dock's tile pointing at a bundle
+  that's gone (two Stenny icons). So updater.rs unpacks Stenny.app.tar.gz next to the app, checks it with
+  `codesign --verify --deep --strict`, copies it into the installed bundle with rsync (as install-mac.sh does) and
+  restarts through LaunchServices. The archive is the app as signed with "Stenny Dev", so the microphone and
+  calendar permissions stay.
+- **Windows:** the plugin runs the new setup program passively (a progress window, no questions) after the engine
+  is stopped; the setup program opens Stenny again.
+- **Fallback:** if there's no `latest.json` (releases before the updater, or Windows' part still being built) or the
+  updater fails, Check for Updates… does what it did before: the engine's version check and the install line in a
+  window of its own (menubar.rs, `check_updates`).
+
+**The updater key** signs every update; without it no installed Stenny can update any more, so keep a copy. Its
+private half is `~/.tauri/stenny-updater.key` (+ `.password`) on the Mac that makes releases and the CI secrets
+`TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`; the public half is in tauri.conf.json. A release:
+`app/release.sh --publish` makes `Stenny.app.tar.gz` from the signed app, signs it (`tauri signer sign`) and writes
+`latest.json` with it (`scripts/latest-json.py`); CI's installer job then builds the Windows setup program with
+`createUpdaterArtifacts` (only there, so ordinary builds need no key), uploads it and adds it to the release's
+`latest.json`.
 
 ## The Windows installer
 
