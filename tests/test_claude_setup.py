@@ -136,6 +136,7 @@ def test_adds_the_connector_to_claude_code_once(fake_claude, monkeypatch):
     assert not (fake_claude.dir / "added").exists()  # already there: not added twice
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows adds itself to Claude's settings, no Stenny.mcpb")
 def test_installing_needs_the_file_and_claude(monkeypatch):
     monkeypatch.setattr(claude_setup, "connector_file", lambda: None)
     with pytest.raises(claude_setup.SetupError, match="Stenny.mcpb"):
