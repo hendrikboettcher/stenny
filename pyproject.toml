@@ -1,6 +1,6 @@
 [project]
 name = "stenny"
-version = "0.5.6"
+version = "0.5.7"
 description = "Stenny: transcribe lectures locally with Whisper into clean Markdown in an Obsidian vault"
 readme = "README.md"
 license = "MIT"
