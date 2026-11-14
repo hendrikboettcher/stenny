@@ -7,11 +7,13 @@
 - the connector: whether Claude Desktop has it, and adding it there. On a Mac Stenny.mcpb is opened with Claude,
   which shows its own Install dialog (Claude removes its extensions itself). On Windows Claude can't be handed the
   file while it runs: Windows has no "open this file" message for a running app (macOS's open-file), and a second
-  start of Claude only brings its window up and drops the file (only a cold start reads it). So the app has the user
-  drag Stenny into Claude's window, or paste its path into Claude's Install extension dialog
-  (desktop/src/lib/ClaudeDrag.svelte). Stenny 0.5.7 wrote itself into Claude's claude_desktop_config.json on Windows
-  instead, which Claude rewrites when it quits: such an entry is still recognised, and can be taken out. Adding it to
-  Claude Code (`claude mcp add`) and removing it from Claude Code again.
+  start of Claude only brings its window up and drops the file. Only a cold start reads it. So Stenny starts Claude
+  with the file when Claude isn't running, and otherwise asks the user to quit Claude first and waits
+  (`install_connector` answers "waiting" until Claude is gone; desktop/src/lib/ClaudeWindows.svelte). The Store app
+  has no launcher to hand a file to: there the user pastes the path into Claude's Install extension dialog. Stenny
+  0.5.7 wrote itself into Claude's claude_desktop_config.json on Windows instead, which Claude rewrites when it
+  quits: such an entry is still recognised, and can be taken out. Adding it to Claude Code (`claude mcp add`) and
+  removing it from Claude Code again.
 
 The app shows the states; the words for them are the app's (desktop/src/lib/locales)."""
 
@@ -190,6 +192,78 @@ def claude_desktop_installed() -> bool:
     return any(a.exists() for a in apps) or claude_data_dir().is_dir()
 
 
+def _windows_process_paths(image: str) -> list[str]:
+    """Windows: the full paths of the running programs called `image` (e.g. claude.exe), through Windows' own calls
+    (no PowerShell: the app asks every second or two while it waits). Programs this account may not look into are
+    left out."""
+    import ctypes
+    from ctypes import wintypes
+
+    class Entry(ctypes.Structure):  # PROCESSENTRY32W
+        _fields_ = [("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD), ("th32ProcessID", wintypes.DWORD),
+                    ("th32DefaultHeapID", ctypes.c_size_t), ("th32ModuleID", wintypes.DWORD),
+                    ("cntThreads", wintypes.DWORD), ("th32ParentProcessID", wintypes.DWORD),
+                    ("pcPriClassBase", ctypes.c_long), ("dwFlags", wintypes.DWORD),
+                    ("szExeFile", wintypes.WCHAR * 260)]
+
+    k = ctypes.WinDLL("kernel32", use_last_error=True)
+    k.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    k.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+    k.Process32FirstW.argtypes = k.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.POINTER(Entry)]
+    k.OpenProcess.restype = wintypes.HANDLE
+    k.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    k.QueryFullProcessImageNameW.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR,
+                                             ctypes.POINTER(wintypes.DWORD)]
+    k.CloseHandle.argtypes = [wintypes.HANDLE]
+    snapshot = k.CreateToolhelp32Snapshot(0x2, 0)  # TH32CS_SNAPPROCESS
+    if not snapshot or snapshot == ctypes.c_void_p(-1).value:
+        return []
+    paths = []
+    try:
+        entry = Entry()
+        entry.dwSize = ctypes.sizeof(Entry)
+        more = k.Process32FirstW(snapshot, ctypes.byref(entry))
+        while more:
+            if entry.szExeFile.lower() == image.lower():
+                process = k.OpenProcess(0x1000, False, entry.th32ProcessID)  # PROCESS_QUERY_LIMITED_INFORMATION
+                if process:
+                    buffer = ctypes.create_unicode_buffer(32768)
+                    size = wintypes.DWORD(len(buffer))
+                    if k.QueryFullProcessImageNameW(process, 0, buffer, ctypes.byref(size)):
+                        paths.append(buffer.value)
+                    k.CloseHandle(process)
+            more = k.Process32NextW(snapshot, ctypes.byref(entry))
+    finally:
+        k.CloseHandle(snapshot)
+    return paths
+
+
+def _is_claude_desktop(path: str) -> bool:
+    """Windows: whether a claude.exe is the desktop app's. Claude Code is a claude.exe too (in ~/.local/bin), so only
+    the desktop app's own folders count: the installer's (%LOCALAPPDATA%\\AnthropicClaude or …\\Programs\\Claude,
+    where a launcher starts app-<version>\\claude.exe) and the Store app's (…\\WindowsApps\\Claude_…)."""
+    p = path.lower().replace("/", "\\")
+    homes = (str(d).lower().replace("/", "\\").rstrip("\\") + "\\"
+             for d in (_local_appdata() / "AnthropicClaude", _local_appdata() / "Programs/Claude"))
+    return "\\windowsapps\\claude_" in p or any(p.startswith(h) for h in homes)
+
+
+def claude_desktop_running() -> bool:
+    """Windows: whether the Claude desktop app runs (any of its processes)."""
+    return any(_is_claude_desktop(path) for path in _windows_process_paths("claude.exe"))
+
+
+def _start_claude_with(exe: Path, file: Path) -> None:
+    """Windows: Claude started on its own (not as Stenny's child, no console), with the file as its argument, the way
+    a double-click on the file would. Its launcher passes the argument on to the app."""
+    flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    try:
+        subprocess.Popen([str(exe), str(file)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,  # noqa: S603
+                         stderr=subprocess.DEVNULL, close_fds=True, creationflags=flags, cwd=str(exe.parent))
+    except OSError as e:
+        raise SetupError(tr("Couldn't open Claude: {error}", error=e)) from None
+
+
 def installed_extension(data: Path | None = None) -> dict | None:
     """The Stenny extension Claude Desktop has installed: {"id", "version", "enabled"}, else None."""
     data = data or claude_data_dir()
@@ -324,16 +398,25 @@ def connector_status(cfg) -> dict:
 
 
 def install_connector(cfg) -> dict:
-    """Mac: opens Stenny.mcpb with Claude Desktop, which asks the user to Install it ({"opened": True}). Windows has
-    no such way in (see the top): the app has the user drag Stenny over instead."""
-    if sys.platform == "win32":
-        raise SetupError(tr("On Windows, drag Stenny into Claude's window."))
+    """Hands Stenny.mcpb to Claude Desktop, which asks the user to Install it. Mac: opened with Claude
+    ({"opened": True}). Windows (see the top): Claude started with the file ({"opened": True}) if it isn't running;
+    {"waiting": True} while it runs, so the app asks the user to quit Claude and calls again until it's gone;
+    {"manual": True} for the Store app, which can't be started with a file (the user pastes the path into Claude's
+    Install extension dialog)."""
     file = connector_file()
     if not file:
         raise SetupError(tr("Stenny.mcpb isn't in Stenny's folder. Download Stenny again, or build it with "
                             "connector/build.sh."))
     if not claude_desktop_installed():
         raise SetupError(tr("The Claude desktop app isn't installed. Get it at claude.ai/download, then try again."))
+    if sys.platform == "win32":
+        exe = claude_desktop_exe()
+        if exe is None:
+            return {"manual": True}
+        if claude_desktop_running():
+            return {"waiting": True}
+        _start_claude_with(exe, file)
+        return {"opened": True}
     p = subprocess.run(["open", "-a", "Claude", str(file)], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15)
     if p.returncode != 0:
         raise SetupError(tr("Claude couldn't open the connector: {error}", error=p.stderr.strip()))

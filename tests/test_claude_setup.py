@@ -137,7 +137,6 @@ def test_adds_the_connector_to_claude_code_once(fake_claude, monkeypatch):
 
 
 def test_installing_needs_the_file_and_claude(monkeypatch):
-    monkeypatch.setattr(claude_setup.sys, "platform", "darwin")  # Windows drags it over instead (test below)
     monkeypatch.setattr(claude_setup, "connector_file", lambda: None)
     with pytest.raises(claude_setup.SetupError, match="Stenny.mcpb"):
         claude_setup.install_connector(None)
@@ -187,10 +186,9 @@ def test_the_connector_bundled_with_the_app_comes_first(tmp_path, monkeypatch):
     assert claude_setup.connector_file() != tmp_path / "missing.mcpb"
 
 
-def test_windows_has_the_connector_dragged_over_and_knows_a_0_5_7_entry(tmp_path, monkeypatch):
-    """Windows can't hand a running Claude Stenny.mcpb, so the app has it dragged into Claude's window and the
-    engine's Install says so. Stenny 0.5.7 wrote itself into claude_desktop_config.json there instead: that entry is
-    recognised, and taken out on request, everything else in the file as it was."""
+def test_windows_knows_a_0_5_7_entry_and_takes_it_out(tmp_path, monkeypatch):
+    """Stenny 0.5.7 wrote itself into claude_desktop_config.json on Windows: that entry is recognised, and taken out
+    on request, everything else in the file as it was."""
     roaming = tmp_path / "Roaming/Claude"
     roaming.mkdir(parents=True)
     entry = {"command": "C:/Users/s/.local/bin/stenny.exe", "args": ["mcp"]}
@@ -207,13 +205,11 @@ def test_windows_has_the_connector_dragged_over_and_knows_a_0_5_7_entry(tmp_path
     before = claude_setup.connector_status(None)
     assert before["installed"] is True and before["via"] == "config" and before["file"] == str(file)
 
-    with pytest.raises(claude_setup.SetupError, match="drag Stenny into Claude's window"):
-        claude_setup.install_connector(None)
     claude_setup.remove_from_desktop_config(None)
     kept = json.loads((roaming / "claude_desktop_config.json").read_text(encoding="utf-8"))
     assert kept == {"preferences": {"quickEntry": True}, "mcpServers": {"other": {"command": "x"}}}
     after = claude_setup.connector_status(None)
-    assert after["installed"] is False and after["file"] == str(file)   # the file the app has dragged over
+    assert after["installed"] is False and after["file"] == str(file)   # the file Install hands to Claude
 
 
 def test_a_broken_claude_settings_file_is_left_alone(tmp_path, monkeypatch):

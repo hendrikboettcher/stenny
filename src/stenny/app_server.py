@@ -271,8 +271,8 @@ def connector_status(cfg, params: dict) -> dict:
 
 
 def install_connector(cfg, params: dict) -> dict:
-    """Mac: Stenny.mcpb opened with Claude Desktop, which shows its own Install dialog. Windows: the app has the user
-    drag Stenny into Claude's window instead (this says so)."""
+    """Stenny.mcpb handed to Claude Desktop, which shows its own Install dialog: {"opened"}, or on Windows
+    {"waiting"} while Claude runs (the app asks the user to quit it and calls again) or {"manual"} for the Store app."""
     from . import claude_setup
     return _setup(claude_setup.install_connector, cfg)
 

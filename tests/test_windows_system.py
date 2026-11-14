@@ -323,6 +323,52 @@ def test_claude_desktop_as_an_app_package(claude_windows, monkeypatch):
         claude_setup.open_claude(None)
 
 
+def test_install_starts_claude_with_the_file_once_it_isnt_running(claude_windows, monkeypatch, tmp_path):
+    """A running Claude drops a file it's handed (only a cold start reads it): while it runs, Install answers
+    "waiting" and starts nothing; once it's gone, Claude is started with Stenny.mcpb, as a double-click would."""
+    exe = claude_windows.local / "AnthropicClaude/claude.exe"
+    exe.parent.mkdir(parents=True)
+    exe.write_bytes(b"")
+    file = tmp_path / "Stenny.mcpb"
+    file.write_bytes(b"zip")
+    monkeypatch.setattr(claude_setup, "connector_file", lambda: file)
+    started = []
+    monkeypatch.setattr(claude_setup.subprocess, "Popen", lambda args, **kw: started.append(args))
+    running = [str(claude_windows.local / "AnthropicClaude/app-1.2.3/claude.exe")]
+    monkeypatch.setattr(claude_setup, "_windows_process_paths", lambda image: list(running))
+
+    assert claude_setup.install_connector(None) == {"waiting": True}
+    assert started == []
+    running[:] = [str(Path.home() / ".local/bin/claude.exe")]   # Claude Code isn't the desktop app
+    assert claude_setup.install_connector(None) == {"opened": True}
+    assert started == [[str(exe), str(file)]]
+
+
+def test_install_on_the_store_app_asks_for_the_path(claude_windows, monkeypatch, tmp_path):
+    (claude_windows.local / "Packages/Claude_pzs8sxrjxfjjc/LocalCache/Roaming/Claude").mkdir(parents=True)
+    file = tmp_path / "Stenny.mcpb"
+    file.write_bytes(b"zip")
+    monkeypatch.setattr(claude_setup, "connector_file", lambda: file)
+    monkeypatch.setattr(claude_setup, "_windows_process_paths", lambda image: [])
+    assert claude_setup.install_connector(None) == {"manual": True}
+
+
+def test_which_claude_exe_is_the_desktop_app(claude_windows):
+    local = claude_windows.local
+    assert claude_setup._is_claude_desktop(str(local / "AnthropicClaude/app-1.0.0/claude.exe"))
+    assert claude_setup._is_claude_desktop(str(local / "Programs/Claude/Claude.exe"))
+    assert claude_setup._is_claude_desktop(r"C:\Program Files\WindowsApps\Claude_1.0.0.0_x64__pzs8sxrjxfjjc\app\claude.exe")
+    assert not claude_setup._is_claude_desktop(r"C:\Users\s\.local\bin\claude.exe")
+    assert not claude_setup._is_claude_desktop(str(local / "AnthropicClaudeOld/claude.exe"))
+
+
+@windows
+def test_running_programs_are_found_by_name():
+    paths = claude_setup._windows_process_paths("python.exe")
+    assert any(Path(p).name.lower() == "python.exe" and Path(p).is_file() for p in paths)
+    assert claude_setup._windows_process_paths("no-such-program.exe") == []
+
+
 def test_feedback_names_the_pc(win, monkeypatch):
     import platform
     import types

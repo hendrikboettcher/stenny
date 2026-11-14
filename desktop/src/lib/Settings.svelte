@@ -9,7 +9,7 @@
   import { onMount, untrack } from "svelte";
   import Figure from "$lib/Figure.svelte";
   import Dialog from "$lib/Dialog.svelte";
-  import ClaudeDrag from "$lib/ClaudeDrag.svelte";
+  import ClaudeWindows from "$lib/ClaudeWindows.svelte";
   import { listen } from "@tauri-apps/api/event";
   import {
     addCalendarLink, addCourse, bringBack, calendarAllow, calendarChanged, calendarStatus, deleteCourse, engine, library,
@@ -324,7 +324,7 @@
     connBusy = "install";
     connError = null;
     try {
-      await engine("install_connector");   // Claude shows its own Install window (Mac; Windows drags: ClaudeDrag)
+      await engine("install_connector");   // Claude shows its own Install window (Mac; Windows: ClaudeWindows)
       connOpened = true;
     } catch (e) {
       connError = String(e);
@@ -813,7 +813,7 @@
                   <div class="hint">{t("settings.claude.noFile")}</div>
                 {:else if onWindows}
                   <div class="hint">{t("settings.claude.notInstalled")}</div>
-                  <ClaudeDrag file={conn.file} onerror={(m) => (connError = m)} />
+                  <ClaudeWindows file={conn.file} onerror={(m) => (connError = m)} />
                 {:else}
                   <div class="hint">{connOpened ? t("settings.claude.opened") : t("settings.claude.notInstalled")}</div>
                 {/if}
