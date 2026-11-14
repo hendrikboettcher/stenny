@@ -116,6 +116,8 @@ Always pass `--python 3.12`: without it uv may pick the newest Python on the Mac
 
 *If it fails:* if `uv tool install` can't find Python 3.12, run `uv python install 3.12` and retry.
 
+The app built from this folder also carries its own copy of the engine (`desktop/scripts/bundle-engine.sh`) and runs that one; this command is what the steps below, the terminal and Claude use until the `uv` install goes away (#92). Where no `stenny` is installed, the app puts a small launcher at `~/.local/bin/stenny` that runs its own engine (`src/stenny/launcher.py`); it never replaces another `stenny`.
+
 ## 3. Install the app
 
 If Stenny is already installed and running, this replaces it; first make sure no recording is running (`stenny status` must say none is running).
@@ -343,6 +345,7 @@ If it prints `{"ok":true}`, say it was sent; otherwise say it didn't go through 
 | Problem | What to do |
 |---|---|
 | `stenny: command not found` | Use `~/.local/bin/stenny`, run `uv tool update-shell` and open a new terminal. |
+| The app and `stenny` in the terminal show different versions | The app runs the engine inside it; the terminal's is the `uv tool` install (step 2). Install step 2 again from the same folder as the app. |
 | macOS says Stenny can't be opened | It was downloaded in a browser: step 0. |
 | `ffmpeg` not found | `<path>/Stenny.app/Contents/MacOS/ffmpeg` should exist. If it doesn't, the app wasn't installed from a release: step 3. |
 | Microphone permission was denied | System Settings ▸ Privacy & Security ▸ Microphone ▸ Stenny on. Then restart Stenny. |
@@ -515,7 +518,7 @@ As in step 17, with Windows' words: the taskbar's notification area instead of t
 
 | Problem | What to do |
 |---|---|
-| `stenny: command not found` | Use `~/.local/bin/stenny.exe`, run `uv tool update-shell` and open a new terminal. |
+| `stenny: command not found` | Use `~/.local/bin/stenny.exe`, run `uv tool update-shell` and open a new terminal. Where no `stenny.exe` is installed, the app puts `~/.local/bin/stenny.cmd` there, which runs the engine inside the app. |
 | "Windows protected your PC" | The installer isn't signed yet: *More info ▸ Run anyway* (W4). |
 | `ffmpeg` not found | `%LOCALAPPDATA%\Stenny\ffmpeg.exe` (or in the folder the installer was given) should exist; otherwise W4. |
 | Transcription is very slow | Without an NVIDIA card (and its CUDA libraries) the processor does it: about as long as the lecture. That's expected. |

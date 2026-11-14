@@ -13,7 +13,10 @@ from .vault import TALKS_DIR, Vault, safe_name
 from .i18n import tr as _tr  # `tr` is the transcription table in load()
 
 DEFAULT_PATH = paths.CONFIG_PATH
-EXAMPLE = Path(__file__).resolve().parents[2] / "config.example.toml"
+# next to the code in the app's engine (desktop/scripts/bundle-engine.sh copies it there), else at the checkout's top
+EXAMPLE = next((p for p in (Path(__file__).resolve().parent / "config.example.toml",
+                            Path(__file__).resolve().parents[2] / "config.example.toml") if p.is_file()),
+               Path(__file__).resolve().parents[2] / "config.example.toml")
 LANGUAGE_MODES = ("auto", "mixed")  # anything else is a fixed Whisper language code
 DEFAULT_PAUSE_SHORTCUT = "cmd+shift+ü"  # Ü is the key right of P on German keyboards
 MODIFIERS = {"cmd": "cmd", "command": "cmd", "shift": "shift", "ctrl": "ctrl", "control": "ctrl",

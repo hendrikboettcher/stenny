@@ -12,6 +12,7 @@ package), so the app looks the same offline; Geist Mono is for times, clocks and
 ```bash
 npm install                                   # once
 scripts/helpers.sh                            # what it bundles: stenny-agent (macOS only, tauri.macos.conf.json), stenny-rec, Stenny.mcpb (needs Node)
+scripts/bundle-engine.sh                      # the engine inside the app (src-tauri/engine, ~670 MB on a Mac; needs uv; Git Bash on Windows)
 bash scripts/stenny-rec.sh                    # on Windows (Git Bash): stenny-rec.exe, the WASAPI recorder (stenny-rec/)
 npm run check                                 # type check
 npm run tauri build -- --debug --bundles app  # src-tauri/target.noindex/debug/bundle/macos/Stenny.app
@@ -27,7 +28,8 @@ Stenny tiles the Dock has twice, so Stenny shows in the Dock once. Builds land i
 skips `.noindex` folders, so a build never shows up in Spotlight or Launchpad as a second Stenny. It won't quit a Stenny that's recording.
 
 `--library` runs the window without the menu bar icon, for trying a build next to the installed Stenny (never two
-Stenny icons in the menu bar). `STENNY_CLI` picks the engine (default `~/.local/bin/stenny`); `STENNY_HOME` puts all of
+Stenny icons in the menu bar). `STENNY_CLI` picks the engine (default: the one inside the app, else
+`~/.local/bin/stenny`, see below); `STENNY_HOME` puts all of
 Stenny's own files into one test folder (its config.toml at the top, Recordings/, Queue/, Logs/; the Stenny folder is
 whatever that config's `folder` says), `STENNY_CONFIG` names another config. The app never computes a path itself: it
 asks the engine (`settings`, `preferences`; src/stenny/paths.py). When the engine starts it moves an older install
@@ -93,6 +95,34 @@ Check for Updates… (installing comes with the app's own updater). An installed
 adds itself to the login items once, through stenny-agent (on Windows: the Run value, see above); after that it's the
 user's choice.
 
+## The engine inside the app
+
+The app carries Stenny's Python engine (#92), so it needs no separate `uv tool install` and app and engine can't drift
+apart. `scripts/bundle-engine.sh` builds it from this checkout into `src-tauri/engine`, which Tauri bundles as a
+resource (tauri.conf.json): a standalone Python (python-build-standalone, pinned and checked against its SHA-256) with
+the packages exactly as in uv.lock (mlx-whisper on a Mac, faster-whisper on Windows) and Stenny itself as a wheel.
+Nothing is frozen, so mlx (Metal) and CTranslate2 load their libraries as always. It ends up in
+`Stenny.app/Contents/Resources/engine` (macOS) or `engine\` next to Stenny.exe (Windows), and `engine.rs` runs it as
+`<engine>/bin/python3 -m stenny app-server` (`python.exe` on Windows). Which engine the app runs, first found wins:
+`$STENNY_CLI`, the engine inside the app (only with its `stenny-engine.json`: CI compiles with a placeholder), then
+`~/.local/bin/stenny` for builds without one. The Whisper models stay downloads (src/stenny/paths.py, `models_dir`).
+
+- **Size** (0.5.11, measured on a Mac): the engine is ~670 MB in ~16,000 files, Stenny.app ~695 MB; mlx (212 MB),
+  llvmlite and numba (mlx-whisper's word timings, 155 MB) and scipy (98 MB) are most of it. torch is left out
+  (pyproject.toml, `exclude-dependencies`): mlx-whisper lists it but only its model converter uses it (−530 MB).
+- **Never written to:** every .pyc is compiled at build time ("unchecked-hash") and the app runs the engine with
+  `PYTHONDONTWRITEBYTECODE`, so Python never writes into the app (which would break its signature). The Python's
+  `site.py` has the user's own site-packages turned off, so nothing from another Python 3.12 can shadow the app's.
+- **The engine knows it's the app's** (src/stenny/paths.py, `in_app()`): it finds the app's own ffmpeg, stenny-rec,
+  stenny-agent and Stenny.mcpb first, the queue's background job and Claude Code's connector start the app's Python
+  (the same path after every update), and `stenny update` says the app is what gets updated.
+- **`stenny` in the terminal:** at each start the engine writes `~/.local/bin/stenny` (Windows: `stenny.cmd`), a
+  launcher for itself, unless another `stenny` is there (a developer's `uv tool install -e .`, or an older setup's
+  engine), which it never replaces (src/stenny/launcher.py; `stenny uninstall` removes only its own).
+- **Signing on a Mac:** `codesign --deep` doesn't reach code among the resources, so `scripts/sign-mac.sh` signs the
+  engine's ~165 native libraries and its Python one by one with the app's identity, then the app, and verifies all of
+  it. `install-mac.sh` and `app/release.sh` use it.
+
 ## The Windows installer
 
 `npm run tauri build` on Windows makes two: the setup program (`bundle/nsis/Stenny_<version>_x64-setup.exe`, the one
@@ -102,8 +132,9 @@ rights, into `%LOCALAPPDATA%\Stenny` (Tauri's default, so next to the engine's o
 the files it installed), in English or German after Windows' language, with Microsoft's WebView2 bootstrapper inside
 (installs WebView2 only where it's missing). Before building, `scripts/ffmpeg-windows.sh` puts a pinned, checksummed
 LGPL ffmpeg/ffprobe into src-tauri/binaries and their licence notice into src-tauri/resources (installed as
-`ffmpeg-license.txt`), and `../connector/build.sh` makes Stenny.mcpb; CI's installer job does both (Git Bash). The
-engine finds the bundled ffmpeg next to Stenny.exe (src/stenny/paths.py, `bundled()`).
+`ffmpeg-license.txt`), `../connector/build.sh` makes Stenny.mcpb and `scripts/bundle-engine.sh` the engine; CI's
+installer job does all three (Git Bash). The engine finds the bundled ffmpeg next to Stenny.exe (src/stenny/paths.py,
+`bundled()`).
 
 **Not signed:** there is no Windows code-signing certificate, so Windows SmartScreen warns about the setup program
 ("Windows protected your PC" ▸ *More info* ▸ *Run anyway*; SETUP.md says so). `bundle.windows.signCommand` /

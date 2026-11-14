@@ -1,6 +1,6 @@
 # Stenny on macOS and Windows, in English and German. Two tiers, one branch (main):
 # - quick, on every pull request and push to main: the engine's tests (tests/test_i18n.py keeps English and German
-#   complete) and the app type-checked and compiled;
+#   complete), the engine bundled for the app and tried, and the app type-checked and compiled;
 # - full, on a release tag (v*) or by hand (Actions ▸ CI ▸ Run workflow): the quick tier plus the installers built
 #   on both systems (installers job below).
 # The Windows runners are how Windows gets tested at all (see #2); what they can't cover (microphone, GPU) is said in
@@ -85,6 +85,65 @@ jobs:
           set +e; "$rec" --loud 2> /dev/null; code=$?; set -e
           [[ $code == 1 ]]
 
+  # The engine inside the app (#92, desktop/scripts/bundle-engine.sh): a standalone Python with Stenny and its locked
+  # packages, bundled on both systems and tried the way the app and Claude use it. On Windows it also transcribes a few
+  # spoken sentences with faster-whisper's tiny model (the runner has no GPU and the full model is 1.6 GB); the Mac
+  # runner has no Metal for mlx, so that is tried on a real Mac. Nothing may be written into the engine's folder.
+  bundle:
+    name: Engine bundle (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Bundle
+        shell: bash
+        run: desktop/scripts/bundle-engine.sh
+      - name: It answers the app and Claude
+        shell: bash
+        working-directory: desktop/src-tauri/engine
+        run: |
+          py=bin/python3; [[ -f python.exe ]] && py=./python.exe
+          export STENNY_HOME="$RUNNER_TEMP/stenny-home" PYTHONDONTWRITEBYTECODE=1 PYTHONUTF8=1
+          "$py" -m stenny init --folder "$RUNNER_TEMP/stenny-folder"
+          "$py" -m stenny course add "Test" -l en
+          echo '{"id": 1, "method": "library", "params": {}}' | "$py" -m stenny app-server | tee app-server.json
+          grep -q '"id": 1, "result"' app-server.json
+          init='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}'
+          (echo "$init"; sleep 10) | "$py" -m stenny mcp | tee mcp.json
+          grep -q '"serverInfo"' mcp.json
+          rm app-server.json mcp.json
+      - name: ffmpeg (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ffmpeg --no-progress -y
+      - name: Some speech to transcribe (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Speech
+          $voice = New-Object System.Speech.Synthesis.SpeechSynthesizer
+          $voice.SetOutputToWaveFile("$env:RUNNER_TEMP\talk.wav")
+          $voice.Speak("Today we talk about the second law of thermodynamics. Entropy in a closed system never decreases.")
+          $voice.Dispose()
+      - name: A transcription (Windows, tiny model)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          py=desktop/src-tauri/engine/python.exe
+          export STENNY_HOME="$RUNNER_TEMP/stenny-home" PYTHONDONTWRITEBYTECODE=1 PYTHONUTF8=1
+          sed -i 's|^model = "mlx-community/whisper-large-v3-turbo"|model = "tiny"|' "$STENNY_HOME/config.toml"
+          "$py" -m stenny add "$RUNNER_TEMP/talk.wav" --course Test --no-llm --now
+          grep -ril "entropy" "$RUNNER_TEMP/stenny-folder/Test"
+      - name: Nothing was written into the engine
+        shell: bash
+        working-directory: desktop/src-tauri/engine
+        run: |
+          find . -type f -newer stenny-engine.json | tee "$RUNNER_TEMP/written.txt"
+          [[ ! -s "$RUNNER_TEMP/written.txt" ]]
+
   app:
     name: App (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -112,7 +171,7 @@ jobs:
         run: npm run check
       - name: Build the interface
         run: npm run build
-      # The bundle's helpers (stenny-agent, stenny-rec, ffmpeg) and the connector are built by their own scripts
+      # The bundle's helpers (stenny-agent, stenny-rec, ffmpeg), the engine and the connector are built by their own scripts
       # (scripts/helpers.sh, connector/build.sh on a Mac; scripts/ffmpeg-windows.sh, connector/build.sh and
       # scripts/stenny-rec.sh on Windows, the recorder checked in its own job). Compiling only needs the files to exist.
       # stenny-agent is macOS's only (tauri.macos.conf.json); on Windows the app does its work itself.
@@ -122,15 +181,18 @@ jobs:
           triple=$(rustc -vV | sed -n 's/^host: //p')
           ext=""; [[ "$triple" == *windows* ]] && ext=".exe"
           agent=""; [[ "$triple" == *apple* ]] && agent="stenny-agent"
-          mkdir -p src-tauri/binaries src-tauri/resources
+          mkdir -p src-tauri/binaries src-tauri/resources src-tauri/engine
           for b in $agent stenny-rec ffmpeg ffprobe; do touch "src-tauri/binaries/$b-$triple$ext"; done
           touch src-tauri/resources/Stenny.mcpb src-tauri/resources/ffmpeg-license.txt
+          # the engine (scripts/bundle-engine.sh, tried in the bundle job): without stenny-engine.json the app ignores it
+          touch src-tauri/engine/placeholder.txt
       - name: Compile
         working-directory: desktop/src-tauri
         run: cargo check --locked --all-targets
 
   # Full tier only. Builds the installers (macOS: .app + .dmg, Windows: .msi + setup .exe) to prove bundling works on
-  # both systems; they are kept as the run's artifacts for a week, unsigned, NOT for handing out. On the Mac the Swift
+  # both systems; they are kept as the run's artifacts for a week, unsigned, NOT for handing out. Both carry the real
+  # engine (scripts/bundle-engine.sh). On the Mac the Swift
   # helpers and the connector are the real ones (scripts/helpers.sh); ffmpeg/ffprobe are placeholders (the LGPL build,
   # app/build-ffmpeg.sh, takes too long here). On Windows ffmpeg/ffprobe (a pinned LGPL build, scripts/ffmpeg-windows.sh),
   # the connector (connector/build.sh) and stenny-rec (scripts/stenny-rec.sh) are the real ones; stenny-agent is macOS's
@@ -162,8 +224,12 @@ jobs:
           workspaces: |
             desktop/src-tauri -> target.noindex
             desktop/stenny-rec
+      - uses: astral-sh/setup-uv@v6
       - name: Install
         run: npm ci
+      - name: The engine inside the app
+        shell: bash
+        run: scripts/bundle-engine.sh
       - name: Helpers (macOS)
         if: runner.os == 'macOS'
         run: scripts/helpers.sh
@@ -192,6 +258,12 @@ jobs:
           [[ -e src-tauri/resources/ffmpeg-license.txt ]] || touch src-tauri/resources/ffmpeg-license.txt
       - name: Build the installers
         run: npm run tauri build
+      - name: Sizes
+        shell: bash
+        run: |
+          cd src-tauri/target.noindex/release/bundle
+          du -sh macos/Stenny.app 2>/dev/null || true
+          ls -l dmg/*.dmg msi/*.msi nsis/*.exe 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         with:
           name: stenny-${{ runner.os }}-unsigned

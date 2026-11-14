@@ -21,9 +21,10 @@ security find-identity -p codesigning | grep -q '"Stenny Dev"' \
 
 app/build-ffmpeg.sh                 # app/build.noindex/tools: helpers.sh puts them into the app
 desktop/scripts/helpers.sh          # stenny-agent, stenny-rec, ffmpeg/ffprobe, the connector
+desktop/scripts/bundle-engine.sh    # the engine inside the app: a standalone Python with Stenny and its packages
 (cd desktop && npm ci && npm run tauri build -- --bundles app)
 BUILT=desktop/src-tauri/target.noindex/release/bundle/macos/Stenny.app
-codesign --force --deep --sign "Stenny Dev" "$BUILT"
+desktop/scripts/sign-mac.sh "$BUILT" "Stenny Dev"   # the engine's native libraries too, then the app
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT

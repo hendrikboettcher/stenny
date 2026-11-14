@@ -26,21 +26,46 @@ pub struct Engine {
     next_id: AtomicU64,
 }
 
-/// `stenny` as installed by `uv tool install` (~/.local/bin; on Windows %USERPROFILE%\.local\bin\stenny.exe), unless
-/// $STENNY_CLI points at another one (a development checkout's `.venv/bin/stenny`). Later the app bundles its own.
-fn stenny_command() -> PathBuf {
+/// The engine inside this app (#92, desktop/scripts/bundle-engine.sh): its own Python, Contents/Resources/engine on
+/// macOS, engine\ next to Stenny.exe on Windows. None for a build without it (a developer's `tauri dev`).
+fn bundled_python() -> Option<PathBuf> {
+    bundled_python_next_to(std::env::current_exe().ok()?.parent()?)
+}
+
+/// The engine's Python for the app program in `dir` (Contents/MacOS, or the folder with Stenny.exe).
+fn bundled_python_next_to(dir: &std::path::Path) -> Option<PathBuf> {
+    // Contents/Resources, not MacOS/../Resources: other programs get this path to start the engine with (paths.py)
+    let engine = if cfg!(windows) { dir.join("engine") } else { dir.parent()?.join("Resources/engine") };
+    let python = if cfg!(windows) { engine.join("python.exe") } else { engine.join("bin").join("python3") };
+    // stenny-engine.json says it's a whole engine, not the placeholder CI compiles with
+    (python.is_file() && engine.join("stenny-engine.json").is_file()).then_some(python)
+}
+
+/// How to start the engine, first found wins: $STENNY_CLI (a development checkout's `.venv/bin/stenny`), the engine
+/// inside this app (`python -m stenny`), else `stenny` as installed by `uv tool install` (~/.local/bin; on Windows
+/// %USERPROFILE%\.local\bin\stenny.exe) for installs from before the engine came with the app.
+fn stenny_command() -> (PathBuf, Vec<&'static str>) {
     if let Ok(path) = std::env::var("STENNY_CLI") {
-        return PathBuf::from(path);
+        return (PathBuf::from(path), vec![]);
+    }
+    if let Some(python) = bundled_python() {
+        return (python, vec!["-m", "stenny"]);
     }
     // Windows has no $HOME as a rule; uv's own tool folder is under the user's profile there
     let (home, program) = if cfg!(windows) { ("USERPROFILE", "stenny.exe") } else { ("HOME", "stenny") };
     let installed = PathBuf::from(std::env::var_os(home).unwrap_or_default()).join(".local").join("bin").join(program);
-    if installed.exists() { installed } else { PathBuf::from("stenny") }
+    (if installed.exists() { installed } else { PathBuf::from("stenny") }, vec![])
 }
 
 fn start() -> Result<Running, String> {
-    let exe = stenny_command();
+    let (exe, args) = stenny_command();
     let mut command = Command::new(&exe);
+    command.args(&args);
+    if !args.is_empty() {
+        // the app's own Python: none of another Python's settings, and never a .pyc written into the app (its files
+        // come with theirs, and writing there would break the app's signature)
+        command.env_remove("PYTHONHOME").env_remove("PYTHONPATH").env("PYTHONDONTWRITEBYTECODE", "1");
+    }
     // the recorder bundled with this app (Contents/MacOS; next to Stenny.exe on Windows: stenny-rec.exe, WASAPI),
     // not another Stenny's; `stenny live` reads $STENNY_REC
     let recorder = if cfg!(windows) { "stenny-rec.exe" } else { "stenny-rec" };
@@ -137,5 +162,31 @@ impl Drop for Engine {
         if let Some(mut r) = self.running.lock().unwrap().take() {
             let _ = r.child.kill();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_engine_inside_the_app_is_found_but_not_a_placeholder() {
+        let app = std::env::temp_dir().join(format!("stenny-engine-test-{}", std::process::id()));
+        let (program, engine) = if cfg!(windows) {
+            (app.clone(), app.join("engine"))
+        } else {
+            (app.join("Contents/MacOS"), app.join("Contents/Resources/engine"))
+        };
+        let python = if cfg!(windows) { engine.join("python.exe") } else { engine.join("bin/python3") };
+        std::fs::create_dir_all(python.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(&program).unwrap();
+        std::fs::write(engine.join("placeholder.txt"), "").unwrap();
+        assert_eq!(bundled_python_next_to(&program), None); // CI's placeholder: no engine
+        std::fs::write(&python, "").unwrap();
+        assert_eq!(bundled_python_next_to(&program), None); // no stenny-engine.json: not a whole engine
+        std::fs::write(engine.join("stenny-engine.json"), "{}").unwrap();
+        let found = bundled_python_next_to(&program).unwrap();
+        assert_eq!(found.canonicalize().unwrap(), python.canonicalize().unwrap());
+        let _ = std::fs::remove_dir_all(&app);
     }
 }

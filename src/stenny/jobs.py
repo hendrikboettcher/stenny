@@ -167,12 +167,14 @@ def install_agent(interval_s: int = QUEUE_INTERVAL_S, exe: str | None = None) ->
     """The background job that runs the queue: a launchd agent, on Windows a task in Task Scheduler."""
     if sys.platform == "win32":
         return install_task(interval_s, exe)
-    exe = exe or shutil.which("stenny") or sys.argv[0]
+    # the engine inside the app runs as its own Python (the same path after every update), never as another `stenny`
+    # on the PATH; otherwise the `stenny` command, as `uv tool install` put it there
+    program = [exe] if exe else paths.engine_command() or [shutil.which("stenny") or sys.argv[0]]
     log = str(LOGS_DIR / "queue.log")
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
     plist = {
         "Label": AGENT_LABEL,
-        "ProgramArguments": [exe, "queue", "run", "--scheduled"],
+        "ProgramArguments": [*program, "queue", "run", "--scheduled"],
         "StartInterval": interval_s,
         "StandardOutPath": log,
         "StandardErrorPath": log,

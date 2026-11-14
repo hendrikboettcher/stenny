@@ -35,10 +35,10 @@ LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchSe
 
 # Signed with a stable certificate ("Stenny Dev", made once by app/make-cert.sh), so the microphone and calendar
 # permissions survive updates; Tauri's builds are only signed ad hoc, which changes with every build and makes macOS ask
-# again. STENNY_SIGN_IDENTITY picks another certificate from the keychain.
+# again. The engine inside the app is signed with it too (sign-mac.sh). STENNY_SIGN_IDENTITY picks another certificate.
 identity="${STENNY_SIGN_IDENTITY:-Stenny Dev}"
 if security find-identity -p codesigning | grep -q "\"$identity\""; then
-    codesign --force --deep --sign "$identity" "$app"
+    scripts/sign-mac.sh "$app" "$identity"   # cwd: desktop/ (the cd above)
 elif ! codesign -dv "$app" 2>&1 | grep -q 'Signature=adhoc'; then
     :   # a release, already signed with the certificate (scripts/install.sh on a user's Mac): keep that signature
 else

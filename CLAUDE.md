@@ -78,6 +78,8 @@ src/stenny/
                   installed + signed in, an API key Anthropic accepts), the connector in Claude Desktop / Claude Code
   render.py       Markdown + YAML frontmatter
   vault.py        safe writes into the Stenny folder (courses, Talks/, _Glossaries …), folder rule enforcement
+  launcher.py     `stenny` for the terminal when the engine is the app's (#92): ~/.local/bin/stenny (Windows stenny.cmd),
+                  written at each start, never over another `stenny`
   uninstall.py    `stenny uninstall`: the background job, Claude Code's connector, saved secrets, logs, cache and the
                   Whisper model removed; settings and data listed for the Trash; never the Stenny folder.
                   scripts/uninstall.sh / uninstall.ps1 run it, then remove the app and the engine
@@ -96,6 +98,8 @@ app/              Swift menu bar app (SwiftPM + build.sh): starts `stenny live`,
                   release.sh: the release zip, which holds the signed app at app/build.noindex/Stenny.app
 desktop/          the new app (in development, replaces app/): Tauri 2 + Svelte 5/TypeScript, stenny.eu style; talks to
                   the engine only through `stenny app-server` (src-tauri/src/engine.rs); see desktop/README.md.
+                  The engine comes inside the app: scripts/bundle-engine.sh (a standalone Python + uv.lock's packages
+                  → src-tauri/engine, a Tauri resource), scripts/sign-mac.sh signs its native libraries on a Mac
                   Windows installer: tauri.windows.conf.json (per-user NSIS + MSI), scripts/ffmpeg-windows.sh
 desktop/stenny-rec/  `stenny-rec.exe`, the microphone recorder on Windows (Rust, WASAPI): the Swift stenny-rec's
                   command line, file (16 kHz mono s16le, appended) and exit codes; stops on `stop` on stdin (Windows
@@ -159,6 +163,7 @@ desktop/scripts/ffmpeg-windows.sh      # the pinned, checksummed LGPL ffmpeg/ffp
 uv run python bench/run_bench.py       # engine benchmark
 uv run stenny live --course "<name>" --file sample.m4a --speed 3   # test live mode without a microphone
 app/build.sh                           # build + install the menu bar app (--no-install: only build)
+desktop/scripts/bundle-engine.sh       # the engine inside the app (src-tauri/engine), for this system; before `tauri build`
 desktop/scripts/install-mac.sh         # install the new app's build on this Mac (never copy it by hand: one Stenny in the Dock)
 (cd desktop/stenny-rec && cargo test)  # the Windows recorder's tests (also on a Mac); desktop/scripts/stenny-rec.sh builds it on Windows
 uv run stenny course add "<name>" -l en  # or `course hide`; config.toml stays as text, comments intact

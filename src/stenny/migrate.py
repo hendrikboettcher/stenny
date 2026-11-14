@@ -560,6 +560,12 @@ def on_start(log=lambda message: print(message, file=sys.stderr)) -> None:
         drop_course_copies(log=lambda message: log("migrate: " + message))
     except Exception as e:  # never in the way of starting (ManageError, OSError …): it tries again next time
         log(f"migrate: {e}")
+    # the engine inside the app: `stenny` for the terminal and Claude Code (launcher.py; nothing for other engines)
+    try:
+        from . import launcher
+        launcher.install(log=log)
+    except Exception as e:  # never in the way of starting
+        log(f"launcher: {e}")
     if not config_path().exists():
         try:
             default_config(config_path())

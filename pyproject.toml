@@ -29,6 +29,14 @@ lecture = "stenny.cli:main"
 [dependency-groups]
 dev = ["pytest>=8"]
 
+[tool.pytest.ini_options]
+# only Stenny's own tests (not those of the packages in the app's engine, desktop/src-tauri/engine)
+testpaths = ["tests"]
+
 [build-system]
 requires = ["uv_build>=0.13.0,<0.14.0"]
 build-backend = "uv_build"
+
+[tool.uv]
+# torch: mlx-whisper lists it, but only its model converter uses it; ~530 MB nobody here needs
+exclude-dependencies = ["torch"]

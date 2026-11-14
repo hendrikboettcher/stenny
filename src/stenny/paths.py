@@ -187,9 +187,56 @@ def places() -> dict[str, str | None]:
             "models": str(models) if models else None}
 
 
+ENGINE_INFO = "stenny-engine.json"  # at the top of the app's own Python (desktop/scripts/bundle-engine.sh)
+
+
+def in_app() -> bool:
+    """True when this engine is the one inside Stenny's app (#92): Stenny.app/Contents/Resources/engine on a Mac,
+    engine\\ next to Stenny.exe on Windows. Not for a development checkout or an engine installed by `uv tool`."""
+    return (Path(sys.prefix) / ENGINE_INFO).is_file()
+
+
+def app_dir() -> Path | None:
+    """The app this engine came with: Stenny.app/Contents on a Mac, the folder with Stenny.exe on Windows. None
+    for an engine that didn't come with the app."""
+    if not in_app():
+        return None
+    engine = Path(sys.prefix).resolve()
+    return engine.parent if _windows() else engine.parent.parent  # Contents/Resources/engine → Contents
+
+
+def app_file(name: str, helper: bool = False) -> Path | None:
+    """A file of the app this engine came with, if it has one: a helper program (`helper`: Contents/MacOS, on
+    Windows `name`.exe next to Stenny.exe) or a resource (Contents/Resources, on Windows next to Stenny.exe)."""
+    app = app_dir()
+    if app is None:
+        return None
+    if _windows():
+        path = app / (f"{name}.exe" if helper else name)
+    else:
+        path = app / ("MacOS" if helper else "Resources") / name
+    return path if path.is_file() else None
+
+
+def engine_command() -> list[str] | None:
+    """How other programs start this engine when it is the app's (the queue's background job, Claude Code's
+    connector, the terminal's `stenny`): its own Python with -m. None otherwise (they use the `stenny` command)."""
+    return [sys.executable, "-m", "stenny"] if in_app() else None
+
+
+def bin_dir() -> Path:
+    """Where the terminal's `stenny` goes when the engine is the app's (launcher.py): ~/.local/bin on both systems,
+    where `uv tool install` and Claude Code's installer put their commands, so it's usually on the PATH already."""
+    return Path.home() / ".local" / "bin"
+
+
 def bundled(name: str) -> str | None:
-    """A helper program that came with the installed app: on a Mac inside Stenny.app (your own copy first, on a
-    shared Mac), on Windows next to Stenny.exe (`name`.exe; Tauri puts the bundle's helpers there)."""
+    """A helper program that came with the installed app: the app this engine is part of first, then on a Mac inside
+    Stenny.app (your own copy first, on a shared Mac), on Windows next to Stenny.exe (`name`.exe; Tauri puts the
+    bundle's helpers there)."""
+    if own := app_file(name, helper=True):
+        if _windows() or os.access(own, os.X_OK):
+            return str(own)
     if _windows():
         for folder in app_dirs_windows():
             program = folder / f"{name}.exe"
