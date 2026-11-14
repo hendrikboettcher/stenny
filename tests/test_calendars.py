@@ -230,3 +230,67 @@ def test_reminders_can_be_switched_off(cal):
     assert settings.get(cal.cfg)["app"]["reminders"] is True
     assert settings.change(cal.cfg, "app.reminders", False)["app"]["reminders"] is False
     assert calendars.status(config.load(cal.cfg.path))["reminders"] is False
+
+
+# ---------------------------------------------------------------- the system's own tools (no stand-ins)
+
+@pytest.fixture
+def local_web():
+    """A small web server on this computer: /timetable.ics is a calendar with a weekly lecture in Berlin time,
+    anything else is 404. Yields its address."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    start = datetime.now(timezone.utc).replace(microsecond=0, second=0) - timedelta(days=14)
+    body = "\r\n".join([
+        "BEGIN:VCALENDAR", "VERSION:2.0", "X-WR-CALNAME:Timetable",
+        "BEGIN:VEVENT", "UID:stat", f"DTSTAMP:{start:%Y%m%dT%H%M%S}Z",
+        f"DTSTART;TZID=Europe/Berlin:{start.astimezone(__import__('zoneinfo').ZoneInfo('Europe/Berlin')):%Y%m%dT%H%M%S}",
+        "DURATION:PT1H30M", "RRULE:FREQ=WEEKLY", "SUMMARY:Statistics – Lecture", "END:VEVENT",
+        "END:VCALENDAR", ""]).encode()
+
+    class Serve(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            found = self.path == "/timetable.ics"
+            self.send_response(200 if found else 404)
+            self.send_header("Content-Type", "text/calendar")
+            self.end_headers()
+            self.wfile.write(body if found else b"not here")
+
+        def log_message(self, *args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Serve)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_address[1]}", start
+    server.shutdown()
+
+
+def test_a_link_is_fetched_by_the_systems_own_curl(local_web):
+    """The real `_download`: /usr/bin/curl on a Mac, Windows' own curl.exe on Windows (CI runs this on both). A
+    repeating lecture in another time zone comes out at the right moment, which on Windows needs the tzdata package
+    (Windows has no time zone database of its own)."""
+    base, start = local_web
+    code, body = calendars._download(f"{base}/timetable.ics")
+    assert code == 200 and b"BEGIN:VCALENDAR" in body
+    assert calendars._download(f"{base}/gone.ics")[0] == 404
+    assert calendars._download("http://127.0.0.1:9/nothing.ics") == (0, b"")   # nobody listens there
+
+    week_later = start + timedelta(days=14)
+    found = calendars._occurrences(calendars._parse(body), week_later - timedelta(minutes=1), week_later + timedelta(minutes=1))
+    assert [e["title"] for e in found] == ["Statistics – Lecture"]
+    assert found[0]["start"] == week_later.timestamp() and found[0]["end"] - found[0]["start"] == 90 * 60
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="the Windows Credential Manager (a Mac's Keychain isn't touched)")
+def test_windows_keeps_a_link_in_credential_manager(monkeypatch):
+    import secrets
+    monkeypatch.setattr(keychain, "SERVICE", f"Stenny test {secrets.token_hex(4)}")
+    link = "https://calendar.google.com/calendar/ical/" + "x" * 300 + "/private-0123456789abcdef/basic.ics"
+    assert keychain.get_secret("calendar-link-test") is None
+    keychain.save_secret("calendar-link-test", link, "Stenny: calendar link")
+    try:
+        assert keychain.get_secret("calendar-link-test") == link
+    finally:
+        keychain.delete_secret("calendar-link-test")
+    assert keychain.get_secret("calendar-link-test") is None
