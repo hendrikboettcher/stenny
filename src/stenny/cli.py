@@ -8,7 +8,6 @@ import subprocess
 import sys
 import time
 from datetime import datetime
-from importlib.metadata import version as package_version
 from pathlib import Path
 
 from . import config as config_mod
@@ -17,6 +16,7 @@ from .config import ConfigError, Course
 from .i18n import tr
 from .paths import tool
 from .vault import TALKS_DIR
+from .version import version
 
 EXAMPLE = config_mod.EXAMPLE
 ICLOUD_INBOX = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/Lectures"
@@ -919,7 +919,7 @@ def utf8_output() -> None:
 def main() -> None:
     utf8_output()
     ap = argparse.ArgumentParser(prog="stenny", description="Transcribe lectures locally into Markdown files (your Stenny folder).")
-    ap.add_argument("--version", action="version", version=f"stenny {package_version('stenny')}")
+    ap.add_argument("--version", action="version", version=f"stenny {version()}")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("add", help="transcribe audio file(s) into the Stenny folder")
