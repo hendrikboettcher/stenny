@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds dist/Stenny.mcpb, the Claude Desktop extension: double-click it (or drag it onto Claude's Settings) to
-# install. It only starts the `stenny mcp` already installed on the computer; see server/index.js. The same file
+# install. It only starts the Stenny already on the computer (the app's engine first); see server/index.js. The same file
 # works on macOS and Windows.
 # Needs Node.js (npx) for Anthropic's mcpb packer; runs on a Mac and in Git Bash on Windows (CI's installer job).
 #   connector/build.sh          the extension, with the committed icon (connector/icon.png)

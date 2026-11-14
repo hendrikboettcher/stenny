@@ -116,6 +116,11 @@ Nothing is frozen, so mlx (Metal) and CTranslate2 load their libraries as always
 - **The engine knows it's the app's** (src/stenny/paths.py, `in_app()`): it finds the app's own ffmpeg, stenny-rec,
   stenny-agent and Stenny.mcpb first, the queue's background job and Claude Code's connector start the app's Python
   (the same path after every update), and `stenny update` says the app is what gets updated.
+- **Claude Desktop's connector** (connector/server/index.js) runs the app's engine too: it looks for it in
+  `Stenny.app` (~/Applications, then /Applications) or the Windows install folder (the installer's registry
+  entry, `%LOCALAPPDATA%\Stenny`, `%ProgramFiles%\Stenny`) before any `stenny` command, and starts it the way
+  the app does (no `PYTHONHOME`/`PYTHONPATH`, no bytecode written). `node connector/server/index.js --candidates`
+  lists what it would try.
 - **`stenny` in the terminal:** at each start the engine writes `~/.local/bin/stenny` (Windows: `stenny.cmd`), a
   launcher for itself, unless another `stenny` is there (a developer's `uv tool install -e .`, or an older setup's
   engine), which it never replaces (src/stenny/launcher.py; `stenny uninstall` removes only its own).
