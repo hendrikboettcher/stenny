@@ -104,8 +104,8 @@ desktop/          the new app (in development, replaces app/): Tauri 2 + Svelte 
 desktop/stenny-rec/  `stenny-rec.exe`, the microphone recorder on Windows (Rust, WASAPI): the Swift stenny-rec's
                   command line, file (16 kHz mono s16le, appended) and exit codes; stops on `stop` on stdin (Windows
                   has no SIGTERM), `--list-json` for the engine's device list; scripts/stenny-rec.sh bundles it
-connector/        the Claude Desktop extension (.mcpb): manifest.json, server/index.js (finds the installed `stenny`
-                  and runs `stenny mcp`, also `stenny.exe` on Windows), build.sh → dist/Stenny.mcpb (icon.png committed,
+connector/        the Claude Desktop extension (.mcpb): manifest.json, server/index.js (runs `stenny mcp` with the
+                  engine inside the app, else an installed `stenny`/`stenny.exe`), build.sh → dist/Stenny.mcpb (icon.png committed,
                   drawn by app/make-icon.swift: `build.sh --icon`)
 tests/            pytest, no model downloads needed
 bench/            engine benchmark scripts
