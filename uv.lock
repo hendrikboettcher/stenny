@@ -1551,7 +1551,7 @@ wheels = [
 
 [[package]]
 name = "stenny"
-version = "0.5.9"
+version = "0.5.10"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
