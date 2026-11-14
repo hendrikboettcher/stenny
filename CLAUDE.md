@@ -138,7 +138,9 @@ Stenny folder (`folder` in config.toml, default `~/Documents/Stenny`, may be ins
   `dev` branch any more (merged into main on 2026-11-09).
 - **Every change is for macOS and Windows, in English and German** (see Platforms at the top and the English/German rule above); a PR says
   what it couldn't test on Windows.
-- **Keep README.md, SETUP.md and config.example.toml current** in the same commit as a change to a feature, a command, a setting or a storage location.
+- **Keep SETUP.md and config.example.toml current** in the same commit as a change to a feature, a command, a setting or a storage location.
+  The user docs live on stenny.eu (the stenny-website repo, docs-src/pages). README.md stays short: what Stenny is, the
+  install lines, requirements and links to the docs; don't add feature details back to it.
 - **One Stenny in the Dock, Spotlight and Launchpad.** Install a Mac build only with `desktop/scripts/install-mac.sh`
   (in place, other copies unregistered, duplicate Dock tiles removed); deleting and copying the app by hand leaves the
   Dock with two or three Stenny icons. Builds go to `desktop/src-tauri/target.noindex` (.cargo/config.toml), which

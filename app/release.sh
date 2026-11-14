@@ -3,7 +3,7 @@
 # with "Stenny Dev" so permissions survive updates. Refuses anything that wouldn't match what's on GitHub.
 #   app/release.sh              build the zip
 #   app/release.sh --publish    also tag the version and create the GitHub release, with the installers
-#                               scripts/install.sh and scripts/install.ps1 (README: Setup), and their uninstall twins. CI adds the Windows setup
+#                               scripts/install.sh and scripts/install.ps1 (README: Install), and their uninstall twins. CI adds the Windows setup
 #                               program to the release once it has built it (ci.yml, Installer).
 # The app goes to app/build.noindex/Stenny.app in the zip, where scripts/install.sh and an older `stenny update` look.
 set -euo pipefail
