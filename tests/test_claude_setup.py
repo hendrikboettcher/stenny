@@ -136,7 +136,6 @@ def test_adds_the_connector_to_claude_code_once(fake_claude, monkeypatch):
     assert not (fake_claude.dir / "added").exists()  # already there: not added twice
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Windows adds itself to Claude's settings, no Stenny.mcpb")
 def test_installing_needs_the_file_and_claude(monkeypatch):
     monkeypatch.setattr(claude_setup, "connector_file", lambda: None)
     with pytest.raises(claude_setup.SetupError, match="Stenny.mcpb"):
@@ -187,42 +186,40 @@ def test_the_connector_bundled_with_the_app_comes_first(tmp_path, monkeypatch):
     assert claude_setup.connector_file() != tmp_path / "missing.mcpb"
 
 
-def test_windows_adds_the_connector_to_claudes_settings_file(tmp_path, monkeypatch):
-    """Windows can't open Stenny.mcpb with Claude, so Stenny writes itself into claude_desktop_config.json (in each
-    place a Claude reads it from), keeping everything else in the file; and takes itself out again."""
-    roaming, packaged = tmp_path / "Roaming/Claude", tmp_path / "Packages/Claude_x/LocalCache/Roaming/Claude"
-    packaged.mkdir(parents=True)
+def test_windows_opens_the_connector_with_claude_and_drops_a_0_5_7_entry(tmp_path, monkeypatch):
+    """Windows installs Stenny.mcpb with Claude, as a Mac does. Stenny 0.5.7 wrote itself into
+    claude_desktop_config.json there instead: that entry is recognised, and taken out when the connector is
+    installed, everything else in the file as it was."""
+    roaming = tmp_path / "Roaming/Claude"
     roaming.mkdir(parents=True)
-    (roaming / "claude_desktop_config.json").write_text(
-        '\ufeff{"preferences": {"quickEntry": true}, "mcpServers": {"other": {"command": "x"}}}', encoding="utf-8")
-    monkeypatch.setattr(claude_setup, "_claude_config_dirs", lambda: [roaming, packaged])
+    entry = {"command": "C:/Users/s/.local/bin/stenny.exe", "args": ["mcp"]}
+    (roaming / "claude_desktop_config.json").write_text(json.dumps(
+        {"preferences": {"quickEntry": True}, "mcpServers": {"other": {"command": "x"}, "stenny": entry}}), encoding="utf-8")
+    file = tmp_path / "Stenny.mcpb"
+    file.write_bytes(b"zip")
+    opened = []
+    monkeypatch.setattr(claude_setup, "_claude_config_dirs", lambda: [roaming])
     monkeypatch.setattr(claude_setup, "claude_data_dir", lambda: roaming)
     monkeypatch.setattr(claude_setup, "claude_desktop_installed", lambda: True)
-    monkeypatch.setattr(claude_setup, "stenny_command", lambda: ["C:/Users/s/.local/bin/stenny.exe"])
     monkeypatch.setattr(claude_setup, "find_claude", lambda: None)
-    monkeypatch.setattr(claude_setup, "connector_file", lambda: None)
+    monkeypatch.setattr(claude_setup, "connector_file", lambda: file)
+    monkeypatch.setattr(claude_setup, "_open_with_claude_windows", opened.append)
     monkeypatch.setattr(claude_setup.sys, "platform", "win32")
     before = claude_setup.connector_status(None)
-    assert before["installed"] is False and before["direct"] is True and before["via"] is None
+    assert before["installed"] is True and before["via"] == "config"
 
-    status = claude_setup.install_connector(None)
-    assert status["installed"] and status["enabled"] and status["via"] == "config"
+    assert claude_setup.install_connector(None) == {"opened": True}
+    assert opened == [file]
     kept = json.loads((roaming / "claude_desktop_config.json").read_text(encoding="utf-8"))
-    assert kept["preferences"] == {"quickEntry": True} and kept["mcpServers"]["other"] == {"command": "x"}
-    entry = {"command": "C:/Users/s/.local/bin/stenny.exe", "args": ["mcp"]}
-    assert kept["mcpServers"]["stenny"] == entry
-    assert json.loads((packaged / "claude_desktop_config.json").read_text(encoding="utf-8")) == {"mcpServers": {"stenny": entry}}
-
-    status = claude_setup.remove_from_desktop_config(None)
-    assert status["installed"] is False
-    assert json.loads((roaming / "claude_desktop_config.json").read_text(encoding="utf-8"))["mcpServers"] == {"other": {"command": "x"}}
+    assert kept == {"preferences": {"quickEntry": True}, "mcpServers": {"other": {"command": "x"}}}
+    assert claude_setup.connector_status(None)["installed"] is False   # until Claude has installed the extension
 
 
 def test_a_broken_claude_settings_file_is_left_alone(tmp_path, monkeypatch):
     (tmp_path / "claude_desktop_config.json").write_text('{"mcpServers": {', encoding="utf-8")
     monkeypatch.setattr(claude_setup, "_claude_config_dirs", lambda: [tmp_path])
     with pytest.raises(claude_setup.SetupError, match="JSON"):
-        claude_setup.add_to_desktop_config(None)
+        claude_setup.remove_from_desktop_config(None)
     assert (tmp_path / "claude_desktop_config.json").read_text(encoding="utf-8") == '{"mcpServers": {'
     assert claude_setup.in_desktop_config() is False
 

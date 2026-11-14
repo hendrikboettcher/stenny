@@ -159,13 +159,14 @@
             Fail "Stenny's setup program stopped with error $($p.ExitCode)." "Stennys Setup-Programm brach mit Fehler $($p.ExitCode) ab."
             return
         }
-        Say "Stenny $version is installed." "Stenny $version ist installiert."
+        # No "installed" here: setup and Whisper still take minutes, and friends closed the window at that line
     } finally {
         Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
     }
 
     # 5. First time: the Stenny folder. Every time: the task that finishes waiting final transcripts on AC power.
-    if (-not ((& $stenny where --json) -match '"error": null')) { & $stenny init }
+    # Quiet: init's "Wrote config.toml... Edit it" is for the command line; the app's setup list sets the courses
+    if (-not ((& $stenny where --json) -match '"error": null')) { & $stenny init | Out-Null }
     & $stenny schedule install | Out-Null
     if ($LASTEXITCODE -ne 0) { Say "! The task for final transcripts couldn't be added." '! Die Aufgabe fuer finale Transkripte liess sich nicht anlegen.' }
 
@@ -185,13 +186,16 @@
     & $stenny download-model
     if ($LASTEXITCODE -ne 0) { Say '! Whisper will download with the first transcription instead.' '! Whisper wird stattdessen beim ersten Transkript heruntergeladen.' }
 
+    # Where to go on, by a place everyone knows: the Start menu also brings back the window of a running Stenny
+    # (single instance). Not the tray icon, "next to the clock": Windows 11 often hides it behind the ^ arrow.
     Write-Host ''
+    Say "Stenny $version is installed." "Stenny $version ist installiert."
     if ($opened) {
-        Say "Done. Stenny's icon is next to the clock; its window shows what's left to set up." 'Fertig. Stennys Symbol ist neben der Uhr; sein Fenster zeigt, was noch einzurichten ist.'
+        Say "Carry on in Stenny's window: it shows what's left to set up. If it's closed: Start menu > Stenny." 'Mach im Stenny-Fenster weiter: Es zeigt, was noch einzurichten ist. Falls es zu ist: Startmenue > Stenny.'
     } else {
-        Say "Done. Open Stenny from the Start menu; its window shows what's left to set up." 'Fertig. Oeffne Stenny im Startmenue; sein Fenster zeigt, was noch einzurichten ist.'
+        Say "Open Stenny from the Start menu; its window shows what's left to set up." 'Oeffne Stenny ueber das Startmenue; sein Fenster zeigt, was noch einzurichten ist.'
     }
-    Say 'You can close this window.' 'Du kannst dieses Fenster schliessen.'
+    Say 'You can close this window now.' 'Du kannst dieses Fenster jetzt schliessen.'
     } } finally {
         try { [Console]::OutputEncoding = $savedEncoding } catch {}
         $env:PYTHONUTF8 = $savedPythonUtf8

@@ -323,10 +323,8 @@
     connBusy = "install";
     connError = null;
     try {
-      // a Mac opens Claude's Install window; Windows is added to Claude's settings file right away
-      const r = await engine<ConnectorStatus | { opened: boolean }>("install_connector");
-      if ("installed" in r) { conn = r; done(); }
-      else connOpened = true;
+      await engine("install_connector");   // Claude shows its own Install window (Mac and Windows)
+      connOpened = true;
     } catch (e) {
       connError = String(e);
     } finally {
@@ -810,7 +808,7 @@
                   <div class="hint state"><span class="dot" class:off={!conn.enabled}></span>{conn.via === "config" ? t("settings.claude.added") : conn.enabled ? t("settings.claude.installed") : t("settings.claude.disabled")}</div>
                 {:else if !conn.desktop}
                   <div class="hint">{t("settings.claude.noDesktop")}</div>
-                {:else if !conn.file && !conn.direct}
+                {:else if !conn.file}
                   <div class="hint">{t("settings.claude.noFile")}</div>
                 {:else}
                   <div class="hint">{connOpened ? t("settings.claude.opened") : t("settings.claude.notInstalled")}</div>
@@ -819,10 +817,14 @@
               {#if conn && !conn.installed}
                 {#if !conn.desktop}
                   <button class="pill" onclick={() => openLink(URLS.desktop)}>{t("settings.claude.getDesktop")}</button>
-                {:else if conn.file || conn.direct}
+                {:else if conn.file}
                   <button class="pill primary" disabled={connBusy !== null} onclick={installConnector}>
                     {connBusy === "install" ? t("common.oneMoment") : t("settings.claude.install")}
                   </button>
+                  <!-- Windows: for Claude's own Install Extension…, if its Install window didn't come up -->
+                  {#if connOpened && onWindows}
+                    <button class="pill" onclick={() => reveal(conn!.file!)}>{t("settings.claude.showFile")}</button>
+                  {/if}
                 {/if}
               {:else if conn?.installed}
                 <button class="pill" disabled={connBusy !== null}

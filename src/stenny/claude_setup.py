@@ -4,12 +4,12 @@
   Anthropic API key that Anthropic accepts, or Off. Nothing here spends tokens: Claude Code is asked with
   `claude auth status`, a key is checked by listing the models (free).
 - the API key: saved to the system keychain once Anthropic accepts it (keychain.py), never to config.toml.
-- the connector: whether Claude Desktop has it, and adding it there. On a Mac Stenny.mcpb is opened with Claude
-  (which shows its own Install dialog; Claude removes its extensions itself). On Windows nothing opens a .mcpb
-  reliably (no file type registered for it, and Claude's own Install Extension fails on its app package), so Stenny
-  writes itself into Claude's claude_desktop_config.json (`mcpServers.stenny`), Claude's documented way to add a
-  local MCP server, and takes itself out of it again; Claude reads it when it starts. Adding it to Claude Code
-  (`claude mcp add`) and removing it from Claude Code again.
+- the connector: whether Claude Desktop has it, and adding it there: Stenny.mcpb opened with Claude, which shows its
+  own Install dialog (Claude removes its extensions itself), on a Mac and on Windows. Windows may not know that
+  Claude opens a .mcpb, so Stenny then hands the file to Claude's launcher itself; the app says where Claude installs
+  it by hand if nothing shows up. Stenny 0.5.7 wrote itself into Claude's claude_desktop_config.json on Windows
+  instead, which Claude rewrites when it quits: such an entry is still recognised, and taken out again. Adding it to
+  Claude Code (`claude mcp add`) and removing it from Claude Code again.
 
 The app shows the states; the words for them are the app's (desktop/src/lib/locales)."""
 
@@ -225,7 +225,7 @@ def stenny_command() -> list[str]:
     return [sys.executable, "-m", "stenny"]
 
 
-# ---- Claude Desktop's own settings file (Windows' way in) ---------------------------------------------------------
+# ---- Claude Desktop's own settings file (where Stenny 0.5.7 put itself on Windows) ---------------------------------------------------------
 
 DESKTOP_CONFIG = "claude_desktop_config.json"
 
@@ -281,20 +281,6 @@ def in_desktop_config() -> bool:
     return False
 
 
-def add_to_desktop_config(cfg) -> dict:
-    """Stenny in Claude Desktop's mcpServers, everything else in the file as it was. Claude reads it when it starts."""
-    files = [folder / DESKTOP_CONFIG for folder in _claude_config_dirs()]
-    datas = [_read_desktop_config(f) for f in files]   # all read first: one bad file changes none of them
-    entry = desktop_config_entry()
-    for file, data in zip(files, datas):
-        data.setdefault("mcpServers", {})["stenny"] = entry
-        try:
-            _write_desktop_config(file, data)
-        except OSError as e:
-            raise SetupError(tr("Stenny couldn't be added to Claude's settings: {error}", error=e)) from None
-    return connector_status(cfg)
-
-
 def remove_from_desktop_config(cfg) -> dict:
     for folder in _claude_config_dirs():
         file = folder / DESKTOP_CONFIG
@@ -319,8 +305,8 @@ def _claude_code_has_it() -> bool:
 
 
 def connector_status(cfg) -> dict:
-    """`via`: how Claude Desktop has it, "extension" (Stenny.mcpb) or "config" (claude_desktop_config.json);
-    `direct`: Stenny adds it by itself (Windows), so it needs no Stenny.mcpb."""
+    """`via`: how Claude Desktop has it, "extension" (Stenny.mcpb) or "config" (an entry in
+    claude_desktop_config.json, from Stenny 0.5.7 on Windows)."""
     ext = installed_extension()
     configured = ext is None and in_desktop_config()
     file = connector_file()
@@ -328,7 +314,6 @@ def connector_status(cfg) -> dict:
         "desktop": claude_desktop_installed(),
         "installed": ext is not None or configured,
         "via": "extension" if ext else "config" if configured else None,
-        "direct": sys.platform == "win32",
         "enabled": bool(ext and ext["enabled"]) or configured,
         "version": ext and ext["version"],
         "file": str(file) if file else None,
@@ -336,19 +321,54 @@ def connector_status(cfg) -> dict:
     }
 
 
+def _windows_opens_mcpb() -> bool:
+    """Windows knows a program for .mcpb files (Claude registers it, in some versions). Without one, opening the file
+    shows Windows' "How do you want to open this file?" list, which may not even have Claude in it."""
+    import winreg
+    for key in (r".mcpb", r".mcpb\OpenWithProgids"):
+        try:
+            with winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, key) as k:
+                if key.endswith("Progids"):
+                    return winreg.QueryInfoKey(k)[1] > 0
+                if winreg.QueryValue(k, None):
+                    return True
+        except OSError:
+            continue
+    return False
+
+
+def _open_with_claude_windows(file: Path) -> None:
+    """Stenny.mcpb to Claude: as a double-click does when Windows knows .mcpb; else straight to Claude's launcher,
+    which hands it on to the app as a double-click would; an app package (Store) Claude only gets opened, and the
+    app says where Claude installs it by hand."""
+    if _windows_opens_mcpb():
+        os.startfile(file)  # noqa: S606
+        return
+    exe = claude_desktop_exe()
+    if exe:
+        subprocess.Popen([str(exe), str(file)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,  # noqa: S603
+                         stderr=subprocess.DEVNULL, creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
+        return
+    os.startfile("claude://")  # noqa: S606
+
+
 def install_connector(cfg) -> dict:
-    """Mac: opens Stenny.mcpb with Claude Desktop, which asks the user to Install it ({"opened": True}). Windows:
-    Stenny adds itself to Claude's settings file (the connector's status, `via` "config")."""
-    if sys.platform == "win32":
-        if not claude_desktop_installed():
-            raise SetupError(tr("The Claude desktop app isn't installed. Get it at claude.ai/download, then try again."))
-        return add_to_desktop_config(cfg)
+    """Opens Stenny.mcpb with Claude Desktop, which asks the user to Install it ({"opened": True}), on a Mac and on
+    Windows. A Stenny 0.5.7 entry in Claude's settings file goes first, so Claude doesn't get Stenny twice."""
     file = connector_file()
     if not file:
         raise SetupError(tr("Stenny.mcpb isn't in Stenny's folder. Download Stenny again, or build it with "
                             "connector/build.sh."))
     if not claude_desktop_installed():
         raise SetupError(tr("The Claude desktop app isn't installed. Get it at claude.ai/download, then try again."))
+    if sys.platform == "win32":
+        if in_desktop_config():
+            remove_from_desktop_config(cfg)
+        try:
+            _open_with_claude_windows(file)
+        except OSError as e:
+            raise SetupError(tr("Claude couldn't open the connector: {error}", error=e)) from None
+        return {"opened": True}
     p = subprocess.run(["open", "-a", "Claude", str(file)], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15)
     if p.returncode != 0:
         raise SetupError(tr("Claude couldn't open the connector: {error}", error=p.stderr.strip()))

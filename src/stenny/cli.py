@@ -3,6 +3,7 @@
 import argparse
 import contextlib
 import json
+import os
 import subprocess
 import sys
 import time
@@ -95,6 +96,11 @@ def cmd_where(args) -> None:
 
 def cmd_download_model(args) -> None:
     """Download the Whisper model now (with progress), instead of silently during the first transcription."""
+    # Before huggingface_hub loads (it reads these at import): Windows' warning that it can't make symlinks, and
+    # "You are sending unauthenticated requests ... set a HF_TOKEN", read as errors by people installing Stenny.
+    # The progress bar stays.
+    os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+    os.environ.setdefault("HF_HUB_VERBOSITY", "error")
     from .config import Config
     from .engines import resolve
     try:
@@ -299,14 +305,6 @@ def cmd_project_instructions(args) -> None:
 
 def cmd_mcp(args) -> None:
     """The connector for Claude: an MCP server on stdin/stdout, started by Claude Desktop."""
-    if args.add_to_claude:
-        from .claude_setup import SetupError, add_to_desktop_config
-        try:
-            add_to_desktop_config(None)
-        except SetupError as e:
-            raise SystemExit(str(e)) from None
-        print("Added Stenny to the Claude desktop app's settings. Quit Claude and open it again to use it.")
-        return
     if args.desktop_config:
         from .claude_setup import desktop_config_entry
         print(json.dumps({"mcpServers": {"stenny": desktop_config_entry()}}, indent=2, ensure_ascii=False))
@@ -961,8 +959,6 @@ def main() -> None:
                        "and glossaries (a local MCP server on stdin/stdout)")
     p.add_argument("--desktop-config", action="store_true",
                    help="print the entry for Claude Desktop's claude_desktop_config.json instead of serving")
-    p.add_argument("--add-to-claude", action="store_true",
-                   help="write that entry into Claude Desktop's settings (Windows' way to add the connector)")
     p.set_defaults(func=cmd_mcp)
 
     p = sub.add_parser("api-key", help="save the Anthropic API key for the AI step in the system keychain")

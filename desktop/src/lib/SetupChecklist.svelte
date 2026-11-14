@@ -18,10 +18,10 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import {
-    calendarAllow, engine, openSystemSettings, setupStatus,
+    calendarAllow, engine, openSystemSettings, reveal, setupStatus,
     type AiStatus, type CalendarStatus, type ConnectorStatus, type SetupStatus,
   } from "$lib/engine";
-  import { t, tn } from "$lib/i18n.svelte";
+  import { t, tn, onWindows } from "$lib/i18n.svelte";
 
   type Section = "transcripts" | "claude" | "calendar";
   let { courses, onaddcourse, onsettings }: {
@@ -172,12 +172,8 @@
     keyInput = "";
     if (status) status = { ...status, ai };
   });
-  // a Mac opens Claude's Install window; Windows is added to Claude's settings file right away
-  const install = () => act("install", async () => {
-    const r = await engine<ConnectorStatus | { opened: boolean }>("install_connector");
-    if ("installed" in r) { if (status) status = { ...status, connector: r }; }
-    else installOpened = true;
-  });
+  // Claude shows its own Install window (Mac and Windows)
+  const install = () => act("install", async () => { await engine("install_connector"); installOpened = true; });
   const addToCode = () => act("code", async () => {
     const connector = await engine<ConnectorStatus>("add_to_claude_code");
     if (status) status = { ...status, connector };
@@ -341,7 +337,7 @@
           {:else}
             {#if !c.desktop}
               <p class="note">{t("setup.claude.noDesktop")}</p>
-            {:else if !c.file && !c.direct}
+            {:else if !c.file}
               <p class="note">{t("settings.claude.noFile")}</p>
             {:else if installOpened}
               <p class="note">{t("settings.claude.opened")}</p>
@@ -349,8 +345,12 @@
             <div class="do">
               {#if !c.desktop}
                 <button class="pill primary" onclick={() => link(URLS.desktop)}>{t("settings.claude.getDesktop")}</button>
-              {:else if c.file || c.direct}
+              {:else if c.file}
                 <button class="pill primary" disabled={busy === "install"} onclick={install}>{t("settings.claude.install")}</button>
+                <!-- Windows: for Claude's own Install Extension…, if its Install window didn't come up -->
+                {#if installOpened && onWindows}
+                  <button class="pill" onclick={() => reveal(c.file!)}>{t("settings.claude.showFile")}</button>
+                {/if}
               {/if}
               {#if c.code.available}
                 <button class="pill" disabled={busy === "code"} onclick={addToCode}>

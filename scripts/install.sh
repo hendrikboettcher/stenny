@@ -114,7 +114,7 @@ stenny_install() {
 
     # 5. First time: the Stenny folder. Every time: the job that finishes waiting final transcripts on AC power.
     if ! "$stenny" where --json 2>/dev/null | grep -q '"error": null'; then
-        "$stenny" init || true   # refuses, and says why, when a config is already there
+        "$stenny" init >/dev/null || true   # quiet: its "Edit it" is for the command line; refuses on stderr if one is there
     fi
     "$stenny" schedule install >/dev/null || say "⚠️  The background job for final transcripts couldn't be installed." \
                                                  "⚠️  Der Hintergrund-Job für finale Transkripte ließ sich nicht installieren."
