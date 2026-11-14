@@ -1,8 +1,9 @@
 # Stenny on macOS and Windows, in English and German. Two tiers, one branch (main):
 # - quick, on every pull request and push to main: the engine's tests (tests/test_i18n.py keeps English and German
 #   complete), the engine bundled for the app and tried, and the app type-checked and compiled;
-# - full, on a release tag (v*) or by hand (Actions ▸ CI ▸ Run workflow): the quick tier plus the installers built
-#   on both systems (installers job below).
+# - full, on a release tag (v*), on every push to main and by hand (Actions ▸ CI ▸ Run workflow): the quick tier plus
+#   the installers built on both systems (installers job below). On main only to keep their build cache warm, so a
+#   release tag's installers reuse the compiled dependencies instead of building everything from scratch.
 # The Windows runners are how Windows gets tested at all (see #2); what they can't cover (microphone, GPU) is said in
 # each PR.
 name: CI
@@ -199,8 +200,10 @@ jobs:
   # only (on Windows the app does its work itself).
   installers:
     name: Installer (${{ matrix.os }})
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-    needs: app  # not engine: a failing engine test shouldn't hide whether the installers build
+    # Every push (main and release tags), not pull requests: on main it fills the release build's cache (rust-cache
+    # saves it per job; a tag's run reads main's), which takes several minutes off a release's Windows setup program.
+    # No `needs`: it starts at once instead of waiting for the quick checks, which a merged PR has already passed.
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write  # a release tag: the Windows setup program goes onto the release (scripts/install.ps1 needs it)
