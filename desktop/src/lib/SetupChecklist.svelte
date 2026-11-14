@@ -22,7 +22,7 @@
     type AiStatus, type CalendarStatus, type ConnectorStatus, type SetupStatus,
   } from "$lib/engine";
   import { t, tn, onWindows } from "$lib/i18n.svelte";
-  import ClaudeDrag from "$lib/ClaudeDrag.svelte";
+  import ClaudeWindows from "$lib/ClaudeWindows.svelte";
 
   type Section = "transcripts" | "claude" | "calendar";
   let { courses, onaddcourse, onsettings }: {
@@ -173,7 +173,7 @@
     keyInput = "";
     if (status) status = { ...status, ai };
   });
-  // Mac: Claude shows its own Install window for the opened file (Windows drags it over instead: ClaudeDrag)
+  // Mac: Claude shows its own Install window for the opened file (Windows: ClaudeWindows)
   const install = () => act("install", async () => { await engine("install_connector"); installOpened = true; });
   const addToCode = () => act("code", async () => {
     const connector = await engine<ConnectorStatus>("add_to_claude_code");
@@ -350,7 +350,7 @@
             {:else if !c.file}
               <p class="note">{t("settings.claude.noFile")}</p>
             {:else if onWindows}
-              <ClaudeDrag file={c.file} onerror={(m) => (error = m)} />
+              <ClaudeWindows file={c.file} onerror={(m) => (error = m)} />
             {:else}
               {#if installOpened}<p class="note">{t("settings.claude.opened")}</p>{/if}
               <div class="do">
