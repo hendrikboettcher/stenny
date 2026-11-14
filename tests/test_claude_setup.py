@@ -137,6 +137,7 @@ def test_adds_the_connector_to_claude_code_once(fake_claude, monkeypatch):
 
 
 def test_installing_needs_the_file_and_claude(monkeypatch):
+    monkeypatch.setattr(claude_setup.sys, "platform", "darwin")  # Windows drags it over instead (test below)
     monkeypatch.setattr(claude_setup, "connector_file", lambda: None)
     with pytest.raises(claude_setup.SetupError, match="Stenny.mcpb"):
         claude_setup.install_connector(None)
