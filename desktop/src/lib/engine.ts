@@ -178,6 +178,8 @@ export const makePdf = (html: string) => (inApp ? invoke<string>("make_pdf", { h
 export const finishNow = (e: Entry) => engine<{ started: boolean }>("finish_now", where(e));
 export const openTranscript = (path: string) => (inApp ? invoke("open_transcript", { path }) : console.log("open", path));
 export const reveal = (path: string) => (inApp ? invoke("reveal", { path }) : console.log("reveal", path));
+// Windows: a file dragged out of the window, as from Explorer (asked for on `dragstart`; done once it's dropped)
+export const dragFile = (path: string) => (inApp ? invoke<void>("drag_file", { path }) : Promise.resolve(console.log("drag", path)));
 // the system's share menu for these files: on macOS below `anchor` (the Share button), on Windows the Share panel
 export const shareFiles = (paths: string[], anchor: DOMRect) =>
   inApp

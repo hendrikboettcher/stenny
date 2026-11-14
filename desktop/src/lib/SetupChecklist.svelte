@@ -18,10 +18,11 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import {
-    calendarAllow, engine, openSystemSettings, reveal, setupStatus,
+    calendarAllow, engine, openSystemSettings, setupStatus,
     type AiStatus, type CalendarStatus, type ConnectorStatus, type SetupStatus,
   } from "$lib/engine";
   import { t, tn, onWindows } from "$lib/i18n.svelte";
+  import ClaudeDrag from "$lib/ClaudeDrag.svelte";
 
   type Section = "transcripts" | "claude" | "calendar";
   let { courses, onaddcourse, onsettings }: {
@@ -55,7 +56,7 @@
   let closedBefore = $state(readCloses());
 
   let signingIn = $state(false);      // sign-in started (the browser opened)
-  let installOpened = $state(false);  // Claude's Install window was opened
+  let installOpened = $state(false);  // Mac: Claude's Install window was opened
   let busy = $state<"signin" | "key" | "install" | "code" | "calendar" | null>(null);
   let keyInput = $state("");
   let error = $state<string | null>(null);
@@ -172,7 +173,7 @@
     keyInput = "";
     if (status) status = { ...status, ai };
   });
-  // Claude shows its own Install window (Mac and Windows)
+  // Mac: Claude shows its own Install window for the opened file (Windows drags it over instead: ClaudeDrag)
   const install = () => act("install", async () => { await engine("install_connector"); installOpened = true; });
   const addToCode = () => act("code", async () => {
     const connector = await engine<ConnectorStatus>("add_to_claude_code");
@@ -337,27 +338,25 @@
           {:else}
             {#if !c.desktop}
               <p class="note">{t("setup.claude.noDesktop")}</p>
+              <div class="do">
+                <button class="pill primary" onclick={() => link(URLS.desktop)}>{t("settings.claude.getDesktop")}</button>
+                <!-- no desktop app: Claude Code is the other way in, if it's there -->
+                {#if c.code.available}
+                  <button class="pill" disabled={busy === "code"} onclick={addToCode}>
+                    {busy === "code" ? t("common.oneMoment") : t("settings.claude.code.add")}
+                  </button>
+                {/if}
+              </div>
             {:else if !c.file}
               <p class="note">{t("settings.claude.noFile")}</p>
-            {:else if installOpened}
-              <p class="note">{t("settings.claude.opened")}</p>
-            {/if}
-            <div class="do">
-              {#if !c.desktop}
-                <button class="pill primary" onclick={() => link(URLS.desktop)}>{t("settings.claude.getDesktop")}</button>
-              {:else if c.file}
+            {:else if onWindows}
+              <ClaudeDrag file={c.file} onerror={(m) => (error = m)} />
+            {:else}
+              {#if installOpened}<p class="note">{t("settings.claude.opened")}</p>{/if}
+              <div class="do">
                 <button class="pill primary" disabled={busy === "install"} onclick={install}>{t("settings.claude.install")}</button>
-                <!-- Windows: to drag onto Claude's Settings ▸ Extensions, if its Install window didn't come up -->
-                {#if installOpened && onWindows}
-                  <button class="pill" onclick={() => reveal(c.file!)}>{t("settings.claude.showFile")}</button>
-                {/if}
-              {/if}
-              {#if c.code.available}
-                <button class="pill" disabled={busy === "code"} onclick={addToCode}>
-                  {busy === "code" ? t("common.oneMoment") : t("settings.claude.code.add")}
-                </button>
-              {/if}
-            </div>
+              </div>
+            {/if}
             <button class="link more" onclick={() => settings("claude")}>{t("setup.more")}</button>
           {/if}
         </div>

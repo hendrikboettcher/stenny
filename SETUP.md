@@ -495,13 +495,9 @@ Step 12. If `stenny schedule install` says it can't do that on Windows yet, skip
 
 ## W12. Let Claude read the transcripts
 
-As in step 13, with the Claude desktop app for Windows (claude.ai/download). The extension comes with the app as `%LOCALAPPDATA%\Stenny\Stenny.mcpb`; without the app, download it: `curl -fL -o "$USERPROFILE/Downloads/Stenny.mcpb" https://github.com/hendrikboettcher/stenny/releases/latest/download/Stenny.mcpb`. The app's *Settings ▸ Use with Claude ▸ Install…* opens it with Claude, also on a PC where Windows doesn't know `.mcpb` files. By hand:
+As in step 13, with the Claude desktop app for Windows (claude.ai/download). The extension comes with the app as `%LOCALAPPDATA%\Stenny\Stenny.mcpb`; without the app, download it: `curl -fL -o "$USERPROFILE/Downloads/Stenny.mcpb" https://github.com/hendrikboettcher/stenny/releases/latest/download/Stenny.mcpb`.
 
-```bash
-cmd //c start "" "$LOCALAPPDATA\Stenny\Stenny.mcpb"
-```
-
-If Windows says no app is associated with it, or Claude doesn't show its Install window, the user adds it in Claude's **Settings ▸ Extensions**: drag `Stenny.mcpb` onto that page, or click **Advanced settings ▸ Install extension** there (open its folder for them with `explorer.exe "<folder>"`). **Check:** as in step 13.
+Opening the file doesn't work on Windows while Claude runs: Claude only brings its window up and ignores the file. So the user drags `Stenny.mcpb` into Claude's window and clicks **Install** in the window Claude shows, or chooses it in Claude's **Settings ▸ Extensions ▸ Advanced settings ▸ Install extension**. The app's *Settings ▸ Use with Claude* (and its setup card) shows a Stenny tile to drag straight from its window, and copies the file's path for the Install extension dialog (paste with Ctrl+V, then Enter). Without the app, open its folder for them with `explorer.exe "<folder>"`. **Check:** as in step 13.
 
 ## W13. Recommended, not required
 

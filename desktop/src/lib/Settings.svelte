@@ -9,6 +9,7 @@
   import { onMount, untrack } from "svelte";
   import Figure from "$lib/Figure.svelte";
   import Dialog from "$lib/Dialog.svelte";
+  import ClaudeDrag from "$lib/ClaudeDrag.svelte";
   import { listen } from "@tauri-apps/api/event";
   import {
     addCalendarLink, addCourse, bringBack, calendarAllow, calendarChanged, calendarStatus, deleteCourse, engine, library,
@@ -323,7 +324,7 @@
     connBusy = "install";
     connError = null;
     try {
-      await engine("install_connector");   // Claude shows its own Install window (Mac and Windows)
+      await engine("install_connector");   // Claude shows its own Install window (Mac; Windows drags: ClaudeDrag)
       connOpened = true;
     } catch (e) {
       connError = String(e);
@@ -810,6 +811,9 @@
                   <div class="hint">{t("settings.claude.noDesktop")}</div>
                 {:else if !conn.file}
                   <div class="hint">{t("settings.claude.noFile")}</div>
+                {:else if onWindows}
+                  <div class="hint">{t("settings.claude.notInstalled")}</div>
+                  <ClaudeDrag file={conn.file} onerror={(m) => (connError = m)} />
                 {:else}
                   <div class="hint">{connOpened ? t("settings.claude.opened") : t("settings.claude.notInstalled")}</div>
                 {/if}
@@ -817,14 +821,10 @@
               {#if conn && !conn.installed}
                 {#if !conn.desktop}
                   <button class="pill" onclick={() => openLink(URLS.desktop)}>{t("settings.claude.getDesktop")}</button>
-                {:else if conn.file}
+                {:else if conn.file && !onWindows}
                   <button class="pill primary" disabled={connBusy !== null} onclick={installConnector}>
                     {connBusy === "install" ? t("common.oneMoment") : t("settings.claude.install")}
                   </button>
-                  <!-- Windows: to drag onto Claude's Settings ▸ Extensions, if its Install window didn't come up -->
-                  {#if connOpened && onWindows}
-                    <button class="pill" onclick={() => reveal(conn!.file!)}>{t("settings.claude.showFile")}</button>
-                  {/if}
                 {/if}
               {:else if conn?.installed}
                 <button class="pill" disabled={connBusy !== null}
@@ -1153,7 +1153,7 @@
   .titlebar { height: var(--titlebar); flex: none; }
 
   .sidebar { display: flex; flex-direction: column; min-height: 0; }
-  .brand { display: flex; align-items: center; gap: 9px; padding: 4px 22px 22px; color: var(--accent); }
+  .brand { display: flex; align-items: center; gap: 9px; padding: 4px 22px 22px; color: var(--ink); }
   .brand span { font-size: 22px; font-weight: 500; letter-spacing: -.04em; color: var(--ink); }
   .back {
     display: flex; align-items: center; gap: 4px; border: 0; background: none; text-align: left; padding: 5px 10px 5px 6px;
