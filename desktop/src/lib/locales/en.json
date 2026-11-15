@@ -474,7 +474,7 @@
   "updates.upToDate.title": "Stenny is up to date",
   "updates.upToDate": "You have the newest version, {version}.",
   "updates.available.title": "Stenny {version} is available",
-  "updates.available": "You have {version}. Update Now downloads the new version and installs it: Stenny closes and opens again by itself, and your lectures stay as they are. It takes a few minutes.",
+  "updates.available": "Takes a few minutes. Stenny restarts by itself, your lectures stay as they are.",
   "updates.updateNow": "Update Now",
   "updates.recording": "Stenny is recording. Update once the recording is finished.",
   "updates.finalPass": "Stenny is making a final transcript. Update once it's done.",

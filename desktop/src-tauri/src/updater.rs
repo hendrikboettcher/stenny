@@ -22,7 +22,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
-use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+#[cfg(not(target_os = "macos"))]
+use tauri_plugin_dialog::MessageDialogButtons;
 use tauri_plugin_updater::{Update, UpdaterExt};
 
 /// An update is being downloaded or waits to be installed: a second Check for Updates… only says so.
@@ -59,9 +61,17 @@ pub fn check_updates(app: &AppHandle) {
         alert(app, &tr!("updates.upToDate.title"), &tr!("updates.upToDate", version = current), MessageDialogKind::Info);
         return;
     };
+    #[cfg(target_os = "macos")]
+    let go = crate::macos::centered_ask(
+        app,
+        tr!("updates.available.title", version = update.version),
+        tr!("updates.available"),
+        Some((tr!("updates.updateNow"), tr!("updates.notNow"))),
+    );
+    #[cfg(not(target_os = "macos"))]
     let go = app
         .dialog()
-        .message(tr!("updates.available", version = current))
+        .message(tr!("updates.available"))
         .title(tr!("updates.available.title", version = update.version))
         .buttons(MessageDialogButtons::OkCancelCustom(tr!("updates.updateNow"), tr!("updates.notNow")))
         .blocking_show();

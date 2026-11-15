@@ -172,12 +172,17 @@ pub fn share_files(view: *mut std::ffi::c_void, paths: &[String], x: f64, y: f64
     Ok(())
 }
 
-/// An info alert with its title and message centered under the icon. macOS's own alert (and the dialog plugin's,
-/// which is the same NSAlert) lines them up on the left on recent macOS; Stenny's "up to date" note reads better
+/// An alert with its title and message centered under the icon. macOS's own alert (and the dialog plugin's,
+/// which is the same NSAlert) lines them up on the left on recent macOS; Stenny's update alerts read better
 /// centered. Waits until it's closed; safe from any thread.
 pub fn centered_alert(app: &tauri::AppHandle, title: String, message: String) {
-    fn show(mtm: MainThreadMarker, title: &str, message: &str) {
-        use objc2_app_kit::{NSAlert, NSApplication, NSTextAlignment, NSTextField, NSView};
+    centered_ask(app, title, message, None);
+}
+
+/// The same, with two buttons (Return picks the first, Escape the second): true if the first was picked.
+pub fn centered_ask(app: &tauri::AppHandle, title: String, message: String, buttons: Option<(String, String)>) -> bool {
+    fn show(mtm: MainThreadMarker, title: &str, message: &str, buttons: Option<&(String, String)>) -> bool {
+        use objc2_app_kit::{NSAlert, NSAlertFirstButtonReturn, NSApplication, NSTextAlignment, NSTextField, NSView};
         // the alert's own views, as layout() leaves them: the two labels already span its width, so centering
         // their text is enough (set the text again: the label only redraws then); the icon is moved to the middle
         fn center(view: &NSView) {
@@ -197,22 +202,24 @@ pub fn centered_alert(app: &tauri::AppHandle, title: String, message: String) {
         let alert = NSAlert::new(mtm);
         alert.setMessageText(&NSString::from_str(title));
         alert.setInformativeText(&NSString::from_str(message));
+        if let Some((yes, no)) = buttons {
+            alert.addButtonWithTitle(&NSString::from_str(yes));
+            alert.addButtonWithTitle(&NSString::from_str(no)).setKeyEquivalent(&NSString::from_str("\u{1b}"));
+        }
         alert.layout();
         if let Some(content) = alert.window().contentView() {
             center(&content);
         }
         NSApplication::sharedApplication(mtm).activate();
-        alert.runModal();
+        alert.runModal() == NSAlertFirstButtonReturn
     }
     if let Some(mtm) = MainThreadMarker::new() {
-        return show(mtm, &title, &message);
+        return show(mtm, &title, &message, buttons.as_ref());
     }
     let (done, wait) = std::sync::mpsc::channel();
     let _ = app.run_on_main_thread(move || {
-        if let Some(mtm) = MainThreadMarker::new() {
-            show(mtm, &title, &message);
-        }
-        let _ = done.send(());
+        let picked = MainThreadMarker::new().is_some_and(|mtm| show(mtm, &title, &message, buttons.as_ref()));
+        let _ = done.send(picked);
     });
-    let _ = wait.recv();
+    wait.recv().unwrap_or(false)
 }
