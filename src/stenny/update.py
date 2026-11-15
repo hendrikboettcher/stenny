@@ -1,19 +1,14 @@
-"""`stenny update`: replace this install with the newest release.
+"""`stenny update`: is there a newer Stenny, and how to get it.
 
-A release is a zip of the whole folder with the finished app inside. The old folder is kept next to the new
-one, because Stenny is made to be changed: whoever changed its code can carry that over with Claude Code.
-
-On Windows only the check works (`stenny update --check`, the app's Check for Updates…): the app comes as an
-installer there (a newer one installs over the old one), and the engine's code is updated by Claude Code (SETUP.md,
-"Updating on Windows"). Doing that from inside the engine can't work there: Windows won't let `uv` replace the
-stenny.exe and Python that are running the update.
+The engine is inside the app (#92), so the app is what gets updated: Check for Updates… in Stenny (Tauri's updater,
+desktop/src-tauri/src/updater.rs), or the install line again. `stenny update` only checks and says so; the folder
+swap it did for the engine installed with `uv tool install -e` (until 0.5.13) went with that engine (old_engine.py).
+`check()` is also the app's fallback while a release has no latest.json (menubar::check_updates).
 """
 
 import json
-import shutil
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 from . import paths
@@ -23,7 +18,7 @@ REPO = "hendrikboettcher/stenny"
 LATEST_API = f"https://api.github.com/repos/{REPO}/releases/latest"
 ZIP_URL = f"https://github.com/{REPO}/releases/latest/download/Stenny.zip"
 RELEASES = f"https://github.com/{REPO}/releases/latest"
-FOLDER = Path(__file__).resolve().parents[2]  # a release's folder; meaningless for the engine inside the app (in_app)
+CHECKOUT = Path(__file__).resolve().parents[2]  # a development checkout, if this engine runs from one
 
 
 class UpdateError(Exception):
@@ -72,67 +67,15 @@ def check(app_version: str | None = None) -> dict:
     return {"current": current, "latest": latest, "update_available": parse(latest) > parse(current)}
 
 
-def uv() -> str:
-    found = shutil.which("uv") or next((p for p in (Path.home() / ".local/bin/uv", Path("/opt/homebrew/bin/uv"))
-                                        if p.exists()), None)
-    if not found:
-        raise UpdateError("The `uv` command wasn't found. Ask Claude Code to install it, then try again.")
-    return str(found)
-
-
-def backup_path(folder: Path, version: str) -> Path:
-    """A free name next to the folder, e.g. `stenny (before 0.4.1).noindex`. Earlier ones are never overwritten.
-    `.noindex` keeps it out of Spotlight, like the folder itself."""
-    name = folder.name.removesuffix(".noindex")
-    path = folder.with_name(f"{name} (before {version}).noindex")
-    n = 2
-    while path.exists():
-        path = folder.with_name(f"{name} (before {version}, {n}).noindex")
-        n += 1
-    return path
-
-
-def install_tool(folder: Path) -> None:
-    subprocess.run([uv(), "tool", "install", "-e", str(folder), "--force", "--python", "3.12"],
-                   check=True, capture_output=True)
-
-
-def supported() -> None:
-    """Raises on Windows, where updates come through scripts/install.ps1."""
+def install_line() -> str:
+    """The line that installs (or updates) Stenny, for this system (README: Install)."""
     if sys.platform == "win32":
-        raise UpdateError(
-            "On Windows, Stenny updates through its installer: run this line in PowerShell: "
-            f"irm https://github.com/{REPO}/releases/latest/download/install.ps1 | iex")
+        return f"irm {RELEASES}/download/install.ps1 | iex"
+    return f"curl -fsSL {RELEASES}/download/install.sh | zsh"
 
 
-def update(folder: Path = FOLDER) -> Path:
-    """Installs the newest release into `folder`, reopens the app and returns where the old folder went."""
-    supported()
-    if paths.in_app():
-        # no folder of code to swap: the engine came inside Stenny.app, and the app is what gets updated (#92)
-        raise UpdateError(
-            "This Stenny's engine is part of the app, so the app is what gets updated: in Stenny, Check for Updates…, "
-            f"or run this line in Terminal: curl -fsSL {RELEASES}/download/install.sh | zsh")
-    if (folder / ".git").exists():
-        raise UpdateError(f"{folder} is a git checkout: use `git pull` and `app/build.sh` there.")
-    if not (folder / "pyproject.toml").exists():
-        raise UpdateError(f"{folder} doesn't look like a Stenny folder.")
-    with tempfile.TemporaryDirectory(dir=folder.parent, prefix=".stenny-update-") as tmp:
-        archive = Path(tmp) / "Stenny.zip"
-        _curl("-o", str(archive), ZIP_URL)
-        subprocess.run(["/usr/bin/ditto", "-x", "-k", str(archive), tmp], check=True)
-        new = Path(tmp) / "stenny.noindex"
-        if not (new / "app/install.sh").exists() or not (new / "app/build.noindex/Stenny.app").exists():
-            raise UpdateError("The download doesn't contain the Stenny app.")
-        backup = backup_path(folder, current_version())
-        folder.rename(backup)
-        new.rename(folder)
-        try:
-            install_tool(folder)
-        except (subprocess.CalledProcessError, UpdateError) as e:
-            folder.rename(Path(tmp) / "failed")
-            backup.rename(folder)
-            install_tool(folder)
-            raise UpdateError(f"Installing the new version failed, so the old one is back: {e}") from e
-    subprocess.run(["/bin/zsh", str(folder / "app/install.sh")], check=True)
-    return backup
+def how() -> str:
+    """How to update this Stenny: in the app, or for a development checkout with git."""
+    if not paths.in_app() and (CHECKOUT / ".git").exists():
+        return f"{CHECKOUT} is a git checkout: use `git pull` there."
+    return f"In Stenny: Check for Updates…. Or run the install line again: {install_line()}"

@@ -120,8 +120,7 @@ def test_on_windows_the_launcher_is_a_cmd_file_beside_no_stenny_exe(tmp_path, mo
 def test_stenny_update_says_the_app_is_what_gets_updated(tmp_path, monkeypatch):
     _app(tmp_path, monkeypatch, windows=False)
     monkeypatch.setattr(sys, "platform", "darwin")
-    with pytest.raises(update.UpdateError, match="Check for Updates"):
-        update.update(tmp_path / "nowhere")
+    assert update.how().startswith("In Stenny: Check for Updates")
 
 
 def test_the_config_example_is_found():

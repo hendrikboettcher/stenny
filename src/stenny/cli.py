@@ -822,24 +822,20 @@ def schedule_task(action: str) -> None:
 
 
 def cmd_update(args) -> None:
-    from .live.control import is_running
+    """Checks for a newer Stenny; the app installs it (Check for Updates…), so this only says how (update.py)."""
     from . import update
 
     try:
-        if args.check:
-            print(json.dumps(update.check()))
-            return
-        update.supported()
-        if is_running():
-            sys.exit("A recording or its final transcript is running. Update when it's finished.")
         result = update.check()
-        if not result["update_available"]:
-            print(f"Stenny {result['current']} is the newest version.")
-            return
-        backup = update.update()
     except update.UpdateError as e:
         sys.exit(str(e))
-    print(f"Updated to Stenny {result['latest']}. The old folder is kept at {backup}.")
+    if args.check:
+        print(json.dumps(result))
+        return
+    if not result["update_available"]:
+        print(f"Stenny {result['current']} is the newest version.")
+        return
+    print(f"Stenny {result['latest']} is available (you have {result['current']}). {update.how()}")
 
 
 def cmd_watch(args) -> None:
@@ -1087,7 +1083,7 @@ def main() -> None:
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_recover)
 
-    p = sub.add_parser("update", help="install the newest release of Stenny (your courses and transcripts stay)")
+    p = sub.add_parser("update", help="check for a newer Stenny and say how to get it (in the app: Check for Updates…)")
     p.add_argument("--check", action="store_true", help="only print whether a newer version exists, as JSON")
     p.set_defaults(func=cmd_update)
 

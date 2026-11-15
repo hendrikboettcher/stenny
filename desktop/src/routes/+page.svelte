@@ -58,6 +58,8 @@
   let settingsOpen = $state(reopen !== null); // the footer's Settings…: the window shows Settings instead (lib/Settings.svelte)
   let settingsSection = $state<string>(reopen ?? "general"); // where Settings opens (unknown: General)
   let linkCopied = $state(false); // the footer's Share Stenny: "Link copied" for a moment
+  // a newer Stenny, found by the app's quiet check (src-tauri/src/updater.rs, `watch`): the footer offers it
+  let updateVersion = $state<string | null>(null);
   let copiedTimer: ReturnType<typeof setTimeout> | undefined;
   let busy = $state<string | null>(null);   // "share" | "finish"
   let notice = $state<{ text: string; path?: string; error?: boolean } | null>(null);
@@ -430,6 +432,8 @@
       listen<RecordingEvent>("recording", (e) => recordingChanged(e.payload)).then((u) => unlisten.push(u));
       // shown again from the Dock, Spotlight or the menu bar (src-tauri/src/lib.rs, `present`)
       listen("library-shown", () => reload({ cameBack: true })).then((u) => unlisten.push(u));
+      invoke<string | null>("update_available").then((v) => (updateVersion = v)).catch(() => {});
+      listen<string | null>("update-available", (e) => (updateVersion = e.payload)).then((u) => unlisten.push(u));
     }
     return () => {
       closed = true;
@@ -707,7 +711,11 @@
         <span>{t("lib.settings")}</span><kbd aria-label={t("lib.settings.shortcut")}>{settingsKey}</kbd>
       </button>
       <button onclick={() => invoke("show_feedback")}>{t("lib.feedback")}</button>
-      <button onclick={() => invoke("check_updates")}>{t("lib.updates")}</button>
+      {#if updateVersion}
+        <button class="update" onclick={() => invoke("check_updates")}>{t("lib.updateTo", { version: updateVersion })}</button>
+      {:else}
+        <button onclick={() => invoke("check_updates")}>{t("lib.updates")}</button>
+      {/if}
       <!-- copies stenny.eu, where friends get it; says so for a moment -->
       <button class="share-stenny" class:copied={linkCopied} onclick={shareStenny} title={t("lib.shareStenny.title")}
               aria-label={linkCopied ? t("lib.linkCopied") : t("lib.shareStenny.aria")}>
@@ -1084,6 +1092,8 @@
   footer { padding: 10px 12px 14px; border-top: 1px solid var(--hairline); margin: 0 12px; display: flex; flex-direction: column; }
   footer button { border: 0; background: none; text-align: left; padding: 5px 10px; margin: 0 -12px; color: var(--muted); border-radius: 8px; }
   footer button:hover { color: var(--ink); background: var(--sunken); }
+  footer .update { color: var(--accent); font-weight: 500; }
+  footer .update:hover { color: var(--accent-hover); }
   /* Settings… with its shortcut on the right, like in a menu */
   footer .with-key { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   footer kbd { font: 500 11px/1 var(--mono); color: var(--ink-2); background: var(--sunken); border-radius: 5px; padding: 3px 6px; }

@@ -54,6 +54,7 @@
   "lib.settings.shortcut.windows": "Control comma",
   "lib.feedback": "Send Feedback…",
   "lib.updates": "Check for Updates…",
+  "lib.updateTo": "Update to {version}…",
   "lib.shareStenny": "Share Stenny",
   "lib.shareStenny.title": "Copy the link to stenny.eu",
   "lib.shareStenny.aria": "Share Stenny: copy the link to stenny.eu",

@@ -24,7 +24,8 @@ the old Swift app in `app/`.
 5. **Private.** Audio never leaves the machine. Only transcript text goes to the optional LLM step.
 
 ## Stack
-- Python 3.12, uv, packaged as the `stenny` CLI (`uv tool install -e .`)
+- Python 3.12, uv, packaged as the `stenny` CLI: for users inside the app (desktop/scripts/bundle-engine.sh), for
+  development `uv tool install -e .`
 - mlx-whisper (Metal) for transcription on a Mac, faster-whisper (CTranslate2) on Windows; ffmpeg for audio decoding/encoding
 - pypdf for slide text (dormant: slides are no longer part of Stenny, #20)
 - Optional: `claude` CLI or the `anthropic` SDK for structuring and summaries
@@ -80,6 +81,9 @@ src/stenny/
   vault.py        safe writes into the Stenny folder (courses, Talks/, _Glossaries …), folder rule enforcement
   launcher.py     `stenny` for the terminal when the engine is the app's (#92): ~/.local/bin/stenny (Windows stenny.cmd),
                   written at each start, never over another `stenny`
+  old_engine.py   the engine older setups installed with `uv tool install -e` (until 0.5.13), removed at the app's
+                  start (`migrate.on_start`): only the setup's own, never during a recording or a final pass
+  update.py       `stenny update`: only checks (the app updates itself, desktop/src-tauri/src/updater.rs)
   uninstall.py    `stenny uninstall`: the background job, Claude Code's connector, saved secrets, logs, cache and the
                   Whisper model removed; settings and data listed for the Trash; never the Stenny folder.
                   scripts/uninstall.sh / uninstall.ps1 run it, then remove the app and the engine
