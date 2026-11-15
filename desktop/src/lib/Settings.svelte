@@ -48,10 +48,13 @@
 
   // onrenamed: a course got a new name here, so the window can keep it selected under that name
   let { onclose, onrenamed, start = "general" }: {
-    onclose: () => void; onrenamed?: (old: string, name: string) => void; start?: Section;
+    onclose: () => void; onrenamed?: (old: string, name: string) => void; start?: string;
   } = $props();
 
-  let section = $state<Section>(untrack(() => start));
+  let section = $state<Section>(untrack(() => ((SECTIONS as readonly string[]).includes(start) ? (start as Section) : "general")));
+  // ⌘R comes back here: the window reopens Settings on this section while it's open (routes/+page.svelte,
+  // OPEN_SETTINGS); sessionStorage, so quitting forgets it and Stenny starts in the library
+  $effect(() => { try { sessionStorage.setItem("openSettings", section); } catch {} });
   let s = $state<Settings | null>(null);
   let loadError = $state<string | null>(null);
   let error = $state<string | null>(null);

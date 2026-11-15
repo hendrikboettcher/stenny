@@ -836,6 +836,9 @@ pub fn check_updates(app: &AppHandle) {
         }
         Ok(r) if r.get("update_available").and_then(Value::as_bool) != Some(true) => {
             let current = str_of(&r, "current").to_string();
+            #[cfg(target_os = "macos")]
+            crate::macos::centered_alert(app, tr!("updates.upToDate.title"), tr!("updates.upToDate", version = current));
+            #[cfg(not(target_os = "macos"))]
             dialog.message(tr!("updates.upToDate", version = current)).title(tr!("updates.upToDate.title")).blocking_show();
         }
         Ok(r) => {

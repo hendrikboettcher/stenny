@@ -53,6 +53,9 @@ pub fn check_updates(app: &AppHandle) {
     };
     let current = app.package_info().version.to_string();
     let Some(update) = update else {
+        #[cfg(target_os = "macos")]
+        crate::macos::centered_alert(app, tr!("updates.upToDate.title"), tr!("updates.upToDate", version = current));
+        #[cfg(not(target_os = "macos"))]
         alert(app, &tr!("updates.upToDate.title"), &tr!("updates.upToDate", version = current), MessageDialogKind::Info);
         return;
     };
