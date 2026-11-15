@@ -54,6 +54,7 @@
   "lib.settings.shortcut.windows": "Strg Komma",
   "lib.feedback": "Feedback senden …",
   "lib.updates": "Nach Updates suchen …",
+  "lib.updateTo": "Auf {version} aktualisieren …",
   "lib.shareStenny": "Stenny weiterempfehlen",
   "lib.shareStenny.title": "Link zu stenny.eu kopieren",
   "lib.shareStenny.aria": "Stenny weiterempfehlen: Link zu stenny.eu kopieren",
@@ -414,6 +415,10 @@
   "activity.calendar": "Kalender",
   "activity.record": "Aufnehmen",
   "activity.show": "Anzeigen",
+  "activity.delete": "Aufnahme löschen …",
+  "activity.deleteText": "{time} Audio und der bisherige Text landen im {trash}.",
+  "activity.deleted": "Aufnahme liegt im {trash}",
+  "activity.recordAgain": "Neu aufnehmen",
 
   "app.about": "Über Stenny",
   "app.services": "Dienste",

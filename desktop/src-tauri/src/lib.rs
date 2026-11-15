@@ -202,6 +202,12 @@ fn pause_shortcut_label(app: AppHandle) -> Option<String> {
     menubar::pause_label(&app)
 }
 
+/// The newer version Stenny's quiet check found, for the footer's "Update to …" (updater::watch).
+#[tauri::command]
+fn update_available() -> Option<String> {
+    updater::available()
+}
+
 #[tauri::command]
 async fn check_updates(app: AppHandle) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || updater::check_updates(&app)).await.map_err(|e| e.to_string())
@@ -229,10 +235,11 @@ async fn start_recording(app: AppHandle, course: String, event: bool) -> Result<
         .map_err(|e| e.to_string())?
 }
 
-/// The activity bar's Pause/Resume ("toggle") and Stop, as the menu's items do.
+/// The activity bar's Pause/Resume ("toggle"), Stop and Delete ("cancel", asked in the bar itself), as the menu's
+/// items do.
 #[tauri::command]
 async fn recording_command(app: AppHandle, cmd: String) -> Result<Value, String> {
-    if !matches!(cmd.as_str(), "toggle" | "stop") {
+    if !matches!(cmd.as_str(), "toggle" | "stop" | "cancel") {
         return Err(format!("unknown command {cmd}"));
     }
     tauri::async_runtime::spawn_blocking(move || menubar::command(&app, &cmd)).await.map_err(|e| e.to_string())?
@@ -596,7 +603,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Arc::new(Engine::default()))
         .manage(MenuBar::default())
-        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, share_files, copy_text, check_updates, reload_window, microphone_pref, set_microphone_pref, login_item, apply_shortcut, pause_shortcut_label, ui_language, set_ui_language, courses_changed, start_recording, recording_command, recording_status, calendar_status, calendar_check, calendar_allow, calendar_changed, open_system_settings])
+        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, share_files, copy_text, check_updates, update_available, reload_window, microphone_pref, set_microphone_pref, login_item, apply_shortcut, pause_shortcut_label, ui_language, set_ui_language, courses_changed, start_recording, recording_command, recording_status, calendar_status, calendar_check, calendar_allow, calendar_changed, open_system_settings])
         .setup(move |app| {
             if !library_only {
                 // A Dock app with the menu bar icon next to it. Info.plist keeps LSUIElement for the helpers in the
@@ -606,6 +613,7 @@ pub fn run() {
                 #[cfg(target_os = "macos")]
                 macos_notifications::install(app.handle());
                 menubar::install(app.handle())?;
+                updater::watch(app.handle());
             } else if let Some(window) = app.get_webview_window("library") {
                 let _ = window.show();
             }

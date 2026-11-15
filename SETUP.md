@@ -22,7 +22,7 @@ How to work:
 - **Every question has a recommended answer.** Ask one thing at a time. If you have a tool for questions with clickable options (such as AskUserQuestion), use it for every choice: at most four options, your recommendation first and marked "(Recommended)", with a short reason; the user can always type something else. Ask for free text only where nothing can be suggested. Never make the user write long answers.
 - **Always name the app when you open something.** A plain `open <link or file>` lets macOS choose, and on a fresh account that can be any installed app that claims the type. Use `open -a Obsidian …`, `open -a TextEdit …` and so on. Web pages (`open https://…`) may go to the default browser.
 - **Keep the user out of the Terminal.** Run every command yourself. The user only clicks: macOS dialogs, System Settings, the browser, the Claude app. Nothing in this setup needs their Mac password.
-- **Don't change anything** outside this folder, the user's Stenny folder, Stenny's own folders (`stenny where` lists them) and what the steps below install. The only background job is the one in step 12.
+- **Don't change anything** outside the user's Stenny folder, Stenny's own folders (`stenny where` lists them) and what the steps below install. The only background job is the one in step 12.
 - Long commands (downloads) take minutes: run them in the background, say roughly how long they take, and report when they finish.
 
 The setup has three phases. **A** is everything Stenny needs to work. **B** connects the calendar. **C** is recommended, never required: Stenny works without it.
@@ -33,38 +33,28 @@ Start by greeting the user in three lines: Stenny records lectures from the menu
 
 ## 0. Get Stenny onto the Mac
 
-**First, Stenny's installer.** One script does steps 0–4 and 12 in one go: this folder (`~/Applications/stenny.noindex`), uv and the `stenny` command, the app, the Stenny folder `~/Documents/Stenny`, the background job and the Whisper model; at the end it opens Stenny. It asks nothing. Run it in the background (the Whisper download takes 2–10 minutes) and say so in one line:
+**First, Stenny's installer.** One script does steps 0–4 and 12 in one go: the app (with Stenny's engine inside it), the `stenny` command, the Stenny folder `~/Documents/Stenny`, the background job and the Whisper model; at the end it opens Stenny. It asks nothing. Run it in the background (the Whisper download takes 2–10 minutes) and say so in one line:
 
 ```bash
 curl -fsSL https://github.com/hendrikboettcher/stenny/releases/latest/download/install.sh | zsh
 ```
 
-- **It ends with `✅ Stenny … is installed`:** go on with step 5. The config exists already, so don't run `stenny init` there: if they'd like another folder than `~/Documents/Stenny`, change `folder` in config.toml (`stenny where` shows where it is). Step 7's `open` is done too; the rest of step 7 isn't.
+- **It ends with `✅ Stenny … is installed`:** go on with step 5. The config exists already: if they'd like another folder than `~/Documents/Stenny`, change `folder` in config.toml (`stenny where` shows where it is). Step 7's `open` is done too; the rest of step 7 isn't. The app is in `/Applications` (or `~/Applications` if `/Applications` isn't writable): that's "the app's path" below.
 - **It stops with `❌`:** tell the user what it says. If it's about the Mac itself, see step 1's *If it fails*. Otherwise do steps 0–4 below by hand.
 
-Stenny runs from its folder for good, so it needs a permanent place. If the current folder already contains Stenny (`SETUP.md`, `pyproject.toml` and `app/` are here), use it. Otherwise use `~/Applications/stenny.noindex` without asking; the user can move it another day by asking you.
-
-First look whether it's already there (an earlier attempt): `ls ~/Applications/stenny.noindex/SETUP.md 2>/dev/null`. If it is, ask "Use the existing folder (Recommended)" / "Replace it with the newest version"; replace only by moving the old folder to the Trash first.
-
-Download the newest version and unzip it (it unpacks into a folder called `stenny.noindex`; `.noindex` keeps its files out of the user's Spotlight searches, so searching for Stenny finds only the app):
+Download the newest release into a temporary folder (it's only needed until step 3):
 
 ```bash
-mkdir -p ~/Applications
-curl -fL -o /tmp/Stenny.zip https://github.com/hendrikboettcher/stenny/releases/latest/download/Stenny.zip
-ditto -x -k /tmp/Stenny.zip ~/Applications && rm /tmp/Stenny.zip
+rm -rf /tmp/stenny-setup && mkdir /tmp/stenny-setup
+curl -fL -o /tmp/stenny-setup/Stenny.zip https://github.com/hendrikboettcher/stenny/releases/latest/download/Stenny.zip
+ditto -x -k /tmp/stenny-setup/Stenny.zip /tmp/stenny-setup
 ```
 
-**Check:** `ls ~/Applications/stenny.noindex/SETUP.md ~/Applications/stenny.noindex/Stenny.mcpb ~/Applications/stenny.noindex/app/build.noindex/Stenny.app` shows all three. From now on, "this folder" means `~/Applications/stenny.noindex`: run every command there (`cd ~/Applications/stenny.noindex && …`), even if your session started somewhere else, and continue with the copy of this file in it (it matches the downloaded version).
+**Check:** `ls /tmp/stenny-setup/stenny.noindex/app/build.noindex/Stenny.app/Contents/Resources/engine/bin/python3` finds it.
 
 Stenny's app is signed with its author's own certificate, not one from Apple. Say so in one sentence, and that the code is open at github.com/hendrikboettcher/stenny.
 
-**If they downloaded the zip in a browser,** macOS marks the app as downloaded and will refuse to open it:
-
-```bash
-xattr -p com.apple.quarantine app/build.noindex/Stenny.app 2>/dev/null
-```
-
-If that prints something, explain this in one sentence and ask "Download it again here (Recommended)" / "Stop". Downloading here means moving this folder to the Trash and doing the download above.
+**If they already downloaded Stenny in a browser,** don't use that copy: macOS marks it as downloaded and refuses to open the app. Downloading it here, as above, doesn't.
 
 ## 1. Check the Mac
 
@@ -81,52 +71,28 @@ With 8 GB of memory (8589934592), tell the user in one sentence that Stenny hasn
 
 *If it fails:* on an Intel Mac (`x86_64`) Stenny can't run: tell the user kindly and stop. If macOS is older, they can update it in System Settings ▸ General ▸ Software Update and come back. If the disk is too full, help them see what's big (`du -sh ~/Downloads ~/Movies ~/Desktop 2>/dev/null`), but don't delete anything yourself.
 
-**Where the folder lives:** it must stay where it is after setup. If it's in Downloads or on the Desktop, move it to `~/Applications/stenny.noindex` (`mkdir -p ~/Applications && mv "<this folder>" ~/Applications/stenny.noindex`) and go on from there.
+## 2. Install the app
 
-## 2. Install the `stenny` command
-
-`uv` installs Python programs, and Python itself if needed. It needs no password.
+If Stenny is already installed and running, this replaces it; first make sure no recording is running (`stenny status` must say none is running, if `stenny` exists yet).
 
 ```bash
-command -v uv || ls ~/.local/bin/uv /opt/homebrew/bin/uv 2>/dev/null
+/tmp/stenny-setup/stenny.noindex/desktop/scripts/install-mac.sh --no-open /tmp/stenny-setup/stenny.noindex/app/build.noindex/Stenny.app
 ```
 
-If nothing is printed, install it:
+It installs in place, so the Dock, Spotlight and Launchpad show one Stenny. **Check:** the output ends with `✅ Installed: <path>/Stenny.app`: that's the app's path (remember it). `"<path>/Stenny.app/Contents/MacOS/ffmpeg" -version` prints a version. Don't open the app yet; that's step 7.
+
+## 3. The `stenny` command
+
+Stenny's engine (Python and the speech recognition) is inside the app; nothing else needs installing. Let it set itself up once:
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
+PYTHONDONTWRITEBYTECODE=1 "<path>/Stenny.app/Contents/Resources/engine/bin/python3" -m stenny app-settings >/dev/null
+rm -rf /tmp/stenny-setup
 ```
 
-Use the full path `~/.local/bin/uv` from here on if plain `uv` isn't found. Then check whether `stenny` is already installed (an earlier attempt):
+That writes `~/.local/bin/stenny`, a small launcher for the app's engine (`src/stenny/launcher.py`), and starts a config with `~/Documents/Stenny` as the Stenny folder. It also removes an engine an older Stenny setup installed with `uv` (`~/Applications/stenny.noindex`, which goes to the Trash), and never touches another `stenny` (a developer's).
 
-```bash
-grep -o 'editable = "[^"]*"' "$(uv tool dir)/stenny/uv-receipt.toml" 2>/dev/null   # the folder it was installed from
-```
-
-No output: not installed yet. The same folder as this one: already done. Another folder: tell the user and ask before switching it to this folder (`--force` below). Then:
-
-```bash
-uv tool install -e . --python 3.12   # add --force to replace an existing install
-uv tool update-shell                 # makes sure ~/.local/bin is on the PATH in new terminals
-```
-
-**Check:** `~/.local/bin/stenny --version` prints a version.
-
-Always pass `--python 3.12`: without it uv may pick the newest Python on the Mac, which some of Stenny's dependencies don't support yet.
-
-*If it fails:* if `uv tool install` can't find Python 3.12, run `uv python install 3.12` and retry.
-
-The app built from this folder also carries its own copy of the engine (`desktop/scripts/bundle-engine.sh`) and runs that one; this command is what the steps below, the terminal and Claude use until the `uv` install goes away (#92). Where no `stenny` is installed, the app puts a small launcher at `~/.local/bin/stenny` that runs its own engine (`src/stenny/launcher.py`); it never replaces another `stenny`.
-
-## 3. Install the app
-
-If Stenny is already installed and running, this replaces it; first make sure no recording is running (`stenny status` must say none is running).
-
-```bash
-app/install.sh --no-open
-```
-
-**Check:** the output ends with `✅ Installed: <path>/Stenny.app` (remember that path). `"<path>/Stenny.app/Contents/MacOS/ffmpeg" -version` prints a version. Don't open the app yet; that's step 7.
+**Check:** `~/.local/bin/stenny --version` prints a version. If plain `stenny` isn't found in the steps below, use `~/.local/bin/stenny`.
 
 ## 4. Start the Whisper download
 
@@ -136,12 +102,9 @@ Whisper is the speech recognition; it runs entirely on this Mac. Start it in the
 
 Stenny writes plain text files (Markdown) into one folder, the Stenny folder, which Claude reads: one folder per course, talks in `Talks`, glossaries and course files next to them. Ask "`~/Documents/Stenny` (Recommended)" / "Another folder". Another folder can be anywhere, also inside an Obsidian vault they already use (then e.g. `<vault>/Lectures`).
 
-```bash
-stenny init                              # ~/Documents/Stenny
-stenny init --folder "<the folder>"      # only if they chose another one
-```
+The config from step 3 (or the installer) already uses `~/Documents/Stenny`. For another folder, change `folder` in config.toml (`stenny where` shows where config.toml is); keep everything else in it.
 
-**Check:** `stenny where` prints `folder: <the folder>`, and `stenny courses` the two example courses. (If a config already exists, `stenny init` refuses: tell the user what's in it, and ask whether to keep it (Recommended, if it has their courses) or start fresh.)
+**Check:** `stenny where` prints `folder: <the folder>`. (If the config was there before this setup, tell the user which courses are in it (`stenny courses`) and keep it, unless they want to start fresh.)
 
 ## 6. The pause shortcut
 
@@ -171,7 +134,7 @@ On Windows `cmd` means Ctrl and `opt` means Alt (Settings shows it as *Ctrl+Shif
 ## 7. Open Stenny and allow access
 
 ```bash
-open "<path from step 3>/Stenny.app"
+open "<the app's path>/Stenny.app"
 ```
 
 Tell the user to look for **a small stick figure in the menu bar** (top right of the screen), and to click **Allow** for what comes next:
@@ -206,7 +169,7 @@ stenny course add "Microeconomics" --language en --alias micro
 stenny course add "Business Communication 2 – French" --language mixed --languages fr,de --alias bizcom
 ```
 
-Then restart Stenny, so it matches calendar events against these courses: `pkill -x Stenny; open "<path from step 3>/Stenny.app"`.
+Then restart Stenny, so it matches calendar events against these courses: `pkill -x Stenny; open "<the app's path>/Stenny.app"`.
 
 **Check:** `stenny courses` lists exactly their courses with the right languages.
 
@@ -277,12 +240,12 @@ This is what Stenny is for: Claude answers from what was said in class. The **St
 Check that the connector can start: `stenny mcp --desktop-config` prints a short JSON entry. Then open the extension in Claude:
 
 ```bash
-open -a Claude Stenny.mcpb
+open -a Claude "<the app's path>/Stenny.app/Contents/Resources/Stenny.mcpb"
 ```
 
-The user clicks **Install** in the window Claude shows. You can't click it for them. If no window appears, they can drag `Stenny.mcpb` from this folder onto Claude's Settings window (open the folder for them with `open -a Finder .`).
+The user clicks **Install** in the window Claude shows. You can't click it for them. If no window appears, they can drag `Stenny.mcpb` onto Claude's Settings window (show it to them with `open -R "<the app's path>/Stenny.app/Contents/Resources/Stenny.mcpb"`).
 
-**Check:** Settings ▸ Customize ▸ Connectors lists **Stenny**, switched on. Then, in a new chat in the Claude desktop app, ask: *"Which courses do you have in Stenny?"* Claude should use Stenny's tools (the first time it asks: *Allow*) and list the courses from step 8. If Claude says Stenny isn't set up, it explains why: usually step 2. If the menu looks different, ask the user to describe or screenshot what they see and help from there.
+**Check:** Settings ▸ Customize ▸ Connectors lists **Stenny**, switched on. Then, in a new chat in the Claude desktop app, ask: *"Which courses do you have in Stenny?"* Claude should use Stenny's tools (the first time it asks: *Allow*) and list the courses from step 8. If Claude says Stenny isn't set up, it explains why: usually step 3. If the menu looks different, ask the user to describe or screenshot what they see and help from there.
 
 Tell them in one line: they can just ask, in any chat, e.g. *"Quiz me on my last Microeconomics lecture."*
 
@@ -325,17 +288,17 @@ Say clearly: **✅ Setup is finished.** Then, short:
 - If a step above was skipped (no course, the AI step not signed in, the connector not installed), the window's *Finish setting up Stenny* card lists what's left, with a button for each, until it's done.
 - If memory or disk runs low, the recording goes on first: the live text pauses, or the final transcript waits. If something crashes, Stenny saves the audio and starts recording again by itself.
 - **Ask the lecturer first.** Many universities need the lecturer's consent before a lecture is recorded. Keep recordings and transcripts to themselves.
-- New versions: *Check for Updates…* at the bottom of Stenny's window (its icon ▸ *Open Stenny…*) ▸ *Update Now*: Stenny downloads the new version, installs it and opens again by itself (never during a recording or a final transcript). For releases from before Stenny's updater it runs the install line again in a Terminal window instead.
+- New versions: Stenny looks for them by itself; when there is one, the bottom of its window says *Update to …* (otherwise *Check for Updates…*) ▸ *Update Now*: Stenny downloads the new version, installs it and opens again by itself (never during a recording or a final transcript). No Terminal needed.
 - Docs: https://stenny.eu/docs/quickstart/
 
-**Stenny is made to be built on.** It's open source and lives in this folder. Whenever they want something different, they can reopen this chat (or this folder in Claude Code) and ask in plain language: "add a course", "change my pause shortcut", or a new feature. Changing the menu bar app itself needs Apple's Command Line Tools, which Claude Code can set up then. An update replaces the folder and keeps the old one next to it, so their changes can be carried over.
+**Stenny is made to be built on.** It's open source (github.com/hendrikboettcher/stenny). Whenever they want something different, they can reopen this chat and ask in plain language: "add a course", "change my pause shortcut". For a new feature, Claude Code can get Stenny's code with `git clone` and work on it there (desktop/README.md says how to build the app); that needs Apple's Command Line Tools, which Claude Code can set up then.
 
 **Feedback is very welcome:** *Send Feedback…* at the bottom of Stenny's window, or the form at https://stenny.eu.
 
 Write a short setup report: Mac model (`sysctl -n hw.model`), memory, macOS version, Stenny version, and any step that needed a workaround. No names, courses or file paths. Show it and offer to send it to Stenny's author: "Send it (Recommended)" / "Keep it to myself". If yes, send exactly what you showed them:
 
 ```bash
-uv run --no-project --python 3.12 python -c 'import json,sys; print(json.dumps({"source": "setup", "message": sys.argv[1]}))' "<the report>" | curl -fsS -X POST https://stenny.eu/api/feedback -H "Content-Type: application/json" -d @-
+PYTHONDONTWRITEBYTECODE=1 "<the app's path>/Stenny.app/Contents/Resources/engine/bin/python3" -c 'import json,sys; print(json.dumps({"source": "setup", "message": sys.argv[1]}))' "<the report>" | curl -fsS -X POST https://stenny.eu/api/feedback -H "Content-Type: application/json" -d @-
 ```
 
 If it prints `{"ok":true}`, say it was sent; otherwise say it didn't go through and go on.
@@ -344,10 +307,10 @@ If it prints `{"ok":true}`, say it was sent; otherwise say it didn't go through 
 
 | Problem | What to do |
 |---|---|
-| `stenny: command not found` | Use `~/.local/bin/stenny`, run `uv tool update-shell` and open a new terminal. |
-| The app and `stenny` in the terminal show different versions | The app runs the engine inside it; the terminal's is the `uv tool` install (step 2). Install step 2 again from the same folder as the app. |
+| `stenny: command not found` | Use `~/.local/bin/stenny`. If that's missing too, step 3 writes it (the app also does at each start). |
+| The app and `stenny` in the terminal show different versions | `~/.local/bin/stenny` isn't Stenny's launcher but another `stenny` (a developer's `uv tool install`, which Stenny leaves alone). `head -3 ~/.local/bin/stenny` shows which. |
 | macOS says Stenny can't be opened | It was downloaded in a browser: step 0. |
-| `ffmpeg` not found | `<path>/Stenny.app/Contents/MacOS/ffmpeg` should exist. If it doesn't, the app wasn't installed from a release: step 3. |
+| `ffmpeg` not found | `<path>/Stenny.app/Contents/MacOS/ffmpeg` should exist. If it doesn't, the app wasn't installed from a release: step 2. |
 | Microphone permission was denied | System Settings ▸ Privacy & Security ▸ Microphone ▸ Stenny on. Then restart Stenny. |
 | The shortcut does nothing | `stenny app-settings` must show `"error": null`. Another app may already use that shortcut: pick another (step 6) and restart Stenny (menu ▸ *Quit Stenny*, then open it again as in step 7). |
 | "Only … GB free" when a recording starts | Stenny needs about 1.5 GB to start a lecture. Help them see what's big, but don't delete anything yourself. |
@@ -362,7 +325,7 @@ If it prints `{"ok":true}`, say it was sent; otherwise say it didn't go through 
 
 **Commands.** Claude Code on Windows runs commands in Git Bash, so the commands below are written for it. The Windows-only parts run through `powershell -NoProfile -Command '…'` (single quotes, so Git Bash leaves PowerShell's `$env:…` alone). `$LOCALAPPDATA`, `$APPDATA` and `$USERPROFILE` work in Git Bash too. To open something, name the app: `explorer.exe "<folder>"`, `notepad.exe "<file>"`; web pages with `cmd //c start "" "https://…"`.
 
-Greet the user as in Phase A, with "PC" for "Mac". The essential part takes about 20–30 minutes, mostly downloads. Windows will ask once whether to run the installer (it isn't signed yet, see W4).
+Greet the user as in Phase A, with "PC" for "Mac". The essential part takes about 20–30 minutes, mostly downloads. Windows will ask once whether to run the installer (it isn't signed yet, see W3).
 
 ## W1. Check the PC
 
@@ -382,69 +345,45 @@ Tell the user in one sentence how fast transcription will be: with an NVIDIA car
 
 ## W2. Get Stenny onto the PC
 
-**First, Stenny's installer.** It does W2–W5 and W11 in one go (the code folder, uv and the `stenny` command, the app through its setup program, without the *"Windows protected your PC"* warning, the Stenny folder `Documents\Stenny`, the task for final transcripts, the Whisper model) and starts Stenny. Run it in the background and say so:
+**First, Stenny's installer.** It does W2–W5 and W11 in one go (the app through its setup program, with Stenny's engine inside it and without the *"Windows protected your PC"* warning, the `stenny` command, the Stenny folder `Documents\Stenny`, the task for final transcripts, the Whisper model) and starts Stenny. Run it in the background and say so:
 
 ```bash
 powershell -NoProfile -ExecutionPolicy Bypass -Command 'irm https://github.com/hendrikboettcher/stenny/releases/latest/download/install.ps1 | iex'
 ```
 
-If it ends with `Stenny … is installed`, go on with W6 (the config exists: for another folder change `folder` in config.toml instead of `stenny init`). If it stops with `X`, tell the user what it says and do W2–W5 below by hand.
+If it ends with `Stenny … is installed`, go on with W6 (the config exists: for another folder change `folder` in config.toml). If it stops with `X`, tell the user what it says and do W2–W5 below by hand.
 
-Stenny's code lives in a permanent folder: `%LOCALAPPDATA%\Programs\stenny` (in Git Bash `"$LOCALAPPDATA/Programs/stenny"`), without asking. If the current folder already contains Stenny (`SETUP.md`, `pyproject.toml`), use it instead. If `ls "$LOCALAPPDATA/Programs/stenny/SETUP.md"` finds an earlier attempt, ask "Use the existing folder (Recommended)" / "Replace it with the newest version"; replace only by moving the old folder to the Recycle Bin first (the command is in W10).
-
-Download the code of the newest release and unpack it there:
-
-```bash
-powershell -NoProfile -Command '
-  $ProgressPreference = "SilentlyContinue"
-  $tag = (Invoke-RestMethod https://api.github.com/repos/hendrikboettcher/stenny/releases/latest).tag_name
-  $zip = "$env:TEMP\stenny.zip"
-  Invoke-WebRequest "https://github.com/hendrikboettcher/stenny/archive/refs/tags/$tag.zip" -OutFile $zip
-  New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\Programs" | Out-Null
-  Expand-Archive $zip "$env:LOCALAPPDATA\Programs" -Force
-  Rename-Item "$env:LOCALAPPDATA\Programs\stenny-$($tag.TrimStart("v"))" stenny
-  Remove-Item $zip'
-```
-
-**Check:** `ls "$LOCALAPPDATA/Programs/stenny/SETUP.md" "$LOCALAPPDATA/Programs/stenny/pyproject.toml"` shows both. From now on "this folder" means `"$LOCALAPPDATA/Programs/stenny"`: run every command there (`cd "$LOCALAPPDATA/Programs/stenny" && …`) and continue with the copy of this file in it.
-
-## W3. Install the `stenny` command
-
-As in step 2, with Windows' installer for `uv`:
-
-```bash
-command -v uv || ls ~/.local/bin/uv.exe 2>/dev/null
-powershell -NoProfile -ExecutionPolicy ByPass -Command 'irm https://astral.sh/uv/install.ps1 | iex'   # only if missing
-```
-
-Use `~/.local/bin/uv.exe` if plain `uv` isn't found. Look for an earlier install as in step 2 (`uv-receipt.toml`), then:
-
-```bash
-uv tool install -e . --python 3.12   # Python 3.12 and Stenny's parts, about 300 MB: a few minutes
-uv tool update-shell
-```
-
-**Check:** `~/.local/bin/stenny.exe --version` prints a version. Always pass `--python 3.12`. uv brings Python itself; nothing here needs administrator rights.
-
-## W4. Install the app
-
-The Windows app comes as a setup program, `Stenny_<version>_x64-setup.exe`, attached to the release. See whether the newest release has one:
+The Windows app comes as a setup program, `Stenny_<version>_x64-setup.exe`, attached to the release:
 
 ```bash
 powershell -NoProfile -Command '(Invoke-RestMethod https://api.github.com/repos/hendrikboettcher/stenny/releases/latest).assets | ? name -like "*-setup.exe" | % browser_download_url'
 ```
 
-- **Nothing printed:** the Windows app isn't released yet. Tell the user in one sentence, and that they can still transcribe recordings and study them with Claude (the rest of this setup). Stenny then needs `ffmpeg` from elsewhere: `command -v ffmpeg`; if it's missing, ask "Install ffmpeg with winget (Recommended, about 100 MB)" / "Skip" and run `winget install --id Gyan.FFmpeg -e` (then open a new terminal). Skip W10's microphone test.
-- **A link:** download it and start it:
+**Check:** it prints a link. If it prints nothing, the newest release's Windows app is still being built: wait a few minutes and try again.
 
-  ```bash
-  curl -fL -o "$USERPROFILE/Downloads/Stenny-setup.exe" "<the link>"
-  cmd //c start "" "$USERPROFILE\Downloads\Stenny-setup.exe"
-  ```
+## W3. Install the app
 
-  Stenny isn't signed with a certificate yet, so Windows shows **"Windows protected your PC"**. Tell the user to click **More info ▸ Run anyway**, and that the code is open at github.com/hendrikboettcher/stenny. The installer speaks English or German (Windows' language), installs for this user only (no administrator) into `%LOCALAPPDATA%\Stenny`, next to Stenny's own data, and sets up Microsoft's WebView2 if the PC lacks it. Its uninstaller removes only the app's own files, never recordings. They can uncheck *Run Stenny* at the end; it opens in W10.
+Download the setup program and start it:
 
-**Check:** `"$LOCALAPPDATA/Stenny/ffmpeg.exe" -version` prints a version (without the app: `ffmpeg -version`). If they picked another folder in the installer, `ffmpeg.exe` is in that one; Stenny finds it there.
+```bash
+curl -fL -o "$USERPROFILE/Downloads/Stenny-setup.exe" "<the link>"
+cmd //c start "" "$USERPROFILE\Downloads\Stenny-setup.exe"
+```
+
+Stenny isn't signed with a certificate yet, so Windows shows **"Windows protected your PC"**. Tell the user to click **More info ▸ Run anyway**, and that the code is open at github.com/hendrikboettcher/stenny. The installer speaks English or German (Windows' language), installs for this user only (no administrator) into `%LOCALAPPDATA%\Stenny`, next to Stenny's own data, and sets up Microsoft's WebView2 if the PC lacks it. Its uninstaller removes only the app's own files, never recordings. They can uncheck *Run Stenny* at the end; it opens in W10.
+
+**Check:** `"$LOCALAPPDATA/Stenny/ffmpeg.exe" -version` prints a version and `ls "$LOCALAPPDATA/Stenny/engine/python.exe"` finds the engine. If they picked another folder in the installer, both are in that one ("the app's folder" below).
+
+## W4. The `stenny` command
+
+As in step 3, with the engine next to `Stenny.exe`:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 "$LOCALAPPDATA/Stenny/engine/python.exe" -m stenny app-settings >/dev/null
+rm -f "$USERPROFILE/Downloads/Stenny-setup.exe"
+```
+
+That writes `~/.local/bin/stenny.cmd`, which runs the app's engine, and starts a config with `Documents\Stenny`. An engine an older Stenny setup installed with `uv` (`%LOCALAPPDATA%\Programs\stenny`) is removed, its folder to the Recycle Bin. **Check:** `~/.local/bin/stenny.cmd --version` prints a version. Git Bash only adds `.exe` to a command by itself, so where the steps below say `stenny`, write `stenny.cmd` there. Nothing here needs administrator rights.
 
 ## W5. Start the Whisper download
 
@@ -484,7 +423,7 @@ stenny add "$(cygpath -w /tmp)\stenny-test.wav" --event "Stenny test" --now
 
 (Git Bash's `/tmp` is Windows' `%TEMP%`.) Without an NVIDIA card the first run takes a minute or two, as the model loads first. **Check:** as in step 11 a.
 
-**b) Microphone, through the app:** only with the app installed (W4). Open it (`cmd //c start "" "$LOCALAPPDATA\Stenny\Stenny.exe"`), then as in step 11 b, with Stenny's icon in the taskbar's notification area (behind the **^** arrow if it's hidden). Windows asks for the microphone the first time. If the app can't record yet, skip this and say so.
+**b) Microphone, through the app:** only with the app installed (W3). Open it (`cmd //c start "" "$LOCALAPPDATA\Stenny\Stenny.exe"`), then as in step 11 b, with Stenny's icon in the taskbar's notification area (behind the **^** arrow if it's hidden). Windows asks for the microphone the first time. If the app can't record yet, skip this and say so.
 
 Deleting the test recordings (step 11's list, with `%LOCALAPPDATA%\Stenny\Recordings\Talks\…` for the recordings, and `stenny-test.wav`): to the Recycle Bin, one at a time (`DeleteFile` for the .wav):
 
@@ -512,14 +451,14 @@ As in step 17, with Windows' words: the taskbar's notification area instead of t
 
 ## Updating on Windows
 
-`stenny update` doesn't work on Windows (Windows won't let it replace the program that is running it). *Check for Updates…* ▸ *Update Now* downloads the new setup program and runs it without questions (a progress window), then Stenny opens again; for releases from before Stenny's updater it runs the installer line in a PowerShell window of its own instead. When the user asks you to update Stenny, run the installer again (W2): it waits for no recording or final transcript to be running (it stops and says so), quits Stenny, replaces the code (the old folder goes to the Recycle Bin), the engine and the app, and starts Stenny again. **Check:** `stenny --version` shows the new version, and `stenny mcp --desktop-config` works.
+As on a Mac: the bottom of Stenny's window says *Update to …* when there is a new version (or *Check for Updates…*) ▸ *Update Now* downloads the new setup program and runs it without questions (a progress window), then Stenny opens again. Never during a recording or a final transcript. When the user asks you to update Stenny, running the installer again (W2) does the same. **Check:** `stenny --version` shows the new version, and `stenny mcp --desktop-config` works.
 
 ## Troubleshooting on Windows
 
 | Problem | What to do |
 |---|---|
-| `stenny: command not found` | Use `~/.local/bin/stenny.exe`, run `uv tool update-shell` and open a new terminal. Where no `stenny.exe` is installed, the app puts `~/.local/bin/stenny.cmd` there, which runs the engine inside the app. |
-| "Windows protected your PC" | The installer isn't signed yet: *More info ▸ Run anyway* (W4). |
-| `ffmpeg` not found | `%LOCALAPPDATA%\Stenny\ffmpeg.exe` (or in the folder the installer was given) should exist; otherwise W4. |
+| `stenny: command not found` | Use `~/.local/bin/stenny.cmd`, which runs the engine inside the app. If it's missing, W4 writes it (the app also does at each start). |
+| "Windows protected your PC" | The installer isn't signed yet: *More info ▸ Run anyway* (W3). |
+| `ffmpeg` not found | `%LOCALAPPDATA%\Stenny\ffmpeg.exe` (or in the folder the installer was given) should exist; otherwise W3. |
 | Transcription is very slow | Without an NVIDIA card (and its CUDA libraries) the processor does it: about as long as the lecture. That's expected. |
 | Anything else | Logs are in `%LOCALAPPDATA%\Stenny\Logs\`. Read the end of the newest one. |
