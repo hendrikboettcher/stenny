@@ -229,10 +229,11 @@ async fn start_recording(app: AppHandle, course: String, event: bool) -> Result<
         .map_err(|e| e.to_string())?
 }
 
-/// The activity bar's Pause/Resume ("toggle") and Stop, as the menu's items do.
+/// The activity bar's Pause/Resume ("toggle"), Stop and Delete ("cancel", asked in the bar itself), as the menu's
+/// items do.
 #[tauri::command]
 async fn recording_command(app: AppHandle, cmd: String) -> Result<Value, String> {
-    if !matches!(cmd.as_str(), "toggle" | "stop") {
+    if !matches!(cmd.as_str(), "toggle" | "stop" | "cancel") {
         return Err(format!("unknown command {cmd}"));
     }
     tauri::async_runtime::spawn_blocking(move || menubar::command(&app, &cmd)).await.map_err(|e| e.to_string())?

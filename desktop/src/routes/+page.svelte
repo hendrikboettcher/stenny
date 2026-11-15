@@ -213,13 +213,23 @@
   // only one recording at a time: the Record buttons are there while nothing records, starts or stops
   let canRecord = $derived(live.state === "idle" && !starting);
 
+  // Delete (the bin at the end of the bar): the bar itself asks first, the recording going on meanwhile; once the
+  // engine has moved it to the Trash, the bar says so for a few seconds and offers to record again
+  let asking = $state(false);
+  let deleted = $state<Group | null>(null);
+  let deletedTimer: ReturnType<typeof setTimeout> | undefined;
+  let keepButton = $state<HTMLButtonElement | null>(null);
+  const BIN = "M2.8 4.2h10.4 M6.3 4.2V2.6h3.4v1.6 M4.2 4.2l.7 9.2h6.2l.7-9.2 M6.8 6.6v4.6 M9.2 6.6v4.6";
+  $effect(() => { if (asking) keepButton?.focus(); }); // Return or Space keeps it
+
   type Bar =
-    | { kind: "starting" | "cancelling"; group: Group }
+    | { kind: "starting" | "cancelling" | "deleted"; group: Group }
     | { kind: "recording" | "paused" | "finishing"; group: Group; folder?: string; number?: number }
     | { kind: "suggestion"; course: string; range: string };
   let bar = $derived.by<Bar | null>(() => {
     const s = live.state;
     if (liveGroup && (s === "recording" || s === "paused")) return { kind: s, group: liveGroup, folder: live.folder, number: live.number };
+    if (deleted && s === "idle" && !starting) return { kind: "deleted", group: deleted };
     if (liveGroup && s === "starting") return { kind: "starting", group: liveGroup };
     if (starting) return { kind: "starting", group: starting };
     if (liveGroup && s === "cancelling") return { kind: "cancelling", group: liveGroup };
@@ -316,6 +326,26 @@
     barBusy = true;
     try {
       live = await recordingCommand(cmd);
+    } catch (e) {
+      showBarError(e);
+    } finally {
+      barBusy = false;
+    }
+  }
+
+  // the question goes away when the recording stops some other way (the menu's Stop or Cancel Recording…)
+  $effect(() => { if (live.state !== "recording" && live.state !== "paused") asking = false; });
+
+  // Delete: no transcript, the audio and the text so far to the Trash (the engine's cancel, as the menu's
+  // Cancel Recording…)
+  async function deleteRecording(g: Group) {
+    asking = false;
+    barBusy = true;
+    try {
+      live = await recordingCommand("cancel");
+      deleted = g;
+      clearTimeout(deletedTimer);
+      deletedTimer = setTimeout(() => (deleted = null), 8000);
     } catch (e) {
       showBarError(e);
     } finally {
@@ -711,6 +741,26 @@
           <span class="buttons">
             <button class="bar-button" onclick={() => record({ course: s.course, event: false })}>{t("activity.record")}</button>
           </span>
+        {:else if asking && (bar?.kind === "recording" || bar?.kind === "paused")}
+          <!-- Delete, asked in the bar: Keep Recording has the focus; Windows puts the action first, macOS last -->
+          {@const g = bar.group}
+          {@const keep = t("cancelRec.keep")}
+          <svg class="sign bin danger" viewBox="0 0 16 16" aria-hidden="true"><path d={BIN} /></svg>
+          <span class="what ask">
+            <span class="question">{t("cancelRec.title")}</span>
+            <span class="sub">{t("activity.deleteText", { time: clock(live), trash: trashName() })}</span>
+          </span>
+          <span class="buttons" class:windows={onWindows}>
+            <button class="bar-button" bind:this={keepButton} onclick={() => (asking = false)}>{keep}</button>
+            <button class="bar-button danger" disabled={barBusy} onclick={() => deleteRecording(g)}>{t("cancelRec.delete")}</button>
+          </span>
+        {:else if bar?.kind === "deleted"}
+          {@const g = bar.group}
+          <svg class="sign bin" viewBox="0 0 16 16" aria-hidden="true"><path d={BIN} /></svg>
+          <span class="what">{t("activity.deleted", { trash: trashName() })}</span>
+          <span class="buttons">
+            <button class="bar-button" onclick={() => { deleted = null; if (g.event) recordTalk(); else record(g); }}>{t("activity.recordAgain")}</button>
+          </span>
         {:else if bar}
           {@const b = bar}
           {@const name = "folder" in b ? barName(b.group, b.folder, b.number) : b.group.course}
@@ -747,6 +797,12 @@
               </button>
               <button class="bar-icon" disabled={barBusy} aria-label={t("menu.stop")} title={t("menu.stop")} onclick={() => control("stop")}>
                 <svg viewBox="0 0 16 16" aria-hidden="true"><rect class="fill" x="3.5" y="3.5" width="9" height="9" rx="1.5" /></svg>
+              </button>
+              <!-- Delete, set apart from Stop so neither is hit for the other -->
+              <span class="bar-divider" aria-hidden="true"></span>
+              <button class="bar-icon bin" disabled={barBusy} aria-label={t("activity.delete")} title={t("activity.delete")}
+                onclick={() => (asking = true)}>
+                <svg viewBox="0 0 16 16" aria-hidden="true"><path d={BIN} /></svg>
               </button>
             {/if}
           </span>
@@ -1117,6 +1173,19 @@
   .bar-icon .fill { fill: currentColor; }
   .bar-button:hover, .bar-icon:hover:not(:disabled) { background: var(--sunken); color: var(--ink); }
   .bar-icon:disabled { opacity: 0.55; }
+  /* Delete: a bin apart from the others, red only under the pointer; asked in the bar with a red Delete Recording */
+  .bar-divider { width: 1px; height: 20px; margin: 0 4px; background: var(--hairline); }
+  .bar-icon.bin svg, .activity svg.bin { fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
+  .bar-icon.bin svg { width: 14px; height: 14px; }
+  .bar-icon.bin:hover:not(:disabled) { color: var(--rec); box-shadow: inset 0 0 0 1px var(--rec); background: var(--surface); }
+  .activity svg.bin { stroke: var(--muted); }
+  .activity svg.bin.danger { stroke: var(--rec); }
+  .activity .ask { display: flex; flex-direction: column; line-height: 1.25; }
+  .activity .ask .question { font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; }
+  .activity .ask .sub { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+  .activity .buttons.windows { flex-direction: row-reverse; }
+  .bar-button.danger { background: var(--rec); color: #fff; box-shadow: none; }
+  .bar-button.danger:hover:not(:disabled) { background: var(--rec); filter: brightness(0.92); color: #fff; }
   @media (prefers-reduced-motion: reduce) { .activity .sign.recording, .rec-dot { animation: none; } }
 
   /* Record Lecture n, at the top of a course's list */

@@ -414,6 +414,10 @@
   "activity.calendar": "Kalender",
   "activity.record": "Aufnehmen",
   "activity.show": "Anzeigen",
+  "activity.delete": "Aufnahme löschen …",
+  "activity.deleteText": "{time} Audio und der bisherige Text landen im {trash}.",
+  "activity.deleted": "Aufnahme liegt im {trash}",
+  "activity.recordAgain": "Neu aufnehmen",
 
   "app.about": "Über Stenny",
   "app.services": "Dienste",
