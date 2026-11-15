@@ -626,6 +626,9 @@ def recover_sessions(cfg) -> list[dict]:
             pcm = Path(d["recording"])
         except (OSError, ValueError, KeyError):
             continue
+        if d.get("state") == "cancelling":  # deleted, but its process died before its files went to the Trash
+            discard_leftover(cfg, d)
+            continue
         if not pcm.exists() or str(pcm.resolve()) in known:
             continue
         backup = d.get("backup")
@@ -652,6 +655,20 @@ def cmd_recover(args) -> None:
         print(json.dumps(recovered, ensure_ascii=False))
 
 
+def discard_leftover(cfg, d: dict) -> None:
+    """What's left of a deleted recording (its session.json says "cancelling", its process is gone): to the Trash,
+    as Delete meant. Only that state: a recording that is just starting never looks like this."""
+    from .manage import TRASH_NAME, ManageError, discard_recording
+    from .pipeline import log
+
+    try:
+        course = cfg.event(d["course"]) if d.get("kind") == "event" else cfg.course(d["course"])
+        discard_recording(cfg, course, d["folder"])
+        log(f"A deleted recording's leftovers, {d['course']} {d['folder']}, moved to the {TRASH_NAME}")
+    except (ConfigError, KeyError, ManageError, OSError) as e:
+        log(f"A deleted recording's leftovers couldn't go to the {TRASH_NAME}: {e}")
+
+
 def discard(session, cfg) -> None:
     """A cancelled recording: its audio, session files and placeholder go to the Trash."""
     from .manage import TRASH_NAME, ManageError, discard_recording
@@ -670,10 +687,10 @@ def finalize(session, cfg, policy: str, use_llm: bool, engine) -> None:
     from .pipeline import log
 
     if session.recorded == 0:
+        # stopped before the microphone delivered anything: nothing to keep, so it goes like a deleted recording
+        # (its placeholder would otherwise say "recording" for good)
         log("Nothing was recorded.")
-        session.pcm_path.unlink(missing_ok=True)
-        if session.backup:
-            session.backup.path.unlink(missing_ok=True)
+        discard(session, cfg)
         return
     job = jobs.enqueue(session.pcm_path, session.course.name, session.lang_override, use_llm, live=session.session_path,
                        kind=session.course.kind)
