@@ -349,6 +349,7 @@
   "settings.past.lectures.one": "{n} Vorlesung",
   "settings.past.lectures.other": "{n} Vorlesungen",
   "settings.past.bringBack": "Wiederherstellen",
+  "settings.past.renameText": "Ordner, Dateien, Glossar und Obsidian-Links werden automatisch angepasst.",
   "settings.past.delete": "Löschen …",
   "settings.deleteCourse.text.none": "Zu diesem Kurs gibt es keine Aufnahmen. Seine Einstellungen werden entfernt, ein vorhandenes Glossar landet im {trash}.",
   "settings.deleteCourse.text.one": "Der Kurs und seine Vorlesung werden gelöscht – Transkript, Zusammenfassung, Audio und Glossar. Alles landet im {trash} – endgültig weg ist es erst, wenn du ihn leerst.",

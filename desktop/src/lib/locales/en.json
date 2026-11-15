@@ -349,6 +349,7 @@
   "settings.past.lectures.one": "{n} lecture",
   "settings.past.lectures.other": "{n} lectures",
   "settings.past.bringBack": "Bring Back",
+  "settings.past.renameText": "Its folder, files, glossary and Obsidian links are renamed too.",
   "settings.past.delete": "Delete…",
   "settings.deleteCourse.text.none": "Nothing was recorded for it. Its settings are removed, and its glossary, if it has one, goes to the {trash}.",
   "settings.deleteCourse.text.one": "This deletes the course and its lecture: transcripts, summaries, audio and its glossary. Everything goes to the {trash}; once it's emptied, it's gone for good.",
