@@ -608,7 +608,8 @@
 
 {#if settingsOpen}
   <div class="view" in:comeIn out:goAway>
-    <Settings start={settingsSection} onclose={() => { settingsOpen = false; reload(); }} />
+    <Settings start={settingsSection} onclose={() => { settingsOpen = false; reload(); }}
+              onrenamed={(old, name) => { if (same(group, { course: old, event: false })) group = { course: name, event: false }; }} />
   </div>
 {:else}
 <div class="view" in:comeIn out:goAway>

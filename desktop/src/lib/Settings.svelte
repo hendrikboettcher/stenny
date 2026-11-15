@@ -13,7 +13,7 @@
   import { listen } from "@tauri-apps/api/event";
   import {
     addCalendarLink, addCourse, bringBack, calendarAllow, calendarChanged, calendarStatus, deleteCourse, engine, library,
-    openSystemSettings, removeCalendarLink, removeCourse, reveal,
+    openSystemSettings, removeCalendarLink, removeCourse, renameCourse, reveal,
     type AiStatus, type CalendarLink, type CalendarStatus, type ConnectorStatus,
   } from "$lib/engine";
   import { t, tn, setLanguage, languageName, locale, trashName, revealLabel, onWindows, type Key } from "$lib/i18n.svelte";
@@ -46,7 +46,10 @@
   const LANGS = ["en", "de", "fr"];
   const langName = (code: string) => (LANGS.includes(code) ? languageName(code)! : code.toUpperCase());
 
-  let { onclose, start = "general" }: { onclose: () => void; start?: Section } = $props();
+  // onrenamed: a course got a new name here, so the window can keep it selected under that name
+  let { onclose, onrenamed, start = "general" }: {
+    onclose: () => void; onrenamed?: (old: string, name: string) => void; start?: Section;
+  } = $props();
 
   let section = $state<Section>(untrack(() => start));
   let s = $state<Settings | null>(null);
@@ -71,12 +74,15 @@
   let deleteBusy = $state(false);
   let deleteError = $state<string | null>(null);
 
-  // The current courses can be added, removed (→ Past courses) and deleted here too, like in the window's sidebar:
-  // "Add Course" under the list, and each course's ⋯ menu.
+  // The current courses can be added, renamed, removed (→ Past courses) and deleted here too, like in the window's
+  // sidebar: "Add Course" under the list, and each course's ⋯ menu.
   let lectureCount = $state(new Map<string, number>());
   let courseMenu = $state<{ name: string; x: number; y: number } | null>(null);
   let adding = $state(false);
   let removing = $state<string | null>(null);
+  // the course being renamed, a current or a past one (manage.rename_course: folder, files, glossary, config)
+  let renaming = $state<{ name: string; past: boolean } | null>(null);
+  let renameField = $state("");
   let newName = $state("");
   let newLanguage = $state("en");
   let newAlias = $state("");
@@ -89,11 +95,12 @@
     courseMenu = courseMenu?.name === name ? null : { name, x: Math.max(8, r.right - 200), y: r.bottom + 4 };
   }
 
-  function ask(what: "add" | "remove" | "delete", name = "") {
+  function ask(what: "add" | "rename" | "remove" | "delete", name = "") {
     courseMenu = null;
     courseError = null;
     deleteError = null;
     if (what === "add") { newName = ""; newLanguage = "en"; newAlias = ""; adding = true; }
+    else if (what === "rename") { renameField = name; renaming = { name, past: false }; }
     else if (what === "remove") removing = name;
     else deleting = { name, lectures: lectureCount.get(name) ?? 0, current: true };
   }
@@ -112,6 +119,12 @@
     } finally {
       courseBusy = false;
     }
+  }
+
+  async function rename(old: string) {
+    let name = old;
+    await changeCourses(async () => { name = (await renameCourse(old, false, renameField)).name; }, () => (renaming = null));
+    if (renaming === null && name !== old) onrenamed?.(old, name);
   }
 
   async function loadPast() {
@@ -1063,6 +1076,10 @@
                     <button class="pill" disabled={pastBusy !== null} onclick={() => restore(c.name)}>
                       {pastBusy === c.name ? t("common.oneMoment") : t("settings.past.bringBack")}
                     </button>
+                    <button class="pill" disabled={pastBusy !== null}
+                            onclick={() => { renameField = c.name; courseError = null; renaming = { name: c.name, past: true }; }}>
+                      {t("lib.menu.rename")}
+                    </button>
                     <button class="pill danger" disabled={pastBusy !== null}
                             onclick={() => { deleting = c; deleteError = null; }}>{t("settings.past.delete")}</button>
                   </div>
@@ -1080,6 +1097,7 @@
   {@const name = courseMenu.name}
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div class="menu" role="menu" tabindex="-1" style="left: {courseMenu.x}px; top: {courseMenu.y}px" onclick={(ev) => ev.stopPropagation()}>
+    <button role="menuitem" onclick={() => ask("rename", name)}>{t("lib.menu.rename")}</button>
     <button role="menuitem" onclick={() => ask("remove", name)}>{t("lib.menu.removeCourse")}</button>
     <div class="menu-line"></div>
     <button role="menuitem" class="danger" onclick={() => ask("delete", name)}>{t("lib.menu.deleteCourse")}</button>
@@ -1127,6 +1145,15 @@
   <Dialog title={t("settings.calendar.remove.title", { name: linkName(linkRemoving) })} confirm={t("settings.claude.remove.confirm")}
           busy={linkBusy} error={linkError} text={t("settings.calendar.remove.text")}
           oncancel={() => (linkRemoving = null)} onconfirm={removeLink} />
+{/if}
+
+{#if renaming}
+  {@const name = renaming.name}
+  <Dialog title={t("renameGroup.title.course")} confirm={t("common.rename")} busy={courseBusy} error={courseError}
+          text={t(renaming.past ? "settings.past.renameText" : "renameGroup.text.course")}
+          oncancel={() => (renaming = null)} onconfirm={() => rename(name)}>
+    <input bind:value={renameField} aria-label={t("renameGroup.aria")} autocomplete="off" spellcheck="false" />
+  </Dialog>
 {/if}
 
 {#if removing}
