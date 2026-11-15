@@ -263,6 +263,12 @@
       boxShadow: `inset 0 0 0 1.5px ${rec}, 0 0 0 4px color-mix(in srgb, ${rec} 18%, transparent)`,
     };
     for (const a of button.getAnimations()) if (a.id === "point-out") a.cancel();
+    // Windows' contrast themes draw no shadows and their own colours: there it's an outline in the highlight colour
+    if (matchMedia("(forced-colors: active)").matches) {
+      const ring = { outline: "2px solid Highlight", outlineOffset: "2px" };
+      button.animate([ring, ring], { duration: 1800 }).id = "point-out";
+      return;
+    }
     const shown = still()
       ? button.animate([glow, glow], { duration: 1800 })
       : button.animate([{}, glow, {}], { duration: 900, iterations: 2, easing: "ease-in-out" });
