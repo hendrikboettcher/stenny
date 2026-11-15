@@ -1,11 +1,10 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "bundle": {
-    "externalBin": [
-      "binaries/stenny-agent",
-      "binaries/stenny-rec",
-      "binaries/ffmpeg",
-      "binaries/ffprobe"
-    ]
+    "macOS": {
+      "files": {
+        "Helpers/Stenny Agent.app": "binaries/Stenny Agent.app"
+      }
+    }
   }
 }

@@ -11,7 +11,7 @@ package), so the app looks the same offline; Geist Mono is for times, clocks and
 
 ```bash
 npm install                                   # once
-scripts/helpers.sh                            # what it bundles: stenny-agent (macOS only, tauri.macos.conf.json), stenny-rec, Stenny.mcpb (needs Node)
+scripts/helpers.sh                            # what it bundles: stenny-agent as Stenny Agent.app (macOS only, tauri.macos.conf.json), stenny-rec, Stenny.mcpb (needs Node)
 scripts/bundle-engine.sh                      # the engine inside the app (src-tauri/engine, ~670 MB on a Mac; needs uv; Git Bash on Windows)
 bash scripts/stenny-rec.sh                    # on Windows (Git Bash): stenny-rec.exe, the WASAPI recorder (stenny-rec/)
 npm run check                                 # type check
@@ -43,8 +43,10 @@ selection (localStorage); the refresh every few seconds never changes it.
 
 Without `--library` it is the menu bar app (src-tauri/src/menubar.rs): the classic menu, the clock next to the icon,
 the calendar's lecture with its "Record this lecture?" notification, and the pause shortcut. The Mac's calendar and
-the pause shortcut come through `stenny-agent` (app/Sources/stenny-agent), which runs inside the bundle so the calendar
-permission is Stenny's. Notifications don't: macOS turns a second program in the bundle down at once, without a prompt
+the pause shortcut come through `stenny-agent` (app/Sources/stenny-agent), a small app of its own inside Stenny's
+(Contents/Helpers/Stenny Agent.app with its own Info.plist and LSUIElement, scripts/helpers.sh), so it never shows up
+in the Dock as a second Stenny (#52) while Stenny itself, without LSUIElement, bounces in the Dock as it opens; the app
+starts it as its child, so the calendar permission is still Stenny's. Notifications don't: macOS turns a second program in the bundle down at once, without a prompt
 (#60), so Stenny asks for them and posts them itself (src-tauri/src/macos_notifications.rs, the UserNotifications
 framework): "Record this lecture?" with Start Recording, and its other messages.
 
@@ -92,7 +94,8 @@ src/stenny/claude_setup.py, checked again whenever the window gets the focus bac
 the same choices as the menu bar's; a new pause shortcut is registered by the running stenny-agent (`shortcut …`), or again on Windows). Also in the menu and the library
 window's footer: Send Feedback… (to stenny.eu, like the website's form) and
 Check for Updates… (see *Updates* below). An installed copy (in an Applications folder)
-adds itself to the login items once, through stenny-agent (on Windows: the Run value, see above); after that it's the
+adds itself to the login items once, from its own process (src-tauri/src/macos.rs, SMAppService; on Windows: the Run
+value, see above); after that it's the
 user's choice.
 
 ## The engine inside the app

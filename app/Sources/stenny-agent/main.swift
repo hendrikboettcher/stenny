@@ -1,7 +1,6 @@
 import AppKit
 import Carbon
 import EventKit
-import ServiceManagement
 
 // stenny-agent: the macOS parts of Stenny's new app (desktop/) that Tauri doesn't have, as a helper it starts.
 // One line per event on stdout, one command per line on stdin; it quits when its stdin closes (the app quit).
@@ -22,13 +21,13 @@ import ServiceManagement
 //        "lang en|de" switches this helper's texts to Stenny's new language (no restart: a new process with Stenny's
 //        bundle id would show up in the Dock as a second Stenny, #46);
 //        "shortcut cmd+shift+ü" registers a new pause shortcut in place of the old one → "ready …" / "error …";
-//        "login" makes Stenny open at login (System Settings ▸ General ▸ Login Items) → "login ok" / "login error …";
-//        "login off" stops that; "login status" → "login on", "login off" or "login approval" (still to be allowed);
-//        any other line is ignored (the app sends "login check" before "login status" when it only asks)
+//        any other line is ignored
 //
-// It runs inside Stenny.app (Contents/MacOS), so the calendar permission is Stenny's. Notifications are not done
-// here: macOS turns down a request from a second program in the bundle at once and without a prompt, so the app asks
-// for them and posts them itself (desktop/src-tauri/src/macos_notifications.rs, #60).
+// It is an app of its own inside Stenny.app (Contents/Helpers/Stenny Agent.app, desktop/scripts/helpers.sh), with
+// its own Info.plist (LSUIElement), so it never shows up in the Dock as a second Stenny (#52). Stenny starts it as
+// its child, so macOS counts its calendar access as Stenny's. Opening at login is the app's own (SMAppService's
+// main app would be this helper here: desktop/src-tauri/src/macos.rs), and so are notifications: macOS turns down a
+// request from a second program at once and without a prompt (desktop/src-tauri/src/macos_notifications.rs, #60).
 // The key is given as printed on the keyboard and looked up in the current layout, since Carbon hotkeys use
 // physical key codes (Ü is "[" on a US keyboard). Same rules as the Swift app's Shortcut.swift.
 
@@ -98,8 +97,7 @@ let args = CommandLine.arguments
 
 // A one-off job instead of the helper's usual work (PDFExport.swift).
 if let p = args.firstIndex(of: "--pdf"), p + 1 < args.count {
-    // Never in the Dock. Stenny.app's Info.plist (LSUIElement), which this helper reads too, already sees to that;
-    // this is the second guard (#52)
+    // Never in the Dock. This helper's own Info.plist (LSUIElement) already sees to that; this is the second guard (#52)
     NSApplication.shared.setActivationPolicy(.prohibited)
     let result = MainActor.assumeIsolated { makePDF(from: URL(fileURLWithPath: args[p + 1])) }
     switch result {
@@ -251,22 +249,7 @@ if args.contains("--calendar") {
 // Commands from the app; quit with it when its end of our stdin closes.
 Thread.detachNewThread {
     while let line = readLine() {
-        if line == "login" {
-            do {
-                try SMAppService.mainApp.register()  // the app around this helper
-                say("login ok")
-            } catch {
-                say("login error \(error.localizedDescription)")
-            }
-        } else if line == "login off" {
-            try? SMAppService.mainApp.unregister()
-        } else if line == "login status" {
-            switch SMAppService.mainApp.status {
-            case .enabled: say("login on")
-            case .requiresApproval: say("login approval")
-            default: say("login off")
-            }
-        } else if line == "calendar check" {
+        if line == "calendar check" {
             DispatchQueue.main.async {
                 sourcesStale = true
                 checkCalendar(report: true)
@@ -286,8 +269,8 @@ Thread.detachNewThread {
 
 // MARK: Quitting
 
-/// To macOS this helper is Stenny too (eu.stenny.Stenny, inside Stenny.app), so "quit Stenny" (osascript, an
-/// installer) can reach it instead of the app. It passes that on: the app quits as from its menu, this helper with it.
+/// A quit from macOS (logging out, an installer) that reaches this helper is passed on: the app quits as from its
+/// menu (asking first while a lecture records), this helper with it, when its stdin closes.
 final class QuitForwarder: NSObject {
     @objc func handleQuit(_ event: NSAppleEventDescriptor, withReply reply: NSAppleEventDescriptor) {
         say("quit")
@@ -311,7 +294,7 @@ var hotKey: EventHotKeyRef?
 
 /// Registers `shortcut` as the pause shortcut in place of the one before (at start, and on "shortcut …" from the
 /// app): "ready <key code> <label>" or "error <why>". Without a working one there's no shortcut, but the helper
-/// stays (the calendar, opening at login). On the main thread.
+/// stays (the calendar, PDFs). On the main thread.
 func register(_ shortcut: String) {
     if let old = hotKey {
         UnregisterEventHotKey(old)

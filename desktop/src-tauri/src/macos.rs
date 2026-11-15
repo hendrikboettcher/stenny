@@ -223,3 +223,42 @@ pub fn centered_ask(app: &tauri::AppHandle, title: String, message: String, butt
     });
     wait.recv().unwrap_or(false)
 }
+
+// Opening at login: Stenny itself as a login item (System Settings ▸ General ▸ Login Items), through
+// ServiceManagement's SMAppService.mainAppService. Asked here in Stenny's own process, because the main app is the
+// one around the program that asks: from stenny-agent, an app of its own since #52's fix, it would be the helper.
+#[link(name = "ServiceManagement", kind = "framework")]
+unsafe extern "C" {}
+
+fn main_app_service() -> Option<*mut AnyObject> {
+    let class = AnyClass::get(c"SMAppService")?;
+    let service: *mut AnyObject = unsafe { msg_send![class, mainAppService] };
+    (!service.is_null()).then_some(service)
+}
+
+/// "login" opens Stenny at login, "login off" stops that, anything else only asks. Ok("on" | "off" | "approval":
+/// the user still has to allow it in System Settings), or why macOS turned "login" down.
+pub fn login_item(command: &str) -> Result<String, String> {
+    let service = main_app_service().ok_or("ServiceManagement isn't there")?;
+    let mut error: *mut objc2_foundation::NSError = std::ptr::null_mut();
+    match command {
+        "login" => {
+            let ok: bool = unsafe { msg_send![service, registerAndReturnError: &mut error] };
+            if !ok && !error.is_null() {
+                return Err(unsafe { (*error).localizedDescription() }.to_string());
+            }
+        }
+        "login off" => {
+            let _: bool = unsafe { msg_send![service, unregisterAndReturnError: &mut error] };
+        }
+        _ => {}
+    }
+    // SMAppServiceStatus: 0 not registered, 1 enabled, 2 requires approval, 3 not found
+    let status: isize = unsafe { msg_send![service, status] };
+    Ok(match status {
+        1 => "on",
+        2 => "approval",
+        _ => "off",
+    }
+    .to_string())
+}

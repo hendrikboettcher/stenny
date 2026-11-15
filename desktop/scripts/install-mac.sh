@@ -64,10 +64,11 @@ fi
 target="$dest/Stenny.app"
 
 # Quit the running Stenny (and its helpers) the way the user would, then make sure
-if pgrep -u "$(id -u)" -f "Stenny.app/Contents/MacOS/" >/dev/null; then
+# (Contents/MacOS, and stenny-agent in Contents/Helpers)
+if pgrep -u "$(id -u)" -f "Stenny.app/Contents/(MacOS|Helpers)/" >/dev/null; then
     osascript -e "quit app id \"$BUNDLE_ID\"" >/dev/null 2>&1 || true
     for _ in {1..20}; do pgrep -u "$(id -u)" -f "Stenny.app/Contents/MacOS/stenny-desktop" >/dev/null || break; sleep 0.25; done
-    pkill -u "$(id -u)" -f "Stenny.app/Contents/MacOS/" || true
+    pkill -u "$(id -u)" -f "Stenny.app/Contents/(MacOS|Helpers)/" || true
 fi
 
 # 1. In place: the bundle folder stays the same one, so the Dock's tile still points at it

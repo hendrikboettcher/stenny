@@ -5,6 +5,18 @@
     <link rel="icon" href="%sveltekit.assets%/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Stenny</title>
+    <!-- Opening and ⌘R without a hiccup: the window is the canvas's colour from its first paint (app.css loads later),
+         and the page fades in once it has something to show (lib/fade.ts) instead of popping up in pieces; a reload
+         fades it out first (src-tauri/src/lib.rs, `reload`). Shown after 600 ms at the latest, whatever happens. -->
+    <style>
+      html { background: #f7f8fa; }
+      @media (prefers-color-scheme: dark) { html { background: #0f1115; } }
+      body { opacity: 0; transition: opacity 180ms cubic-bezier(.23, 1, .32, 1); }
+      html.shown body { opacity: 1; }
+      html.leaving body { opacity: 0; transition-duration: 110ms; }
+      @media (prefers-reduced-motion: reduce) { body { transition: none; } }
+    </style>
+    <script>setTimeout(() => document.documentElement.classList.add("shown"), 600);</script>
     %sveltekit.head%
   </head>
   <body data-sveltekit-preload-data="hover">
