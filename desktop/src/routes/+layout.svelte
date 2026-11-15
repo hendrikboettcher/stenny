@@ -1,10 +1,11 @@
 <script lang="ts">
   import "../app.css";
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { engine } from "$lib/engine";
   import { setLanguage } from "$lib/i18n.svelte";
+  import { pageHeld, showPage } from "$lib/fade";
 
   let { children } = $props();
   // the page shows once its language is known, so it never flashes up in the other one
@@ -29,7 +30,12 @@
     const known = inApp
       ? invoke<string>("ui_language")
       : engine<{ ui_language: string }>("preferences").then((p) => p.ui_language);
-    known.then(setLanguage, () => setLanguage(navigator.language.slice(0, 2))).finally(() => (ready = true));
+    known.then(setLanguage, () => setLanguage(navigator.language.slice(0, 2))).finally(async () => {
+      ready = true;
+      // the page is set up now; it fades in at once unless it waits for its content (lib/fade.ts)
+      await tick();
+      if (!pageHeld()) showPage();
+    });
     // changed in Settings (in any window): every window follows at once
     if (inApp) listen<string>("language", (e) => setLanguage(e.payload)).then((u) => (unlisten = u));
     return () => {

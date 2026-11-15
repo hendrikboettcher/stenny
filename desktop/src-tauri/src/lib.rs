@@ -485,6 +485,8 @@ fn open_settings(app: &AppHandle) {
 /// its live draft and a final pass run in their own processes and the menu bar icon is Rust's, so they all go on;
 /// the page picks them up again as it loads (routes/+page.svelte). The page catches the key itself
 /// (routes/+layout.svelte) and the menu has it too; where both get one press (Windows, maybe), it reloads once.
+/// The page fades out first and the new one fades in once it has its content (src/app.html, src/lib/fade.ts), so the
+/// window never blinks; the fade is only CSS, so even a page whose script is stuck goes away the same way.
 fn reload(window: &tauri::WebviewWindow) {
     static LAST: Mutex<Option<(String, Instant)>> = Mutex::new(None);
     {
@@ -494,7 +496,12 @@ fn reload(window: &tauri::WebviewWindow) {
         }
         *last = Some((window.label().to_string(), Instant::now()));
     }
-    let _ = window.reload();
+    let _ = window.eval("document.documentElement.classList.add('leaving')");
+    let window = window.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(120)); // app.html's fade out (110 ms)
+        let _ = window.reload();
+    });
 }
 
 #[tauri::command]
@@ -606,10 +613,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, share_files, copy_text, check_updates, update_available, reload_window, microphone_pref, set_microphone_pref, login_item, apply_shortcut, pause_shortcut_label, ui_language, set_ui_language, courses_changed, start_recording, recording_command, recording_status, calendar_status, calendar_check, calendar_allow, calendar_changed, open_system_settings])
         .setup(move |app| {
             if !library_only {
-                // A Dock app with the menu bar icon next to it. Info.plist keeps LSUIElement for the helpers in the
-                // bundle (stenny-agent reads the same Info.plist, #52), so the app itself asks for its Dock icon here.
-                #[cfg(target_os = "macos")]
-                app.set_activation_policy(tauri::ActivationPolicy::Regular);
+                // A Dock app (Info.plist has no LSUIElement, so the Dock bounces it while it opens) with the menu bar
+                // icon next to it
                 #[cfg(target_os = "macos")]
                 macos_notifications::install(app.handle());
                 menubar::install(app.handle())?;

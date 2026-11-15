@@ -191,15 +191,16 @@ jobs:
       # The bundle's helpers (stenny-agent, stenny-rec, ffmpeg), the engine and the connector are built by their own scripts
       # (scripts/helpers.sh, connector/build.sh on a Mac; scripts/ffmpeg-windows.sh, connector/build.sh and
       # scripts/stenny-rec.sh on Windows, the recorder checked in its own job). Compiling only needs the files to exist.
-      # stenny-agent is macOS's only (tauri.macos.conf.json); on Windows the app does its work itself.
+      # stenny-agent is macOS's only (Stenny Agent.app, tauri.macos.conf.json); on Windows the app does its work itself.
       - name: Placeholders for the bundled helpers
         shell: bash
         run: |
           triple=$(rustc -vV | sed -n 's/^host: //p')
           ext=""; [[ "$triple" == *windows* ]] && ext=".exe"
-          agent=""; [[ "$triple" == *apple* ]] && agent="stenny-agent"
           mkdir -p src-tauri/binaries src-tauri/resources src-tauri/engine
-          for b in $agent stenny-rec ffmpeg ffprobe; do touch "src-tauri/binaries/$b-$triple$ext"; done
+          for b in stenny-rec ffmpeg ffprobe; do touch "src-tauri/binaries/$b-$triple$ext"; done
+          # stenny-agent is an app of its own in Contents/Helpers (macOS only, tauri.macos.conf.json)
+          [[ "$triple" == *apple* ]] && mkdir -p "src-tauri/binaries/Stenny Agent.app/Contents/MacOS"
           touch src-tauri/resources/Stenny.mcpb src-tauri/resources/ffmpeg-license.txt
           # the engine (scripts/bundle-engine.sh, tried in the bundle job): without stenny-engine.json the app ignores it
           touch src-tauri/engine/placeholder.txt
@@ -268,9 +269,8 @@ jobs:
         run: |
           triple=$(rustc -vV | sed -n 's/^host: //p')
           ext=""; [[ "$triple" == *windows* ]] && ext=".exe"
-          agent=""; [[ "$triple" == *apple* ]] && agent="stenny-agent"
           mkdir -p src-tauri/binaries src-tauri/resources
-          for b in $agent stenny-rec ffmpeg ffprobe; do
+          for b in stenny-rec ffmpeg ffprobe; do
             f="src-tauri/binaries/$b-$triple$ext"; [[ -e "$f" ]] || touch "$f"
           done
           [[ -e src-tauri/resources/Stenny.mcpb ]] || touch src-tauri/resources/Stenny.mcpb

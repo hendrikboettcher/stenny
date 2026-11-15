@@ -10,6 +10,7 @@
   import SetupChecklist from "$lib/SetupChecklist.svelte";
   import FinalPass from "$lib/FinalPass.svelte";
   import { renderMarkdown } from "$lib/markdown";
+  import { holdPage, showPage } from "$lib/fade";
   import {
     library, lecture, makeCopy, makePdf, finishNow, openTranscript, reveal, shareFiles, lecturerAgreed,
     renameLecture, deleteLecture, renameCourse, addCourse, removeCourse, deleteCourse, copyText,
@@ -410,9 +411,11 @@
     settingsOpen = true;
   }
 
+  // fades in once the library is read (or couldn't be), not with "Loading…" first (lib/fade.ts)
+  holdPage();
   onMount(() => {
     lastSelection();
-    reload({ cameBack: true });
+    reload({ cameBack: true }).finally(showPage);
     // what's running: every second while something does (the clock), every three seconds otherwise
     let closed = false;
     let liveTimer: ReturnType<typeof setTimeout> | undefined;

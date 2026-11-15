@@ -66,7 +66,6 @@ struct State {
     icon: String,                            // the icon shown, so it is only set when it changes (no flicker)
     pause_accel: Option<String>,             // the pause shortcut as a physical accelerator ("Cmd+F1"), if not a character
     #[cfg_attr(windows, allow(dead_code))]
-    login: Option<String>,                   // the agent's last "login on|off|approval" (Settings asks for it)
     shortcut_problem: Option<String>,        // the agent couldn't register the pause shortcut: why
     #[cfg_attr(windows, allow(dead_code))]
     pause_shortcut: String,                  // macOS: the pause shortcut the agent was told ("cmd+shift+ü")
@@ -926,13 +925,16 @@ pub fn toggle_pause(app: &AppHandle) {
     }
 }
 
-/// stenny-agent (app/Sources/stenny-agent): pause shortcut, calendar, open at login, PDF for Share…; next to
-/// Stenny's own program in the app bundle; $STENNY_AGENT or the Swift build folder during development.
+/// stenny-agent (app/Sources/stenny-agent): pause shortcut, calendar, PDF for Share…; an app of its own inside
+/// Stenny's (Contents/Helpers/Stenny Agent.app, scripts/helpers.sh), so it never shows up in the Dock (#52);
+/// $STENNY_AGENT or the Swift build folder during development.
 #[cfg(not(windows))]
 pub(crate) fn agent_path() -> Option<std::path::PathBuf> {
     let candidates = [
         std::env::var("STENNY_AGENT").ok().map(std::path::PathBuf::from),
-        std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join("stenny-agent"))),
+        std::env::current_exe().ok().and_then(|e| {
+            e.parent().map(|d| d.join("../Helpers/Stenny Agent.app/Contents/MacOS/stenny-agent"))
+        }),
         Some(std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../app/.build/release/stenny-agent"))),
     ];
     candidates.into_iter().flatten().find(|p| p.exists())
@@ -969,15 +971,21 @@ fn start_agent(app: &AppHandle) {
                     let _ = writeln!(stdin, "lang {}", i18n::language());
                 }
             }
-            // open at login by default, so the lecture notification works without thinking of it: once, and only
-            // for a copy in an Applications folder (never a build copy)
+        }
+        // open at login by default, so the lecture notification works without thinking of it: once, and only
+        // for a copy in an Applications folder (never a build copy). Stenny's own process asks (macos.rs): from
+        // the agent, an app of its own, it would be the helper that opens at login.
+        #[cfg(target_os = "macos")]
+        {
             let installed = std::env::current_exe().is_ok_and(|e| {
                 let home = std::env::var("HOME").unwrap_or_default();
                 e.starts_with("/Applications") || e.starts_with(format!("{home}/Applications"))
             });
-            if installed && !st.prefs.login_item {
-                if let Some(stdin) = st.agent_in.as_mut() {
-                    let _ = writeln!(stdin, "login");
+            let first = !app.state::<MenuBar>().0.lock().unwrap().prefs.login_item;
+            if installed && first {
+                match crate::macos::login_item("login") {
+                    Ok(_) => remember_login_item(&app),
+                    Err(e) => eprintln!("open at login: {e}"),
                 }
             }
         }
@@ -1036,16 +1044,6 @@ fn start_agent(app: &AppHandle) {
                     *bar.2.asked.lock().unwrap() = true;
                     bar.2.signal.notify_one();
                 }
-            } else if line == "login ok" {
-                let prefs = {
-                    let bar = app.state::<MenuBar>();
-                    let mut st = bar.0.lock().unwrap();
-                    st.prefs.login_item = true;
-                    st.prefs.clone()
-                };
-                save_prefs(&app, &prefs);
-            } else if let Some(state) = line.strip_prefix("login ").filter(|s| ["on", "off", "approval"].contains(s)) {
-                app.state::<MenuBar>().0.lock().unwrap().login = Some(state.to_string());
             } else if let Some(problem) = line.strip_prefix("error ") {
                 {
                     let bar = app.state::<MenuBar>();
@@ -1099,7 +1097,6 @@ fn register_shortcut(app: &AppHandle) -> Option<String> {
 }
 
 /// Opened at login once (by itself or by the user): after that it's the user's choice.
-#[cfg_attr(not(windows), allow(dead_code))]
 fn remember_login_item(app: &AppHandle) {
     let prefs = {
         let bar = app.state::<MenuBar>();
@@ -1294,25 +1291,29 @@ pub fn set_microphone_pref(app: &AppHandle, device: Option<String>) {
     choose_microphone(app, device);
 }
 
-/// Sends the agent a line and waits a moment for its answer about opening at login: "on", "off" or "approval"
-/// (the user still has to allow it in System Settings). None: no agent (a --library window) or no answer.
+/// Opening at login on a Mac (macos.rs, SMAppService): "on", "off" or "approval" (the user still has to allow it
+/// in System Settings). None in a --library window: opening at login is the installed Stenny's business.
 #[cfg(not(windows))]
 pub fn login_item(app: &AppHandle, command: &str) -> Option<String> {
-    {
-        let bar = app.state::<MenuBar>();
-        let mut st = bar.0.lock().unwrap();
-        st.login = None;
-        let stdin = st.agent_in.as_mut()?;
-        writeln!(stdin, "{command}").ok()?;
-        writeln!(stdin, "login status").ok()?;
-    }
-    for _ in 0..40 {
-        std::thread::sleep(Duration::from_millis(50));
-        if let Some(state) = app.state::<MenuBar>().0.lock().unwrap().login.clone() {
-            return Some(state);
+    app.tray_by_id(TRAY)?;
+    #[cfg(target_os = "macos")]
+    match crate::macos::login_item(command) {
+        Ok(state) => {
+            if command == "login" {
+                remember_login_item(app);
+            }
+            Some(state)
+        }
+        Err(e) => {
+            eprintln!("open at login: {e}");
+            crate::macos::login_item("login status").ok()
         }
     }
-    None
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = command;
+        None
+    }
 }
 
 /// Windows: the Run value in the registry (windows_agent.rs), "on" or "off". None in a --library window: opening at
