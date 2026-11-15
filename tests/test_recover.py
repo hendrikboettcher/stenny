@@ -143,3 +143,30 @@ def test_the_schedule_leaves_alone_a_job_the_recording_is_finishing(cfg, plugged
     monkeypatch.setattr(cli, "run_job", run_job)
     cli.finalize(session, cfg, "auto", True, object())
     assert len(plugged_in) == 1 and session.state == "done"
+
+
+def test_a_deleted_recordings_leftovers_go_to_the_trash(cfg, monkeypatch):
+    # its process wrote session.json again after Delete had moved everything to the Trash
+    import shutil
+
+    from stenny import manage
+    cfg.courses = {"Calculus": Course("Calculus", language="en")}
+    trashed = cfg.data_dir.parent / "Trash"
+    trashed.mkdir(parents=True)
+    monkeypatch.setattr(manage, "trash", lambda items: [shutil.move(p, trashed / p.name) for p in items if p.exists()])
+    pcm, session = crashed_session(cfg)
+    pcm.unlink()
+    session.write_text(json.dumps({**json.loads(session.read_text(encoding="utf-8")), "state": "cancelling"}),
+                       encoding="utf-8")
+    placeholder = cfg.folder / "Calculus" / "2026-10-31" / "Calculus 2026-10-31.md"
+    placeholder.parent.mkdir(parents=True)
+    placeholder.write_text("---\nstatus: \"live\"\n---\n", encoding="utf-8")
+    assert cli.recover_sessions(cfg) == [] and not jobs.pending()
+    assert not session.exists() and not placeholder.parent.exists()
+    assert {"2026-10-31", session.name} <= {p.name for p in trashed.iterdir()}
+
+
+def test_a_recording_that_is_just_starting_is_left_alone(cfg):
+    pcm, session = crashed_session(cfg, samples=0)  # its state is "recording", its audio not in yet
+    cli.recover_sessions(cfg)
+    assert session.exists() and pcm.exists()

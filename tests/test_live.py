@@ -724,3 +724,44 @@ def test_cancel_ends_without_a_transcript_and_trashes_the_recording(tmp_path, mo
     assert not list((tmp_path / "audio" / "Recordings" / "Calculus").iterdir())
     names = {p.name for p in trashed.iterdir()}
     assert {s.folder.name, s.pcm_path.name, s.session_path.name} <= names
+
+
+def test_nothing_is_written_once_a_recording_is_deleted(tmp_path, monkeypatch):
+    # Delete in the first seconds, before the microphone was named: naming it (and a backup joining) came later and
+    # brought session.json and the placeholder back from the Trash, a lecture "recording" for good
+    import shutil
+
+    from stenny import cli, manage
+    (tmp_path / "vault" / "Areas").mkdir(parents=True)
+    cfg = Config(folder=tmp_path / "vault" / "Areas/Lectures", data_dir=tmp_path / "audio")
+    mic = FakeMic()
+    mic.device, mic.microphone = "default", None
+    s = LiveSession(cfg, Course("Calculus", language="fr"), mic, FakeEngine())
+    short_chunks(s, monkeypatch)
+    monkeypatch.setattr(s, "now", lambda: mic.t)
+    monkeypatch.setattr(s, "wall", lambda: mic.ticks * TICK_S)
+    mic.follow(s, monkeypatch)
+    monkeypatch.setattr(live_session, "POLL", 0.002)
+    trashed = tmp_path / "Trash"
+    trashed.mkdir()
+    monkeypatch.setattr(manage, "trash", lambda items: [shutil.move(p, trashed / p.name) for p in items if p.exists()])
+
+    drive(s, lambda: mic.at(2, lambda: s.command("cancel")))
+    cli.discard(s, cfg)
+    s.name_microphone("AirPods Pro")
+    s.attach_backup(FakeBackup(mic))
+    assert not s.session_path.exists() and not s.transcript_path.exists()
+    assert mic.device == "default" and s.backup is None
+
+
+def test_a_recording_stopped_before_any_audio_goes_to_the_trash(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from stenny import cli
+    gone = []
+    monkeypatch.setattr(cli, "discard", lambda session, cfg: gone.append(session))
+    queued = []
+    monkeypatch.setattr(jobs, "enqueue", lambda *a, **k: queued.append(a))
+    session = SimpleNamespace(recorded=0)
+    cli.finalize(session, Config(folder=tmp_path / "vault"), "auto", False, FakeEngine())
+    assert gone == [session] and not queued  # not a lecture saying "recording" for good

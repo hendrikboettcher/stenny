@@ -247,7 +247,8 @@ class LiveSession:
                 end = time.monotonic() + AFTER_START_WAIT
                 while not self.written and self.state == "recording" and time.monotonic() < end:
                     time.sleep(0.05)
-                after_start(self)
+                if self.state in ("recording", "paused"):  # not once it's stopped or deleted (its files are gone)
+                    after_start(self)
             threading.Thread(target=later, daemon=True).start()
         try:
             while self.state in ("recording", "paused"):
@@ -691,25 +692,28 @@ class LiveSession:
     def name_microphone(self, name: str | None) -> None:
         """The system's input device, which started recording as "default", by its name: for the transcript, and so
         that reconnecting (an iPhone out of range) tries that microphone again, as when it was chosen by name."""
+        # all under the lock, as Stop and Delete are: once they've ended the recording, nothing is written again
+        # (a Delete in the first seconds moved the files to the Trash, and this brought session.json and the
+        # placeholder back: a lecture "recording" forever)
         with self.lock:
             src = self.source
-            if not name or getattr(src, "device", None) != "default":
+            if not name or getattr(src, "device", None) != "default" or self.state not in ("recording", "paused"):
                 return
             src.device, src.name, src.microphone = name, f"mic ({name})", name
-        log(f"Microphone: {name}")
-        self.save()
-        self.render()
+            log(f"Microphone: {name}")
+            self.save()
+            self.render()
 
     def attach_backup(self, source) -> None:
         """A backup microphone that joins once the main one records (finding the Mac's own takes a moment)."""
-        with self.lock:
+        with self.lock:  # under the lock, see name_microphone
             if self.backup or self.state not in ("recording", "paused"):
                 return
             self.backup = BackupTrack(source, self.backup_path, lambda: self.now())
             if self.state == "recording" and not self.disk_low:
                 self.backup.start()
-        log(f"Backup microphone: {source.device}")
-        self.save()
+            log(f"Backup microphone: {source.device}")
+            self.save()
 
     def _close_gap(self, t: float) -> None:
         """End an open "no input" gap at t (pause or stop while the microphone was lost)."""
