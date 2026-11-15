@@ -9,7 +9,7 @@
   import { onMount, untrack } from "svelte";
   import Figure from "$lib/Figure.svelte";
   import Dialog from "$lib/Dialog.svelte";
-  import ClaudeWindows from "$lib/ClaudeWindows.svelte";
+  import ClaudeConnect from "$lib/ClaudeConnect.svelte";
   import { listen } from "@tauri-apps/api/event";
   import {
     addCalendarLink, addCourse, bringBack, calendarAllow, calendarChanged, calendarStatus, deleteCourse, engine, library,
@@ -184,8 +184,7 @@
   let keyError = $state<string | null>(null);
 
   let conn = $state<ConnectorStatus | null>(null);
-  let connOpened = $state(false);           // Claude's Install window was opened
-  let connBusy = $state<"install" | "code" | null>(null);
+  let connBusy = $state<"code" | null>(null);
   let connError = $state<string | null>(null);
 
   async function checkAi() {
@@ -208,7 +207,6 @@
   async function checkConnector() {
     try {
       conn = await engine<ConnectorStatus>("connector_status");
-      if (conn.installed) connOpened = false;
     } catch (e) {
       connError = String(e);
     }
@@ -333,19 +331,6 @@
       signingIn = true;
     } catch (e) {
       error = String(e);
-    }
-  }
-
-  async function installConnector() {
-    connBusy = "install";
-    connError = null;
-    try {
-      await engine("install_connector");   // Claude shows its own Install window (Mac; Windows: ClaudeWindows)
-      connOpened = true;
-    } catch (e) {
-      connError = String(e);
-    } finally {
-      connBusy = null;
     }
   }
 
@@ -827,20 +812,14 @@
                   <div class="hint">{t("settings.claude.noDesktop")}</div>
                 {:else if !conn.file}
                   <div class="hint">{t("settings.claude.noFile")}</div>
-                {:else if onWindows}
-                  <div class="hint">{t("settings.claude.notInstalled")}</div>
-                  <ClaudeWindows file={conn.file} onerror={(m) => (connError = m)} />
                 {:else}
-                  <div class="hint">{connOpened ? t("settings.claude.opened") : t("settings.claude.notInstalled")}</div>
+                  <div class="hint">{t("settings.claude.notInstalled")}</div>
+                  <ClaudeConnect />
                 {/if}
               </div>
               {#if conn && !conn.installed}
                 {#if !conn.desktop}
                   <button class="pill" onclick={() => openLink(URLS.desktop)}>{t("settings.claude.getDesktop")}</button>
-                {:else if conn.file && !onWindows}
-                  <button class="pill primary" disabled={connBusy !== null} onclick={installConnector}>
-                    {connBusy === "install" ? t("common.oneMoment") : t("settings.claude.install")}
-                  </button>
                 {/if}
               {:else if conn?.installed}
                 <button class="pill" disabled={connBusy !== null}

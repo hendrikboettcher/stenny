@@ -243,7 +243,7 @@ Check that the connector can start: `stenny mcp --desktop-config` prints a short
 open -a Claude "<the app's path>/Stenny.app/Contents/Resources/Stenny.mcpb"
 ```
 
-The user clicks **Install** in the window Claude shows. You can't click it for them. If no window appears, they can drag `Stenny.mcpb` onto Claude's Settings window (show it to them with `open -R "<the app's path>/Stenny.app/Contents/Resources/Stenny.mcpb"`).
+The user clicks **Install** in the window Claude shows. You can't click it for them. In the app this is one button, **Connect** (setup card and *Settings ▸ Use with Claude*). If no window appears, don't send them dragging files: in the app, **Didn't work? ▸ Tell us** sends a report of what happened (system, Claude's version, Claude's log lines about extensions) so it can be fixed.
 
 **Check:** Settings ▸ Customize ▸ Connectors lists **Stenny**, switched on. Then, in a new chat in the Claude desktop app, ask: *"Which courses do you have in Stenny?"* Claude should use Stenny's tools (the first time it asks: *Allow*) and list the courses from step 8. If Claude says Stenny isn't set up, it explains why: usually step 3. If the menu looks different, ask the user to describe or screenshot what they see and help from there.
 
@@ -439,7 +439,7 @@ Step 12. If `stenny schedule install` says it can't do that on Windows yet, skip
 
 As in step 13, with the Claude desktop app for Windows (claude.ai/download). The extension comes with the app as `%LOCALAPPDATA%\Stenny\Stenny.mcpb`; without the app, download it: `curl -fL -o "$USERPROFILE/Downloads/Stenny.mcpb" https://github.com/hendrikboettcher/stenny/releases/latest/download/Stenny.mcpb`.
 
-Claude on Windows reads a `.mcpb` it's handed only when it starts: a running Claude just brings its window up and ignores the file. So the app's **Install…** (*Settings ▸ Use with Claude* and its setup card) starts Claude with the file when Claude isn't running; if it is, the app asks the user to quit Claude (right-click its icon next to the clock ▸ Quit, if it stays there) and opens it with the file once it's gone. Claude then shows its Install window, and the user clicks **Install**. Without the app, do the same: have them quit Claude, then run `"$LOCALAPPDATA/AnthropicClaude/claude.exe" "<folder>/Stenny.mcpb"`. Claude from the Microsoft Store can't be started with a file: there, and if no Install window comes up, the user chooses it in Claude's **Settings ▸ Extensions ▸ Advanced settings ▸ Install extension** (the app copies the path: paste with Ctrl+V, then Enter). **Check:** as in step 13.
+Claude on Windows reads a `.mcpb` it's handed only when it starts: a running Claude just brings its window up and ignores the file. So the app's **Connect** starts Claude with the file when Claude isn't running; if it is, the app asks the user to close Claude (*Close Claude. Stenny opens it again.*) and opens it with the file once it's gone. Claude then shows its Install window, and the user clicks **Install**. Without the app, do the same: have them quit Claude, then run `"$LOCALAPPDATA/AnthropicClaude/claude.exe" "<folder>/Stenny.mcpb"`. Claude from the Microsoft Store can't be started with a file (and its own Install extension is reported broken, anthropics/claude-code#102035): the app then shows **Didn't work?** with **Tell us**, which sends a report. **Check:** as in step 13.
 
 ## W13. Recommended, not required
 

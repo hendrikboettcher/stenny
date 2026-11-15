@@ -21,8 +21,8 @@
     calendarAllow, engine, openSystemSettings, setupStatus,
     type AiStatus, type CalendarStatus, type ConnectorStatus, type SetupStatus,
   } from "$lib/engine";
-  import { t, tn, onWindows } from "$lib/i18n.svelte";
-  import ClaudeWindows from "$lib/ClaudeWindows.svelte";
+  import { t, tn } from "$lib/i18n.svelte";
+  import ClaudeConnect from "$lib/ClaudeConnect.svelte";
 
   type Section = "transcripts" | "claude" | "calendar";
   let { courses, onaddcourse, onsettings }: {
@@ -56,8 +56,7 @@
   let closedBefore = $state(readCloses());
 
   let signingIn = $state(false);      // sign-in started (the browser opened)
-  let installOpened = $state(false);  // Mac: Claude's Install window was opened
-  let busy = $state<"signin" | "key" | "install" | "code" | "calendar" | null>(null);
+  let busy = $state<"signin" | "key" | "code" | "calendar" | null>(null);
   let keyInput = $state("");
   let error = $state<string | null>(null);
 
@@ -77,7 +76,6 @@
       const st = await setupStatus();
       status = st;
       if (st.ai?.state === "ready") signingIn = false;
-      if (st.connector?.installed || st.connector?.code.added) installOpened = false;
     } catch {
       // nothing to show: the next check (focus) tries again
     } finally {
@@ -173,8 +171,6 @@
     keyInput = "";
     if (status) status = { ...status, ai };
   });
-  // Mac: Claude shows its own Install window for the opened file (Windows: ClaudeWindows)
-  const install = () => act("install", async () => { await engine("install_connector"); installOpened = true; });
   const addToCode = () => act("code", async () => {
     const connector = await engine<ConnectorStatus>("add_to_claude_code");
     if (status) status = { ...status, connector };
@@ -349,13 +345,8 @@
               </div>
             {:else if !c.file}
               <p class="note">{t("settings.claude.noFile")}</p>
-            {:else if onWindows}
-              <ClaudeWindows file={c.file} onerror={(m) => (error = m)} />
             {:else}
-              {#if installOpened}<p class="note">{t("settings.claude.opened")}</p>{/if}
-              <div class="do">
-                <button class="pill primary" disabled={busy === "install"} onclick={install}>{t("settings.claude.install")}</button>
-              </div>
+              <ClaudeConnect />
             {/if}
             <button class="link more" onclick={() => settings("claude")}>{t("setup.more")}</button>
           {/if}

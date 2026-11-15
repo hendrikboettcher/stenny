@@ -277,6 +277,15 @@ def install_connector(cfg, params: dict) -> dict:
     return _setup(claude_setup.install_connector, cfg)
 
 
+def report_connector(cfg, params: dict) -> dict:
+    """"Tell us" after Connect didn't bring Stenny into Claude: one click sends what went wrong (claude_setup.
+    connector_report) with Stenny's version, the computer and Stenny's last log lines, through the app's feedback (an issue titled "[app] Connect to Claude didn't work.").
+    params: "reason" (the app's: "timeout", "store", or an error message)."""
+    from . import app_live, claude_setup
+    return app_live.send_feedback(cfg, {"message": claude_setup.connector_report(str(params.get("reason") or "")),
+                                        "details": True})
+
+
 def add_to_claude_code(cfg, params: dict) -> dict:
     from . import claude_setup
     return _setup(claude_setup.add_to_claude_code, cfg)
@@ -409,6 +418,7 @@ METHODS = {"ping": ping, "library": library, "lecture": lecture, "make_copy": ma
            "ai_status": ai_status, "set_api_key": set_api_key, "remove_api_key": remove_api_key,
            "claude_sign_in": claude_sign_in, "connector_status": connector_status,
            "install_connector": install_connector, "add_to_claude_code": add_to_claude_code,
+           "report_connector": report_connector,
            "remove_from_claude_desktop": remove_from_claude_desktop,
            "open_claude": open_claude, "remove_from_claude_code": remove_from_claude_code,
            "setup_status": setup_status, "calendar_status": calendar_status, "add_calendar_link": add_calendar_link,
