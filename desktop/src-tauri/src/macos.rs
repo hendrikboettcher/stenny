@@ -171,3 +171,48 @@ pub fn share_files(view: *mut std::ffi::c_void, paths: &[String], x: f64, y: f64
     }
     Ok(())
 }
+
+/// An info alert with its title and message centered under the icon. macOS's own alert (and the dialog plugin's,
+/// which is the same NSAlert) lines them up on the left on recent macOS; Stenny's "up to date" note reads better
+/// centered. Waits until it's closed; safe from any thread.
+pub fn centered_alert(app: &tauri::AppHandle, title: String, message: String) {
+    fn show(mtm: MainThreadMarker, title: &str, message: &str) {
+        use objc2_app_kit::{NSAlert, NSApplication, NSTextAlignment, NSTextField, NSView};
+        // the alert's own views, as layout() leaves them: the two labels already span its width, so centering
+        // their text is enough (set the text again: the label only redraws then); the icon is moved to the middle
+        fn center(view: &NSView) {
+            let width = view.bounds().size.width;
+            for sub in view.subviews().iter() {
+                if let Ok(field) = sub.clone().downcast::<NSTextField>() {
+                    let text = field.stringValue();
+                    field.setAlignment(NSTextAlignment::Center);
+                    field.setStringValue(&text);
+                } else if sub.class().name().to_bytes() == b"_NSAlertImageView" {
+                    let mut origin = sub.frame().origin;
+                    origin.x = (width - sub.frame().size.width) / 2.0;
+                    sub.setFrameOrigin(origin);
+                }
+            }
+        }
+        let alert = NSAlert::new(mtm);
+        alert.setMessageText(&NSString::from_str(title));
+        alert.setInformativeText(&NSString::from_str(message));
+        alert.layout();
+        if let Some(content) = alert.window().contentView() {
+            center(&content);
+        }
+        NSApplication::sharedApplication(mtm).activate();
+        alert.runModal();
+    }
+    if let Some(mtm) = MainThreadMarker::new() {
+        return show(mtm, &title, &message);
+    }
+    let (done, wait) = std::sync::mpsc::channel();
+    let _ = app.run_on_main_thread(move || {
+        if let Some(mtm) = MainThreadMarker::new() {
+            show(mtm, &title, &message);
+        }
+        let _ = done.send(());
+    });
+    let _ = wait.recv();
+}
