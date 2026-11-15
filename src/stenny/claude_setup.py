@@ -9,7 +9,7 @@
   file while it runs: Windows has no "open this file" message for a running app (macOS's open-file), and a second
   start of Claude only brings its window up and drops the file. Only a cold start reads it. So Stenny starts Claude
   with the file when Claude isn't running, and otherwise asks the user to quit Claude first and waits
-  (`install_connector` answers "waiting" until Claude is gone; desktop/src/lib/ClaudeWindows.svelte). The Store app
+  (`install_connector` answers "waiting" until Claude is gone; desktop/src/lib/ClaudeConnect.svelte). The Store app
   has no launcher to hand a file to: there the user pastes the path into Claude's Install extension dialog. Stenny
   0.5.7 wrote itself into Claude's claude_desktop_config.json on Windows instead, which Claude rewrites when it
   quits: such an entry is still recognised, and can be taken out. Adding it to Claude Code (`claude mcp add`) and
@@ -462,6 +462,76 @@ def open_claude(cfg) -> dict:
     if p.returncode != 0:
         raise SetupError(tr("Couldn't open Claude: {error}", error=p.stderr.strip()))
     return {"opened": True}
+
+def claude_desktop_version() -> str:
+    """The Claude desktop app's kind and version, for a report: "installer 5.11492.5", "store 5.11492.5", "mac
+    5.11492.5"; "" if it can't be told."""
+    if sys.platform == "win32":
+        # the running app's path holds both: …\AnthropicClaude\app-<version>\claude.exe, …\WindowsApps\Claude_<version>_…
+        for path in _windows_process_paths("claude.exe"):
+            if not _is_claude_desktop(path):
+                continue
+            p = path.replace("/", "\\")
+            if "\\windowsapps\\claude_" in p.lower():
+                return "store " + p.lower().split("\\windowsapps\\claude_")[1].split("_")[0]
+            parts = [s for s in p.split("\\") if s.lower().startswith("app-")]
+            return "installer " + (parts[0][4:] if parts else "?")
+        return "store" if _claude_packages() and not claude_desktop_exe() else "installer" if claude_desktop_exe() else ""
+    import plistlib
+    for app in (Path("/Applications/Claude.app"), Path.home() / "Applications/Claude.app"):
+        try:
+            with open(app / "Contents/Info.plist", "rb") as f:
+                return "mac " + plistlib.load(f).get("CFBundleShortVersionString", "?")
+        except (OSError, ValueError):
+            continue
+    return ""
+
+
+def _claude_log_lines(count: int = 15) -> list[str]:
+    """The last lines of Claude Desktop's own log about installing extensions ("Handling DXT/MCPB file" …), web
+    addresses (they name the account's organization) and the home folder (the user's name) left out."""
+    import re
+    if sys.platform == "win32":
+        log = claude_data_dir() / "logs/main.log"
+    else:
+        log = Path.home() / "Library/Logs/Claude/main.log"
+    try:
+        lines = log.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    home = str(Path.home())
+    keep = [re.sub(r"https?://\S+", "<url>", line).replace(home, "~")[:300] for line in lines
+            if re.search(r"DXT|MCPB|[Ee]xtension (install|local\.)|can_install|Install(ing|ed) .*extension", line)]
+    return keep[-count:]
+
+
+def connector_report(reason: str) -> str:
+    """What a "Connect to Claude didn't work" report says, besides Stenny's own details: the system, the Claude app
+    (kind and version), whether it runs, whether Claude has Stenny now, and Claude's log lines about extensions."""
+    ext = None
+    try:
+        ext = installed_extension()
+    except OSError:
+        pass
+    running = ""
+    if sys.platform == "win32":
+        try:
+            running = "yes" if claude_desktop_running() else "no"
+        except OSError:
+            running = "?"
+    file = connector_file()
+    lines = [
+        "Connect to Claude didn't work.",
+        f"Reason: {reason or 'no extension after Connect'}",
+        f"System: {sys.platform}",
+        f"Claude app: {claude_desktop_version() or 'not found'}" + (f", running: {running}" if running else ""),
+        f"Claude has Stenny: {ext['version'] if ext else 'no'}",
+        f"Stenny.mcpb: {file.stat().st_size if file else 'missing'} bytes",
+        "Claude's log (extensions):",
+        *(_claude_log_lines() or ["(none)"]),
+    ]
+    return "\n".join(lines)
+
 
 def remove_from_claude_code(cfg) -> dict:
     """`claude mcp remove --scope user stenny`: no Claude Code session gets the connector any more."""
