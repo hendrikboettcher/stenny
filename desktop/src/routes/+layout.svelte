@@ -24,8 +24,23 @@
     }
   }
 
+  // The recording's red dots (the bar, its row, the sidebar) blink together: a dot that appears waits, lit, for the
+  // next beat of the page's own clock and starts there, so all blinks share it and none starts halfway through one
+  const inStep = new WeakSet<Animation>(); // set once: its start event comes again when the beat begins
+  function blinkInStep(e: AnimationEvent) {
+    if (e.animationName !== "blink" || !(e.target instanceof Element)) return;
+    const now = Number(document.timeline.currentTime) || 0;
+    for (const a of e.target.getAnimations({ subtree: true })) {
+      if (!(a instanceof CSSAnimation) || a.animationName !== "blink" || inStep.has(a)) continue;
+      inStep.add(a);
+      const beat = Number(a.effect?.getTiming().duration) || 1400;
+      a.startTime = Math.ceil(now / beat) * beat;
+    }
+  }
+
   onMount(() => {
     window.addEventListener("keydown", reloadKey);
+    document.addEventListener("animationstart", blinkInStep);
     let unlisten: (() => void) | undefined;
     const known = inApp
       ? invoke<string>("ui_language")
@@ -40,6 +55,7 @@
     if (inApp) listen<string>("language", (e) => setLanguage(e.payload)).then((u) => (unlisten = u));
     return () => {
       window.removeEventListener("keydown", reloadKey);
+      document.removeEventListener("animationstart", blinkInStep);
       unlisten?.();
     };
   });

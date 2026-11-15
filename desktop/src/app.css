@@ -100,6 +100,6 @@ select {
 .pill.small { min-height: 26px; padding: 0 10px; font-size: 12.5px; border-radius: 8px; }
 .pill:disabled { opacity: .55; }
 
-/* the recording dot's blink, as on the website (the library's dots use it) */
+/* the recording dot's blink, as on the website (the library's dots use it; +layout.svelte keeps them in step) */
 @keyframes blink { 50% { opacity: .3; } }
 @media (prefers-reduced-motion: reduce) { .pill { transition: none; } }

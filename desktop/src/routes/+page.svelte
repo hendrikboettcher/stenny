@@ -1,7 +1,8 @@
 <script lang="ts">
   // The library window: courses and talks on the left, their recordings in the middle, one recording on the right.
-  import { onMount, untrack } from "svelte";
-  import { cubicInOut } from "svelte/easing";
+  import { onMount, tick, untrack } from "svelte";
+  import { cubicIn, cubicInOut, cubicOut } from "svelte/easing";
+  import { fade, slide } from "svelte/transition";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import Figure from "$lib/Figure.svelte";
@@ -52,6 +53,25 @@
       css: (t: number) => `opacity: ${t}; height: ${t * height}px; overflow: hidden;`,
     };
   }
+  // The Record button folds away as the bar opens, in the same time and step, so the list under both stays put
+  // (button and margin are as tall as the bar and its margin); a recording new in the library unfolds into the list
+  // the same way. Rows the library already had come without motion (`fresh` false: another course clicked, say).
+  function fold(node: Element, fresh = true) {
+    const s = slide(node, { duration: fresh && !still() ? SWAP_MS : 0, easing: cubicInOut });
+    return { ...s, css: (t: number, u: number) => `${s.css?.(t, u) ?? ""} opacity: ${t}; min-height: 0;` };
+  }
+  // what comes into the bar once the recording runs (its buttons) fades in, instead of popping up
+  const appear = (node: Element) => fade(node, { duration: still() ? 0 : SWAP_MS, easing: cubicInOut });
+  // and when the bar turns to something else (the calendar's lecture → Starting…, Delete's question and back,
+  // Moved to the Trash, the final transcript): the old line blurs away as the new one comes into focus in the same
+  // place, a little after it, like the system's own text changes; never two sharp texts on top of each other
+  const blurred = (t: number) => `opacity: ${t}; filter: blur(${((1 - t) * 6).toFixed(2)}px);`;
+  const faceIn = (_: Element) =>
+    ({ duration: still() ? 0 : 260, delay: still() ? 0 : 70, easing: cubicOut,
+       css: (t: number) => `${blurred(t)} transform: scale(${(1.015 - 0.015 * t).toFixed(4)});` });
+  const faceOut = (_: Element) =>
+    ({ duration: still() ? 0 : 180, easing: cubicIn,
+       css: (t: number) => `${blurred(t)} transform: scale(${(0.985 + 0.015 * t).toFixed(4)}); pointer-events: none;` });
   // Settings open when the window reloads (⌘R): it comes back on the same section. Settings saves it while it's
   // open, closing it forgets it, and sessionStorage ends with the app, so a new start opens the library.
   const OPEN_SETTINGS = "openSettings";
@@ -132,6 +152,7 @@
   // answers each in its own thread: only the latest one counts, or an older answer could take a recording that just
   // appeared away again for a moment. What an older one was asked to show, the latest one shows.
   let reloads = 0;
+  let knownIds = $state.raw<Set<string> | null>(null); // the library's recordings before its last read (null: nothing read yet)
   let wanted: { cameBack: boolean; show?: (all: Entry[]) => Entry | undefined } = { cameBack: false };
   async function reload({ cameBack = false, show }: { cameBack?: boolean; show?: (all: Entry[]) => Entry | undefined } = {}) {
     const mine = ++reloads;
@@ -147,6 +168,7 @@
     if (mine !== reloads) return;
     const asked = wanted;
     wanted = { cameBack: false };
+    knownIds = data ? new Set(data.entries.map(id)) : null;
     data = next;
     loadedAt = Date.now(); // the running recording's length counts on from here
     failed = null;
@@ -222,6 +244,30 @@
   let deleted = $state<Group | null>(null);
   let deletedTimer: ReturnType<typeof setTimeout> | undefined;
   let keepButton = $state<HTMLButtonElement | null>(null);
+  // Record Again: the course (or talks) it was in, its Record button pointed out for a moment and focused (Return
+  // starts it); the recording itself starts from there, with its usual questions
+  let recordButton = $state<HTMLButtonElement | null>(null);
+  async function recordAgain(g: Group) {
+    deleted = null;
+    pick(g);
+    await tick();
+    const button = recordButton;
+    if (!button) return;
+    button.focus({ preventScroll: true });
+    button.scrollIntoView({ block: "nearest", behavior: still() ? "auto" : "smooth" });
+    // played on the button itself, so it starts afresh on every click whatever else the button is animating (its
+    // fold coming back after the recording): it glows red twice; with reduced motion it's outlined for a moment
+    const rec = getComputedStyle(button).getPropertyValue("--rec").trim() || "red";
+    const glow = {
+      background: `color-mix(in srgb, ${rec} 8%, ${getComputedStyle(button).getPropertyValue("--surface").trim() || "transparent"})`,
+      boxShadow: `inset 0 0 0 1.5px ${rec}, 0 0 0 4px color-mix(in srgb, ${rec} 18%, transparent)`,
+    };
+    for (const a of button.getAnimations()) if (a.id === "point-out") a.cancel();
+    const shown = still()
+      ? button.animate([glow, glow], { duration: 1800 })
+      : button.animate([{}, glow, {}], { duration: 900, iterations: 2, easing: "ease-in-out" });
+    shown.id = "point-out";
+  }
   const BIN = "M2.8 4.2h10.4 M6.3 4.2V2.6h3.4v1.6 M4.2 4.2l.7 9.2h6.2l.7-9.2 M6.8 6.6v4.6 M9.2 6.6v4.6";
   $effect(() => { if (asking) keepButton?.focus(); }); // Return or Space keeps it
 
@@ -244,6 +290,13 @@
     if (suggestion && groups.courses.some((g) => g.course === suggestion!.course)) return { kind: "suggestion", ...suggestion };
     return null;
   });
+  // what the bar is about: a new one cross-fades (starting → recording → paused stays one, its parts move by themselves)
+  let barFace = $derived(
+    barError ? "error"
+    : asking && (bar?.kind === "recording" || bar?.kind === "paused") ? "ask"
+    : bar && ["starting", "recording", "paused"].includes(bar.kind) ? "run"
+    : bar?.kind ?? "none",
+  );
   // a recording by its course or talk and folder, in a library list (for reload's `show`, too)
   const inLibrary = (g: Group, folder?: string) => (all: Entry[]) =>
     folder ? all.find((e) => same(groupOf(e), g) && e.folder === folder) : undefined;
@@ -254,9 +307,16 @@
     const which = e && !g.event ? rowTitle(e) : n ? t("lib.lectureN", { n }) : null;
     return [g.course, which].filter(Boolean).join(" · ");
   }
+  // while it starts: the name it will have, so the line doesn't change once it records ("Calculus · Lecture 5")
+  function startingName(g: Group) {
+    if (g.event) return g.course;
+    const numbers = (data?.entries ?? []).filter((e) => e.kind === "lecture" && e.course === g.course).map((e) => e.number);
+    return [g.course, t("lib.lectureN", { n: Math.max(0, ...numbers) + 1 })].join(" · ");
+  }
   // the menu bar's clock: lecture time without the pauses
+  const lectureSeconds = (s: LiveStatus) => Math.max(0, Math.floor((s.elapsed_s ?? 0) - (s.paused_s ?? 0)));
   function clock(s: LiveStatus) {
-    const total = Math.max(0, Math.floor((s.elapsed_s ?? 0) - (s.paused_s ?? 0)));
+    const total = lectureSeconds(s);
     return `${Math.floor(total / 3600)}:${String(Math.floor(total / 60) % 60).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
   }
   function liveText(s: LiveStatus): { text: string; warn?: boolean } {
@@ -588,6 +648,9 @@
     return h ? `${h} h${m ? ` ${m} min` : ""}` : `${m} min`;
   };
   const length = (e: Entry) => {
+    // the recording the bar shows counts with the bar's clock, from the same status, so the two never differ
+    if (e.live && (live.state === "recording" || live.state === "paused") && live.course === e.course
+        && (live.kind === "event") === (e.kind === "event") && live.folder === e.folder) return inWords(lectureSeconds(live));
     if (e.live) return inWords(e.live.length_s + (e.live.counting ? Math.max(0, now - loadedAt) / 1000 : 0));
     const parts = e.duration?.split(":").map(Number);
     if (!parts || parts.some(isNaN)) return e.duration;
@@ -741,6 +804,8 @@
   {#if bar || barError}
     <div class="activity {bar?.kind ?? 'error'}" transition:barMotion>
       <div class="activity-row" data-tauri-drag-region>
+      {#key barFace}
+      <div class="face {bar?.kind ?? 'error'}" in:faceIn out:faceOut data-tauri-drag-region>
         {#if barError}
           <span class="sign warn" aria-hidden="true"></span>
           <span class="what warn selectable" title={barError}>{barError}</span>
@@ -770,7 +835,7 @@
           <svg class="sign bin" viewBox="0 0 16 16" aria-hidden="true"><path d={BIN} /></svg>
           <span class="what">{t("activity.deleted", { trash: trashName() })}</span>
           <span class="buttons">
-            <button class="bar-button" onclick={() => { deleted = null; if (g.event) recordTalk(); else record(g); }}>{t("activity.recordAgain")}</button>
+            <button class="bar-button" onclick={() => recordAgain(g)}>{t("activity.recordAgain")}</button>
           </span>
         {:else if bar}
           {@const b = bar}
@@ -781,43 +846,55 @@
             <!-- how far it is (#37's progress.json, read with the library), when the engine has said -->
             {@const pass = "folder" in b ? barEntry(b.group, b.folder)?.final_pass : null}
             {#if pass}<span class="progress"><FinalPass {pass} inline /></span>{/if}
+          {:else if b.kind === "cancelling"}
+            <span class="sign cancelling" aria-hidden="true"></span>
+            <span class="label">{t("activity.cancelling")}</span>
+            <span class="what" title={name}>{name}</span>
           {:else}
+            <!-- Starting…, Recording, Paused: one line from the click on, laid out as it will stay; only the label,
+                 the dot's colour and the buttons coming alive change, so nothing moves -->
+            {@const running = b.kind === "recording" || b.kind === "paused"}
+            {@const shown = running ? name : startingName(b.group)}
             <span class="sign {b.kind}" aria-hidden="true"></span>
-            <span class="label">{b.kind === "recording" ? t("activity.recording") : b.kind === "paused" ? t("activity.paused")
-              : b.kind === "cancelling" ? t("activity.cancelling") : t("common.starting")}</span>
-            {#if b.kind === "recording" || b.kind === "paused"}
-              {@const note = liveText(live)}
-              <span class="time">{clock(live)}</span>
-              <span class="what" title="{name} · {note.text}">{name} · <span class:warn={note.warn}>{note.text}</span></span>
-            {:else}
-              <span class="what" title={name}>{name}</span>
-            {/if}
+            <span class="label stack" aria-live="polite">
+              <span class="starting" class:on={b.kind === "starting"}>{t("common.starting")}</span>
+              <span class="recording" class:on={b.kind === "recording"}>{t("activity.recording")}</span>
+              <span class="paused" class:on={b.kind === "paused"}>{t("activity.paused")}</span>
+            </span>
+            <span class="time">{clock(running ? live : { state: "starting" })}</span>
+            {@const note = running ? liveText(live) : null}
+            <span class="what" title={note ? `${shown} · ${note.text}` : shown}>{shown}{#if note}<span class="note" in:appear>{" · "}<span
+              class:warn={note.warn}>{note.text}</span></span>{/if}</span>
           {/if}
+          {#if b.kind !== "cancelling"}
+          {@const running = b.kind === "recording" || b.kind === "paused"}
           <span class="buttons">
-            {#if b.kind !== "starting" && b.kind !== "cancelling"}
-              <button class="bar-button" onclick={() => showRecording(b.group, "folder" in b ? b.folder : undefined)}>{t("activity.show")}</button>
-            {/if}
-            {#if b.kind === "recording" || b.kind === "paused"}
+            <button class="bar-button" onclick={() => showRecording(b.group, "folder" in b ? b.folder : undefined)}>{t("activity.show")}</button>
+            {#if b.kind !== "finishing"}
               {@const toggle = b.kind === "paused" ? t("menu.resume") : t("menu.pause")}
-              <button class="bar-icon" disabled={barBusy} aria-label={toggle} title={toggle} onclick={() => control("toggle")}>
+              <!-- there from the start, dimmed until the microphone runs -->
+              <button class="bar-icon" disabled={barBusy || !running} aria-label={toggle} title={toggle} onclick={() => control("toggle")}>
                 {#if b.kind === "paused"}
                   <svg viewBox="0 0 16 16" aria-hidden="true"><path class="fill" d="M5 3.2v9.6l7.6-4.8z" /></svg>
                 {:else}
                   <svg viewBox="0 0 16 16" aria-hidden="true"><path class="fill" d="M4.5 3h2.4v10H4.5zM9.1 3h2.4v10H9.1z" /></svg>
                 {/if}
               </button>
-              <button class="bar-icon" disabled={barBusy} aria-label={t("menu.stop")} title={t("menu.stop")} onclick={() => control("stop")}>
+              <button class="bar-icon" disabled={barBusy || !running} aria-label={t("menu.stop")} title={t("menu.stop")} onclick={() => control("stop")}>
                 <svg viewBox="0 0 16 16" aria-hidden="true"><rect class="fill" x="3.5" y="3.5" width="9" height="9" rx="1.5" /></svg>
               </button>
               <!-- Delete, set apart from Stop so neither is hit for the other -->
               <span class="bar-divider" aria-hidden="true"></span>
-              <button class="bar-icon bin" disabled={barBusy} aria-label={t("activity.delete")} title={t("activity.delete")}
+              <button class="bar-icon bin" disabled={barBusy || !running} aria-label={t("activity.delete")} title={t("activity.delete")}
                 onclick={() => (asking = true)}>
                 <svg viewBox="0 0 16 16" aria-hidden="true"><path d={BIN} /></svg>
               </button>
             {/if}
           </span>
+          {/if}
         {/if}
+      </div>
+      {/key}
       </div>
     </div>
   {/if}
@@ -826,14 +903,15 @@
     {#if group}
       <!-- start a recording from here, the same way as from the menu bar; only one at a time -->
       {#if canRecord}
-        <button class="record" onclick={() => (group!.event ? recordTalk() : record(group!))}>
+        <button class="record" bind:this={recordButton} transition:fold
+                onclick={() => (group!.event ? recordTalk() : record(group!))}>
           <span class="dot" aria-hidden="true"></span>
           {group.event ? t("lib.recordTalk") : t("lib.recordLecture", { n: nextNumber })}
         </button>
       {/if}
       <div class="kicker list-head">{tn("lib.recordings", entries.length)}</div>
       {#each entries as e (id(e))}
-        <button class="row" class:active={id(e) === selectedId} onclick={() => (selectedId = id(e))}
+        <button class="row" class:active={id(e) === selectedId} in:fold={!!knownIds && !knownIds.has(id(e))} onclick={() => (selectedId = id(e))}
                 oncontextmenu={(ev) => { selectedId = id(e); showMenu(ev, { entry: e }); }}>
           <span class="row-title">{rowTitle(e)}</span>
           {#if isDraft(e)}<span class="status {e.status}">{statusLabel(e.status)}</span>{/if}
@@ -883,7 +961,8 @@
         {#if isDraft(selected)}
           <div class="draft">
             <p>
-              <span class="status {selected.status}">{statusLabel(selected.status)}</span>
+              <!-- while it records, the bar, its row and the sidebar's dot say so already -->
+              {#if selected.status !== "live"}<span class="status {selected.status}">{statusLabel(selected.status)}</span>{/if}
               <!-- a low battery or memory pauses the text so far: said calmly, the recording goes on -->
               {selected.live?.warning || (selected.draft_note ?? t("lib.comesLater"))}
             </p>
@@ -1152,13 +1231,19 @@
   .rec-dot.paused { background: none; box-shadow: inset 0 0 0 1.5px var(--warn); animation: none; }
 
   /* The activity bar: what's running, across the list and detail, on a white strip of its own. One line; long
-     names end in "…", the time and the buttons always stay. The only motion is the recording dot's blink. */
+     names end in "…", the time and the buttons always stay. Besides the recording dot's blink, only a start moves:
+     amber turns red and the buttons fade in. */
   .activity { flex: none; display: flex; flex-direction: column; }  /* a flex box keeps the strip's margin in its height */
   .activity-row {
-    display: flex; align-items: center; gap: 10px; height: 46px; margin: 0 12px 12px 12px; padding: 0 8px 0 16px;
+    display: grid; height: 46px; margin: 0 12px 12px 12px; padding: 0 8px 0 16px;
     white-space: nowrap; background: var(--surface); border-radius: 14px; box-shadow: var(--shadow-sm);
   }
-  .activity .sign { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--rec); }
+  /* what the bar says, one line; the one going away fades out in the same cell while the new one fades in */
+  .face { grid-area: 1 / 1; display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .activity .sign {
+    width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--rec);
+    transition: background-color .24s ease, box-shadow .24s ease;  /* Starting… (amber) turns into Recording (red) */
+  }
   .activity .sign.recording { animation: blink 1.4s ease-in-out infinite; }
   .activity .sign.paused, .activity .sign.hollow { background: none; box-shadow: inset 0 0 0 1.5px var(--warn); }
   .activity .sign.hollow { box-shadow: inset 0 0 0 1.5px var(--accent); }
@@ -1166,9 +1251,17 @@
   .activity .sign.cancelling { background: var(--muted); }
   .activity svg.sign { width: 16px; height: 16px; border-radius: 0; background: none; fill: none; stroke: var(--ink-2); stroke-width: 1.2; stroke-linejoin: round; }
   .activity .label { flex: none; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--rec); }
-  .activity.paused .label, .activity.starting .label { color: var(--warn); }
-  .activity.suggestion .label { color: var(--accent); }
-  .activity.cancelling .label { color: var(--muted); }
+  /* Starting… → Recording → Paused: all three in one cell (as wide as the widest), the one that's on in focus */
+  .label.stack { display: grid; }
+  .label.stack > span {
+    grid-area: 1 / 1; opacity: 0; filter: blur(4px);
+    transition: opacity .32s cubic-bezier(.2, 0, 0, 1), filter .32s cubic-bezier(.2, 0, 0, 1);
+  }
+  .label.stack > span.on { opacity: 1; filter: none; }
+  .label.stack > .starting, .label.stack > .paused { color: var(--warn); }
+  .face.paused .label:not(.stack), .face.starting .label:not(.stack) { color: var(--warn); }
+  .face.suggestion .label { color: var(--accent); }
+  .face.cancelling .label { color: var(--muted); }
   .activity .time { flex: none; font: 500 13px var(--mono); font-variant-numeric: tabular-nums; background: var(--sunken); border-radius: 999px; padding: 3px 9px; }
   .activity .what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--ink-2); }
   .activity .warn { color: var(--warn); }
@@ -1186,6 +1279,7 @@
   .bar-icon .fill { fill: currentColor; }
   .bar-button:hover, .bar-icon:hover:not(:disabled) { background: var(--sunken); color: var(--ink); }
   .bar-icon:disabled { opacity: 0.55; }
+  .bar-icon, .bar-button { transition: opacity .3s ease, background .15s ease, color .15s ease; }
   /* Delete: a bin apart from the others, red only under the pointer; asked in the bar with a red Delete Recording */
   .bar-divider { width: 1px; height: 20px; margin: 0 4px; background: var(--hairline); }
   .bar-icon.bin svg, .activity svg.bin { fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
@@ -1199,7 +1293,10 @@
   .activity .buttons.windows { flex-direction: row-reverse; }
   .bar-button.danger { background: var(--rec); color: #fff; box-shadow: none; }
   .bar-button.danger:hover:not(:disabled) { background: var(--rec); filter: brightness(0.92); color: #fff; }
-  @media (prefers-reduced-motion: reduce) { .activity .sign.recording, .rec-dot { animation: none; } }
+  @media (prefers-reduced-motion: reduce) {
+    .activity .sign.recording, .rec-dot { animation: none; }
+    .activity .sign, .label.stack > span, .bar-icon, .bar-button { transition: none; }
+  }
 
   /* Record Lecture n, at the top of a course's list */
   .record {
