@@ -7,7 +7,7 @@
 # 3. `stenny uninstall --yes --json` (src/stenny/uninstall.py): the background job, the connector in Claude Code,
 #    the saved API key and calendar links, logs, cache and the Whisper model
 # 4. the app (to the Trash, unregistered from Launch Services), its permissions and the app's own web data
-# 5. the engine (`uv tool uninstall stenny`) and its code (~/Applications/stenny.noindex)
+# 5. an engine an older setup installed (`uv tool uninstall stenny`) and its code (~/Applications/stenny.noindex)
 # 6. Stenny's settings and data, with the recordings' audio, to the Trash: they can still be brought back
 # The transcripts (the Stenny folder) stay: they're the student's. uv stays too: other programs may use it.
 # Needs no password. Speaks German when the Mac's first language is German.
@@ -56,13 +56,23 @@ stenny_uninstall() {
         pkill -u "$(id -u)" -f "Stenny.app/Contents/MacOS/" || true
     fi
 
-    # 3. What the engine set up. Without a working engine: the usual places.
-    local stenny=""
-    [[ -n "$uv" ]] && stenny="$("$uv" tool dir --bin 2>/dev/null)/stenny"
-    [[ -x "$stenny" ]] || stenny="$HOME/.local/bin/stenny"
+    # 3. What the engine set up: the engine inside the app (#92), else one an older setup installed with uv, else
+    # the `stenny` in ~/.local/bin. Without a working engine: the usual places.
+    local -a stenny
+    local candidate
+    for candidate in /Applications/Stenny.app "$HOME/Applications/Stenny.app"; do
+        if [[ -x "$candidate/Contents/Resources/engine/bin/python3" ]]; then
+            stenny=(env PYTHONDONTWRITEBYTECODE=1 "$candidate/Contents/Resources/engine/bin/python3" -m stenny); break
+        fi
+    done
+    if (( ! ${#stenny} )); then
+        [[ -n "$uv" ]] && candidate="$("$uv" tool dir --bin 2>/dev/null)/stenny" || candidate=""
+        [[ -x "$candidate" ]] || candidate="$HOME/.local/bin/stenny"
+        [[ -x "$candidate" ]] && stenny=("$candidate")
+    fi
     local result="" folder="" desktop_extension=false
     local -a trash problems
-    [[ -x "$stenny" ]] && result="$("$stenny" uninstall --yes --json 2>/dev/null)" || result=""
+    (( ${#stenny} )) && result="$("${stenny[@]}" uninstall --yes --json 2>/dev/null)" || result=""
     field() { print -r -- "$result" | plutil -extract "$1" raw -o - - 2>/dev/null; }
     if [[ -n "$result" ]]; then
         local i=0 item
@@ -95,7 +105,7 @@ stenny_uninstall() {
                "$HOME/Library/Application Support/$id" "$HOME/Library/Saved Application State/$id.savedState"
     done
 
-    # 5. The engine and its code
+    # 5. An engine an older setup installed with uv (the app's went with the app), and its code
     [[ -n "$uv" ]] && "$uv" tool uninstall stenny >/dev/null 2>&1
     [[ -e "$FOLDER/.git" ]] || rm -rf "$FOLDER"
 

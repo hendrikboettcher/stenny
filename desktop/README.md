@@ -115,15 +115,21 @@ Nothing is frozen, so mlx (Metal) and CTranslate2 load their libraries as always
   `site.py` has the user's own site-packages turned off, so nothing from another Python 3.12 can shadow the app's.
 - **The engine knows it's the app's** (src/stenny/paths.py, `in_app()`): it finds the app's own ffmpeg, stenny-rec,
   stenny-agent and Stenny.mcpb first, the queue's background job and Claude Code's connector start the app's Python
-  (the same path after every update), and `stenny update` says the app is what gets updated.
+  (the same path after every update), and `stenny update` only checks and says the app is what gets updated.
 - **Claude Desktop's connector** (connector/server/index.js) runs the app's engine too: it looks for it in
   `Stenny.app` (~/Applications, then /Applications) or the Windows install folder (the installer's registry
   entry, `%LOCALAPPDATA%\Stenny`, `%ProgramFiles%\Stenny`) before any `stenny` command, and starts it the way
   the app does (no `PYTHONHOME`/`PYTHONPATH`, no bytecode written). `node connector/server/index.js --candidates`
   lists what it would try.
 - **`stenny` in the terminal:** at each start the engine writes `~/.local/bin/stenny` (Windows: `stenny.cmd`), a
-  launcher for itself, unless another `stenny` is there (a developer's `uv tool install -e .`, or an older setup's
-  engine), which it never replaces (src/stenny/launcher.py; `stenny uninstall` removes only its own).
+  launcher for itself, unless another `stenny` is there (a developer's `uv tool install -e .`), which it never
+  replaces (src/stenny/launcher.py; `stenny uninstall` removes only its own).
+- **The engine older setups installed** with `uv tool install -e` from ~/Applications/stenny.noindex (Windows:
+  %LOCALAPPDATA%\Programs\stenny), up to 0.5.13, goes at the app's first start after the update
+  (src/stenny/old_engine.py): `uv tool uninstall stenny`, the launcher in its place, the queue's background job and
+  Claude Code's connector pointed at the app's engine, the folder to the Trash / Recycle Bin. Only that one: an
+  engine installed from anywhere else (a checkout) stays, and never during a recording or a final pass. The install
+  lines (scripts/install.sh, install.ps1) install only the app now and set it up with its own engine.
 - **Signing on a Mac:** `codesign --deep` doesn't reach code among the resources, so `scripts/sign-mac.sh` signs the
   engine's ~165 native libraries and its Python one by one with the app's identity, then the app, and verifies all of
   it. `install-mac.sh` and `app/release.sh` use it.
@@ -135,6 +141,11 @@ GitHub release (tauri.conf.json, `plugins.updater`), downloads that system's upd
 updater's public key (also in tauri.conf.json) before installing. App and engine are updated together, since the
 engine is inside the app. It never installs during a recording or a final pass (the engine's `update_blocked`); if
 one starts while it downloads, it waits until it's done.
+
+- **Quietly, by itself:** a minute after Stenny starts and then twice a day (`updater::watch`), Stenny looks for a
+  newer version; if there is one, the footer's Check for Updates… becomes *Update to 0.5.x…* (accent colour, the
+  `update-available` event and the `update_available` command). Nothing pops up or downloads by itself, and it
+  doesn't look while recording or making a final transcript (then an hour later).
 
 - **macOS, in place:** the plugin would swap the whole Stenny.app, which leaves the Dock's tile pointing at a bundle
   that's gone (two Stenny icons). So updater.rs unpacks Stenny.app.tar.gz next to the app, checks it with

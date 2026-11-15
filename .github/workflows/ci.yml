@@ -46,6 +46,22 @@ jobs:
         run: uv sync --locked --group dev
       - name: Tests
         run: uv run pytest -q
+      # the install and uninstall lines users paste: at least they parse (zsh -n on a Mac, PowerShell's parser on
+      # Windows, in Windows PowerShell 5.1 like `irm | iex`)
+      - name: Install scripts parse (macOS)
+        if: runner.os == 'macOS'
+        run: for f in scripts/install.sh scripts/uninstall.sh; do zsh -n "$f"; done
+      - name: Install scripts parse (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $bad = 0
+          foreach ($f in 'scripts\install.ps1', 'scripts\uninstall.ps1') {
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f), [ref]$null, [ref]$errors)
+            if ($errors) { $errors | ForEach-Object { Write-Host "${f}: $_" }; $bad = 1 }
+          }
+          exit $bad
 
   # stenny-rec.exe, the Windows microphone recorder (desktop/stenny-rec, WASAPI). Its tests (the command line, the
   # conversion to 16 kHz mono, the device details) run on both systems; on Windows it is also built and asked about

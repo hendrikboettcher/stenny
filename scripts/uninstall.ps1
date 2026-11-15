@@ -6,7 +6,7 @@
 # 3. `stenny uninstall --yes --json` (src/stenny/uninstall.py): the task for final transcripts, the connector in
 #    Claude Code, the saved API key and calendar links, logs, cache and the Whisper model
 # 4. the app (its own uninstaller, silently), opening at login and the app's own web data
-# 5. the engine (`uv tool uninstall stenny`) and its code (%LOCALAPPDATA%\Programs\stenny)
+# 5. an engine an older setup installed (`uv tool uninstall stenny`) and its code (%LOCALAPPDATA%\Programs\stenny)
 # 6. Stenny's settings and data, with the recordings' audio, to the Recycle Bin: they can still be brought back
 # The transcripts (the Stenny folder) stay: they're the student's. uv stays too: other programs may use it.
 # No administrator needed. Speaks German when Windows does. ASCII only, like install.ps1 (irm | iex in PowerShell 5.1).
@@ -66,13 +66,24 @@
     Start-Sleep -Seconds 1
 
     # 3. What the engine set up. Without a working engine (or one older than `uninstall`): the usual places.
+    # The engine inside the app (#92) first, next to the Stenny.exe its uninstall entry names; else one an older
+    # setup installed with uv.
+    $entry = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue |
+        Where-Object { $_.DisplayName -eq 'Stenny' } | Select-Object -First 1
+    $appExe = if ($entry -and $entry.DisplayIcon) { $entry.DisplayIcon.Trim('"').Split(',')[0] } else { Join-Path $env:LOCALAPPDATA 'Stenny\Stenny.exe' }
+    $python = Join-Path (Split-Path $appExe) 'engine\python.exe'
     $stenny = $null
     if ($uv) { $stenny = Join-Path (& $uv tool dir --bin) 'stenny.exe' }
     if (-not ($stenny -and (Test-Path $stenny))) { $stenny = "$env:USERPROFILE\.local\bin\stenny.exe" }
     $result = $null
-    if (Test-Path $stenny) {
-        try { $result = (& $stenny uninstall --yes --json) -join "`n" | ConvertFrom-Json } catch { $result = $null }
-    }
+    try {
+        if (Test-Path $python) {
+            $env:PYTHONDONTWRITEBYTECODE = '1'
+            $result = (& $python -m stenny uninstall --yes --json) -join "`n" | ConvertFrom-Json
+        } elseif (Test-Path $stenny) {
+            $result = (& $stenny uninstall --yes --json) -join "`n" | ConvertFrom-Json
+        }
+    } catch { $result = $null }
     if ($result) {
         $trash = @($result.trash)
     } else {
@@ -95,7 +106,7 @@
     }
     Remove-Item "$env:LOCALAPPDATA\eu.stenny.Stenny" -Recurse -Force -ErrorAction SilentlyContinue
 
-    # 5. The engine and its code
+    # 5. An engine an older setup installed with uv (the app's goes with the app), and its code
     if ($uv) { & $uv tool uninstall stenny 2>&1 | Out-Null }
     if (-not (Test-Path (Join-Path $Folder '.git'))) { Remove-Item $Folder -Recurse -Force -ErrorAction SilentlyContinue }
 

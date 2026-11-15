@@ -560,7 +560,13 @@ def on_start(log=lambda message: print(message, file=sys.stderr)) -> None:
         drop_course_copies(log=lambda message: log("migrate: " + message))
     except Exception as e:  # never in the way of starting (ManageError, OSError …): it tries again next time
         log(f"migrate: {e}")
-    # the engine inside the app: `stenny` for the terminal and Claude Code (launcher.py; nothing for other engines)
+    # the engine inside the app: the one an older setup installed with uv goes (old_engine.py, once), then `stenny`
+    # for the terminal and Claude Code (launcher.py; nothing for other engines)
+    try:
+        from . import old_engine
+        old_engine.retire(log=log)
+    except Exception as e:  # never in the way of starting: it tries again next time
+        log(f"old engine: {e}")
     try:
         from . import launcher
         launcher.install(log=log)

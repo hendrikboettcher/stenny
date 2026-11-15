@@ -11,6 +11,10 @@
 //!   install-mac.sh does; then the app restarts through LaunchServices.
 //! - **Windows: the setup program**, as the plugin runs it (passive: a progress window, no questions), after the
 //!   engine is stopped (Windows won't replace a running python.exe); it opens Stenny again when it's done.
+//! - **Quietly, now and then** (`watch`): a minute after Stenny starts, then twice a day, it looks for a newer
+//!   version and, if there is one, the library window's footer says so ("Update to 0.5.14…", the
+//!   "update-available" event and `available`). Nothing pops up, nothing downloads by itself, and never while
+//!   recording or making a final transcript: then it looks again an hour later.
 //! - **Until every release has a `latest.json`** (the first releases with the updater still come through the
 //!   install line), anything the updater can't do falls back to the way before it: the engine's version check
 //!   and the install line in a window of its own (menubar::check_updates).
@@ -19,14 +23,54 @@ use crate::engine::Engine;
 use crate::i18n::tr;
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tauri_plugin_updater::{Update, UpdaterExt};
 
 /// An update is being downloaded or waits to be installed: a second Check for Updates… only says so.
 static UPDATING: AtomicBool = AtomicBool::new(false);
+
+/// The newer version the quiet check found (`watch`), for the library window's footer.
+static AVAILABLE: Mutex<Option<String>> = Mutex::new(None);
+
+/// What the footer shows: the newer version, if the quiet check found one.
+pub fn available() -> Option<String> {
+    AVAILABLE.lock().unwrap().clone()
+}
+
+fn set_available(app: &AppHandle, version: Option<String>) {
+    let changed = {
+        let mut known = AVAILABLE.lock().unwrap();
+        let changed = *known != version;
+        *known = version.clone();
+        changed
+    };
+    if changed {
+        let _ = app.emit("update-available", version);
+    }
+}
+
+/// The quiet check (see the top): on a thread of its own for as long as Stenny runs.
+pub fn watch(app: &AppHandle) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(60));
+        loop {
+            let wait = if UPDATING.load(Ordering::SeqCst) || blocked(&app).is_some() {
+                Duration::from_secs(60 * 60) // a recording or a final pass: not now, look again in an hour
+            } else {
+                match check(&app) {
+                    Ok(update) => set_available(&app, update.map(|u| u.version)),
+                    Err(e) => eprintln!("updater: the quiet check didn't work ({e}); trying again later"),
+                }
+                Duration::from_secs(12 * 60 * 60)
+            };
+            std::thread::sleep(wait);
+        }
+    });
+}
 
 fn engine(app: &AppHandle) -> Arc<Engine> {
     app.state::<Arc<Engine>>().inner().clone()
@@ -52,6 +96,7 @@ pub fn check_updates(app: &AppHandle) {
         }
     };
     let current = app.package_info().version.to_string();
+    set_available(app, update.as_ref().map(|u| u.version.clone()));
     let Some(update) = update else {
         #[cfg(target_os = "macos")]
         crate::macos::centered_alert(app, tr!("updates.upToDate.title"), tr!("updates.upToDate", version = current));
