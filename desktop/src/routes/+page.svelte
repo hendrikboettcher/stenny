@@ -51,8 +51,12 @@
       css: (t: number) => `opacity: ${t}; height: ${t * height}px; overflow: hidden;`,
     };
   }
-  let settingsOpen = $state(false); // the footer's Settings…: the window shows Settings instead (lib/Settings.svelte)
-  let settingsSection = $state<"general" | "transcripts" | "claude" | "calendar">("general"); // where Settings opens
+  // Settings open when the window reloads (⌘R): it comes back on the same section. Settings saves it while it's
+  // open, closing it forgets it, and sessionStorage ends with the app, so a new start opens the library.
+  const OPEN_SETTINGS = "openSettings";
+  const reopen = (() => { try { return sessionStorage.getItem(OPEN_SETTINGS); } catch { return null; } })();
+  let settingsOpen = $state(reopen !== null); // the footer's Settings…: the window shows Settings instead (lib/Settings.svelte)
+  let settingsSection = $state<string>(reopen ?? "general"); // where Settings opens (unknown: General)
   let linkCopied = $state(false); // the footer's Share Stenny: "Link copied" for a moment
   let copiedTimer: ReturnType<typeof setTimeout> | undefined;
   let busy = $state<string | null>(null);   // "share" | "finish"
@@ -608,7 +612,11 @@
 
 {#if settingsOpen}
   <div class="view" in:comeIn out:goAway>
-    <Settings start={settingsSection} onclose={() => { settingsOpen = false; reload(); }}
+    <Settings start={settingsSection} onclose={() => {
+      settingsOpen = false;
+      try { sessionStorage.removeItem(OPEN_SETTINGS); } catch {}
+      reload();
+    }}
               onrenamed={(old, name) => { if (same(group, { course: old, event: false })) group = { course: name, event: false }; }} />
   </div>
 {:else}
