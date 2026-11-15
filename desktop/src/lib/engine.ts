@@ -170,7 +170,7 @@ export const startRecording = (course: string, event: boolean) => {
   const file = import.meta.env.VITE_STENNY_TEST_FILE;
   return engine<LiveStatus>("start", { [event ? "event" : "course"]: course, ...(file ? { file, llm: false } : {}) });
 };
-export const recordingCommand = (cmd: "toggle" | "stop") =>
+export const recordingCommand = (cmd: "toggle" | "stop" | "cancel") =>
   inApp ? invoke<LiveStatus>("recording_command", { cmd }) : engine<LiveStatus>("command", { cmd });
 // "Record a Talk or Event": its own small window, as from the menu
 // A PDF from an HTML copy (stenny-agent on a Mac, WebView2 on Windows: make_pdf in src-tauri/src/lib.rs); in a browser the HTML stays

@@ -414,6 +414,10 @@
   "activity.calendar": "Calendar",
   "activity.record": "Record",
   "activity.show": "Show",
+  "activity.delete": "Delete Recording…",
+  "activity.deleteText": "{time} of audio and the text so far go to the {trash}.",
+  "activity.deleted": "Recording moved to the {trash}",
+  "activity.recordAgain": "Record Again",
 
   "app.about": "About Stenny",
   "app.services": "Services",
