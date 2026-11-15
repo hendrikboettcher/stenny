@@ -479,7 +479,7 @@
   "updates.upToDate.title": "Stenny ist auf dem neuesten Stand",
   "updates.upToDate": "Du verwendest die neueste Version ({version}).",
   "updates.available.title": "Stenny {version} ist verfügbar",
-  "updates.available": "Installiert ist Version {version}. „Jetzt aktualisieren“ lädt die neue Version herunter und installiert sie: Stenny schließt sich und öffnet sich danach von selbst, deine Vorlesungen bleiben, wie sie sind. Das dauert ein paar Minuten.",
+  "updates.available": "Dauert ein paar Minuten. Stenny startet von selbst neu, deine Vorlesungen bleiben, wie sie sind.",
   "updates.updateNow": "Jetzt aktualisieren",
   "updates.recording": "Stenny nimmt gerade auf. Aktualisiere, wenn die Aufnahme fertig ist.",
   "updates.finalPass": "Stenny erstellt gerade ein finales Transkript. Aktualisiere, wenn es fertig ist.",

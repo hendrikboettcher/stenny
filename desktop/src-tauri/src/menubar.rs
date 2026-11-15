@@ -842,10 +842,18 @@ pub fn check_updates(app: &AppHandle) {
             dialog.message(tr!("updates.upToDate", version = current)).title(tr!("updates.upToDate.title")).blocking_show();
         }
         Ok(r) => {
-            let (current, latest) = (str_of(&r, "current").to_string(), str_of(&r, "latest").to_string());
+            let latest = str_of(&r, "latest").to_string();
+            #[cfg(target_os = "macos")]
+            let update = crate::macos::centered_ask(
+                app,
+                tr!("updates.available.title", version = latest),
+                tr!("updates.available"),
+                Some((tr!("updates.updateNow"), tr!("updates.notNow"))),
+            );
+            #[cfg(not(target_os = "macos"))]
             let update = app
                 .dialog()
-                .message(tr!("updates.available", version = current))
+                .message(tr!("updates.available"))
                 .title(tr!("updates.available.title", version = latest))
                 .buttons(MessageDialogButtons::OkCancelCustom(tr!("updates.updateNow"), tr!("updates.notNow")))
                 .blocking_show();
