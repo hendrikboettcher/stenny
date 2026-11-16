@@ -486,6 +486,7 @@
   "updates.alreadyDownloading": "Stenny lädt das Update schon herunter. Es installiert es und öffnet sich danach von selbst wieder.",
   "updates.installFailed": "Das Update ließ sich hier nicht installieren ({error}). Stattdessen öffnet sich ein Fenster mit der Installationszeile: Sie installiert die neue Version so, wie Stenny installiert wurde.",
   "updates.notNow": "Später",
+  "updates.noInvite": "In diesem Stenny ist keine Einladung gespeichert. Führ die Installationszeile aus deiner Einladung noch einmal aus: Sie aktualisiert Stenny und speichert die Einladung.",
 
   "error.noAgentPdf": "Das PDF konnte nicht erstellt werden: stenny-agent fehlt.",
   "error.pdf": "Das PDF konnte nicht erstellt werden.",

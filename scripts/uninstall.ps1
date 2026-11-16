@@ -1,5 +1,5 @@
 # Removes Stenny from a Windows PC with one line in PowerShell:
-#   irm https://github.com/hendrikboettcher/stenny/releases/latest/download/uninstall.ps1 | iex
+#   irm https://stenny.eu/uninstall.ps1 | iex   (needs no invite: the stenny-website repo, api/install.js)
 #
 # 1. stops if Stenny is recording or making a final transcript, or runs from a git checkout (a developer's PC)
 # 2. quits Stenny
