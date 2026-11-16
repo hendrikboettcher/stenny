@@ -156,6 +156,13 @@ class QueueLock:
             self.f.close()
 
 
+def queue_busy() -> bool:
+    """A final pass runs right now (someone holds the queue lock). Every final pass holds it from before it marks
+    its lecture "finalizing" until it is done, and a process that dies lets go of it."""
+    with QueueLock() as lock:
+        return lock is None
+
+
 def keep_awake() -> "subprocess.Popen | winsys.Awake":
     """Prevent idle sleep while this process runs (released automatically when it exits)."""
     if sys.platform == "win32":

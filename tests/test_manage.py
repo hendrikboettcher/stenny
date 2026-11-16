@@ -232,6 +232,10 @@ def test_trash_on_windows_uses_the_recycle_bin(tmp_path, monkeypatch):
     assert cmd[0] == "powershell.exe" and cmd[-1] == manage.RECYCLE_PS and "SendToRecycleBin" in cmd[-1]
     assert json.loads(kw["env"]["STENNY_TRASH"]) == [str(a), str(b)]  # what doesn't exist is left out
     assert all(str(a) not in part for part in cmd)
+    # Windows PowerShell 5.1 hands ConvertFrom-Json's array on as one object: it must be enumerated from a variable,
+    # never from @(… | ConvertFrom-Json) (that passed every path at once: "path format not supported")
+    assert "$items = $env:STENNY_TRASH | ConvertFrom-Json" in manage.RECYCLE_PS
+    assert "@($env:STENNY_TRASH" not in manage.RECYCLE_PS
 
     monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, stdout="x: in use\n", stderr=""))
     with pytest.raises(manage.ManageError, match="in use"):

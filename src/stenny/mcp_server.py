@@ -66,7 +66,15 @@ def _config():
         raise ToolError(f"Stenny isn't set up on this computer: {e}") from None
 
 
+_marked = False
+
+
 def _run(fn, *args, **kwargs) -> str:
+    global _marked
+    if not _marked:  # once per connection: the setup checklist and Settings see that Claude talks to Stenny
+        from .claude_setup import mark_connector_used
+        mark_connector_used()
+        _marked = True
     try:
         return fn(_config(), *args, **kwargs)
     except connector.ConnectorError as e:

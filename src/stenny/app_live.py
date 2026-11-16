@@ -10,6 +10,7 @@ import os
 import plistlib
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from . import i18n, paths
@@ -58,8 +59,9 @@ def plugged_in(cfg, params: dict) -> dict:
     from . import jobs
     if not jobs.pending():
         return {"started": False}
-    subprocess.Popen([sys.executable, "-m", "stenny", "queue", "run", "--scheduled"], stdin=subprocess.DEVNULL,
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    with open_log("queue.log") as log:  # like the scheduled runs'
+        subprocess.Popen([sys.executable, "-m", "stenny", "queue", "run", "--scheduled"], stdin=subprocess.DEVNULL,
+                         stdout=log, stderr=log, start_new_session=True, env={**os.environ, "PYTHONIOENCODING": "utf-8"})
     return {"started": True}
 
 
@@ -94,8 +96,11 @@ def start(cfg, params: dict) -> dict:
         args.append("--no-llm")
     if params.get("file"):
         args += ["--file", str(params["file"]), "--speed", str(params.get("speed", 1.0))]
-    paths.LOGS_DIR.mkdir(parents=True, exist_ok=True)
-    log = open(paths.LOGS_DIR / "live.log", "w", encoding="utf-8")
+    # added to, not started afresh: a recording that died must still be in it after the next one starts (that one
+    # recovers it), and Send Feedback sends its end
+    log = open_log("live.log")
+    log.write(f"--- {time.strftime('%Y-%m-%d %H:%M:%S')} {' '.join(args[3:])}\n")
+    log.flush()
     # its warnings and notes show in the app's menu: in the app's language
     env = {**os.environ, "STENNY_LANGUAGE": i18n.language()}
     proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True, env=env)
@@ -182,6 +187,48 @@ def system_details() -> str:
     return f"{model}, {memory} GB, macOS {platform.mac_ver()[0]}"
 
 
+LOG_KEEP = 512 * 1024  # a log grows to this, then starts again from its newer half
+
+
+def open_log(name: str):
+    """One of Stenny's logs (paths.LOGS_DIR) to add to, its older half dropped once it has grown too long."""
+    paths.LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    path = paths.LOGS_DIR / name
+    try:
+        if path.stat().st_size > LOG_KEEP:
+            data = path.read_bytes()[-LOG_KEEP // 2:]
+            path.write_bytes(data[data.find(b"\n") + 1:])
+    except OSError:
+        pass
+    return open(path, "a", encoding="utf-8")
+
+
+FEEDBACK_LOGS = ("live.log", "queue.log", "stenny.log")  # the recording, the final passes, the app's engine
+FEEDBACK_LOG_CHARS = 7800  # stenny.eu keeps 8000 characters of a log
+
+
+def recent_logs(limit: int = FEEDBACK_LOG_CHARS) -> str:
+    """The newest lines of each of Stenny's logs, under a heading each, together within `limit` characters (each
+    log gets an equal share, and the newest lines are the ones kept)."""
+    found = []
+    for name in FEEDBACK_LOGS:
+        try:
+            text = (paths.LOGS_DIR / name).read_text(encoding="utf-8", errors="replace").strip()
+        except OSError:
+            continue
+        if text:
+            found.append((name, text))
+    parts = []
+    for name, text in found:
+        head = f"== {name}\n"
+        share = limit // len(found) - len(head) - 2
+        if len(text) > share:
+            text = text[-share:]
+            text = text[text.find("\n") + 1:] if "\n" in text else text
+        parts.append(head + text)
+    return "\n\n".join(parts)
+
+
 def send_feedback(cfg, params: dict) -> dict:
     """Posts the message (and, if the user ticked the box, Stenny's version, the computer's model and the last lines
     of Stenny's log) to stenny.eu, like the Swift app did."""
@@ -192,11 +239,7 @@ def send_feedback(cfg, params: dict) -> dict:
         raise LiveError(tr("Write a few words first."))
     body = {"source": "app", "message": message, "contact": (params.get("contact") or "").strip()}
     if params.get("details"):
-        try:
-            log = (paths.LOGS_DIR / "stenny.log").read_text(encoding="utf-8").splitlines()[-40:]
-        except OSError:
-            log = []
-        body.update(version=version(), system=system_details(), log="\n".join(log))
+        body.update(version=version(), system=system_details(), log=recent_logs())
     # curl, not urllib: uv's Python doesn't reliably find macOS's certificates (see update.py); Windows 10 and 11
     # come with a curl.exe of their own
     curl = "curl.exe" if sys.platform == "win32" else "/usr/bin/curl"

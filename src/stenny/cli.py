@@ -396,6 +396,42 @@ def cmd_queue(args) -> None:
         raise
 
 
+STARTING_GRACE_S = 60  # "Make Final Transcript Now" marks the draft before its process takes the queue lock
+
+
+def unstick_finalizing(cfg) -> int:
+    """A final pass that died hard (a native crash, the process killed) can't put its lecture back to "queued": the
+    draft would say "finalizing" for good, with no button to start it again. When no final pass runs (the queue
+    lock is free), every waiting live job whose draft says "finalizing" goes back to "queued", unless the draft was
+    marked a moment ago (a pass that is just starting). Returns how many were put back."""
+    from .render import parse_frontmatter
+    pending = jobs.pending()
+    if not pending or jobs.queue_busy():
+        return 0
+    fixed = 0
+    for p in pending:
+        try:
+            job = json.loads(p.read_text(encoding="utf-8"))
+            if not job.get("live"):
+                continue
+            folder = json.loads(Path(job["live"]).read_text(encoding="utf-8"))["folder"]
+            course = cfg.event(job["course"]) if job.get("kind") == "event" else resolve_course(cfg, job["course"], job.get("lang"))
+            draft = draft_path(cfg, course, folder)
+            if not draft or time.time() - draft.stat().st_mtime < STARTING_GRACE_S:
+                continue
+            with draft.open(encoding="utf-8", errors="replace") as f:
+                if parse_frontmatter(f.read(4096)).get("status") != "finalizing":
+                    continue
+        except (OSError, ValueError, KeyError, SystemExit, ConfigError):
+            continue
+        mark_draft(draft, "queued")
+        fixed += 1
+    if fixed:
+        from .pipeline import log
+        log(f"{fixed} final pass(es) had stopped without finishing: waiting again")
+    return fixed
+
+
 def run_queue(cfg, args, items: list[Path], lecture: bool = False) -> None:
     """cmd_queue's work: `items` (just the one lecture's job), or with `lecture` False every pending job."""
     if args.scheduled:
@@ -645,6 +681,7 @@ def recover_sessions(cfg) -> list[dict]:
         mark_job_draft(cfg, job, "queued")
         log(f"Recovered the recording {pcm.name} of {d['course']}: final pass queued")
         recovered.append({"course": d["course"], "kind": kind})
+    unstick_finalizing(cfg)  # and a final pass that died: its lecture waits again instead of "finalizing" for good
     return recovered
 
 

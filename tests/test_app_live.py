@@ -113,3 +113,34 @@ def test_plugged_in_starts_the_queues_scheduled_run_only_with_passes_waiting(hom
     assert app_live.plugged_in(None, {}) == {"started": True}
     # the background job's own run: it checks power, the night hours and the lock itself
     assert FakeProcess.last.args[1:] == ["-m", "stenny", "queue", "run", "--scheduled"]
+
+
+def test_live_log_keeps_the_recording_before_and_feedback_sends_the_end_of_every_log(home, monkeypatch):
+    """A recording that died must still be in live.log after the next one starts (that one recovers it), and
+    Send Feedback's details carry the newest lines of each log, within what stenny.eu keeps."""
+    (home / "live.log").write_text("[02:46] the recording before\n", encoding="utf-8")
+    monkeypatch.setattr(subprocess, "Popen", FakeProcess)
+    app_live.start(None, {"course": "Calculus"})
+    live = (home / "live.log").read_text(encoding="utf-8")
+    assert live.startswith("[02:46] the recording before\n--- ") and live.rstrip().endswith("--course Calculus")
+
+    (home / "queue.log").write_text("".join(f"line {i}\n" for i in range(5000)), encoding="utf-8")
+    logs = app_live.recent_logs()
+    assert len(logs) <= app_live.FEEDBACK_LOG_CHARS
+    assert "== live.log\n[02:46] the recording before" in logs and logs.endswith("line 4999")
+    assert "\nline " in logs and "== stenny.log" not in logs  # no empty headings
+
+    sent = []
+    monkeypatch.setattr(app_live, "system_details", lambda: "a computer")
+    monkeypatch.setattr(subprocess, "run", lambda args, input=None, **kw: sent.append(json.loads(input))
+                        or SimpleNamespace(returncode=0, stdout=""))
+    app_live.send_feedback(None, {"message": "Stuck", "details": True})
+    assert sent[0]["log"] == logs
+
+
+def test_a_log_that_grew_too_long_keeps_its_newer_half(home):
+    (home / "queue.log").write_bytes(b"old line\n" * (app_live.LOG_KEEP // 9 + 10) + b"newest\n")
+    with app_live.open_log("queue.log") as log:
+        log.write("added\n")
+    text = (home / "queue.log").read_text(encoding="utf-8")
+    assert len(text) <= app_live.LOG_KEEP // 2 + 10 and text.startswith("old line\n") and text.endswith("newest\nadded\n")
