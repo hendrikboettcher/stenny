@@ -1,5 +1,6 @@
-//! Check for Updates… through Tauri's updater (#92): the newest release's `latest.json` on GitHub
-//! (tauri.conf.json, `plugins.updater`), its download checked against Stenny's updater key, then installed, and
+//! Check for Updates… through Tauri's updater (#92): the newest release's `latest.json`, from stenny.eu with the
+//! user's invite (closed alpha: tauri.conf.json `plugins.updater`, `check`), its download checked against Stenny's
+//! updater key, then installed, and
 //! Stenny opens again by itself. App and engine are one now (the engine is inside the app), so this updates both.
 //!
 //! - **Never in the middle of a recording or a final pass** (the engine's `update_blocked`): they run from the
@@ -142,7 +143,7 @@ pub fn check_updates(app: &AppHandle) {
             eprintln!("updater: {e}");
             alert(&app, &tr!("updates.failed"), &tr!("updates.installFailed", error = e), MessageDialogKind::Warning);
             // the install line still works, whatever went wrong here
-            if let Err(e) = crate::menubar::open_installer() {
+            if let Err(e) = crate::menubar::open_installer(&app) {
                 eprintln!("updater: the install line didn't open either: {e}");
             }
         }
@@ -151,13 +152,27 @@ pub fn check_updates(app: &AppHandle) {
 
 fn check(app: &AppHandle) -> Result<Option<Update>, String> {
     let engine = engine(app);
-    let updater = app
-        .updater_builder()
+    let mut builder = app.updater_builder();
+    // Stenny is invite-only during its closed alpha: stenny.eu hands out updates (latest.json and the downloads it
+    // points to) only with the invite the install line saved, sent along on both requests. Without one the check
+    // fails, and menubar::check_updates says why (the engine's update.check).
+    if let Some(code) = invite(&engine) {
+        builder = builder.header(INVITE_HEADER, code).map_err(|e| e.to_string())?;
+    }
+    let updater = builder
         // Windows: the plugin ends Stenny right after starting the setup program; the engine must not outlive it
         .on_before_exit(move || engine.stop())
         .build()
         .map_err(|e| e.to_string())?;
     tauri::async_runtime::block_on(updater.check()).map_err(|e| e.to_string())
+}
+
+/// The header stenny.eu reads the invite from (the website's api/update.js, api/download.js; update.py's HEADER)
+const INVITE_HEADER: &str = "X-Stenny-Invite";
+
+/// The saved invite (the engine keeps it in the keychain, update.py), if there is one
+fn invite(engine: &Engine) -> Option<String> {
+    engine.call("invite", json!({})).ok()?.get("code")?.as_str().map(String::from)
 }
 
 /// Why an update has to wait now, if it does: a recording or a final pass. When the engine can't say, it waits

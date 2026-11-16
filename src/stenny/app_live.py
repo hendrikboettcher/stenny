@@ -261,13 +261,24 @@ def send_feedback(cfg, params: dict) -> dict:
 
 
 def check_update(cfg, params: dict) -> dict:
-    """{"current", "latest", "update_available"} from GitHub's releases (update.check); params: the app's own
-    "app_version", so an app older than the engine is offered the update too."""
+    """{"current", "latest", "update_available"} from stenny.eu, with the saved invite (update.check); params: the
+    app's own "app_version", so an app older than the engine is offered the update too."""
     from . import update
     try:
         return update.check(params.get("app_version"))
-    except Exception as e:  # noqa: BLE001 — no internet, GitHub down
+    except update.InviteError as e:  # no invite saved, or a revoked one: say so, it's not the internet
+        raise LiveError(str(e)) from e
+    except Exception as e:  # noqa: BLE001 — no internet, stenny.eu down
         raise LiveError(tr("Couldn't check for updates. Check your internet connection and try again.")) from e
+
+
+def invite(cfg, params: dict) -> dict:
+    """The saved invite, for the app's updater (updater.rs sends it to stenny.eu) and its install line
+    (menubar::open_installer): {"code", "install_line"}, both null without one. Stenny is invite-only during its
+    closed alpha (update.py)."""
+    from . import update
+    code = update.invite()
+    return {"code": code, "install_line": update.install_line(code)}
 
 
 def update_blocked(cfg, params: dict) -> dict:
@@ -334,6 +345,6 @@ def give_consent(cfg, params: dict) -> dict:
 
 METHODS = {"status": status, "start": start, "command": command, "microphone": microphone, "devices": devices,
            "settings": settings, "match_courses": match_courses, "recover": recover, "consent": consent,
-           "give_consent": give_consent, "send_feedback": send_feedback, "check_update": check_update,
+           "give_consent": give_consent, "send_feedback": send_feedback, "check_update": check_update, "invite": invite,
            "update_blocked": update_blocked,
            "plugged_in": plugged_in}

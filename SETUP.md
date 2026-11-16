@@ -1,10 +1,10 @@
 # Setting up Stenny (instructions for Claude Code)
 
-**For the person reading this:** you don't have to do anything here yourself. Paste this sentence into Claude Code:
+**For the person reading this:** you don't have to do anything here yourself. Stenny is in a closed alpha and invite-only: you need the install line from your invite ([Invites](#invites-closed-alpha)). Give Claude Code this file and that line, for example:
 
-> Install Stenny on my Mac by following https://github.com/hendrikboettcher/stenny/blob/main/SETUP.md
+> Install Stenny on my Mac by following SETUP.md, with the install line from my invite: `curl -fsSL https://stenny.eu/i/<your-code> | zsh`
 
-(On a Windows PC: "Install Stenny on my PC by following …", the same link.)
+(On a Windows PC: "Install Stenny on my PC …", with the line for Windows.)
 
 Claude Code will go through the steps below with you and ask whenever it needs a decision or a click.
 
@@ -33,26 +33,30 @@ Start by greeting the user in three lines: Stenny records lectures from the menu
 
 ## 0. Get Stenny onto the Mac
 
-**First, Stenny's installer.** One script does steps 0–4 and 12 in one go: the app (with Stenny's engine inside it), the `stenny` command, the Stenny folder `~/Documents/Stenny`, the background job and the Whisper model; at the end it opens Stenny. It asks nothing. Run it in the background (the Whisper download takes 2–10 minutes) and say so in one line:
+**First, Stenny's installer.** Stenny is invite-only during its closed alpha: use the user's own install line from their invite. If they haven't given it to you, ask for it; without one, stop here and point them to https://stenny.eu, where they can ask for an invite. One script does steps 0–4 and 12 in one go: the app (with Stenny's engine inside it), the `stenny` command, the Stenny folder `~/Documents/Stenny`, the background job, the Whisper model and the invite, saved for Stenny's updates; at the end it opens Stenny. It asks nothing. Run it in the background (the Whisper download takes 2–10 minutes) and say so in one line:
 
 ```bash
-curl -fsSL https://github.com/hendrikboettcher/stenny/releases/latest/download/install.sh | zsh
+curl -fsSL https://stenny.eu/i/<their-code> | zsh
 ```
+
+- **It stops with `❌ This invite isn't valid`:** the code is mistyped or the invite was withdrawn. Check the line with the user; if it's right, they can ask for a new invite on https://stenny.eu.
 
 - **It ends with `✅ Stenny … is installed`:** go on with step 5. The config exists already: if they'd like another folder than `~/Documents/Stenny`, change `folder` in config.toml (`stenny where` shows where it is). Step 7's `open` is done too; the rest of step 7 isn't. The app is in `/Applications` (or `~/Applications` if `/Applications` isn't writable): that's "the app's path" below.
 - **It stops with `❌`:** tell the user what it says. If it's about the Mac itself, see step 1's *If it fails*. Otherwise do steps 0–4 below by hand.
 
-Download the newest release into a temporary folder (it's only needed until step 3):
+Download the newest release into a temporary folder (it's only needed until step 3), with the code from their install line (the part after `/i/`):
 
 ```bash
 rm -rf /tmp/stenny-setup && mkdir /tmp/stenny-setup
-curl -fL -o /tmp/stenny-setup/Stenny.zip https://github.com/hendrikboettcher/stenny/releases/latest/download/Stenny.zip
+echo "X-Stenny-Invite: <their-code>" | curl -fL -H @- -o /tmp/stenny-setup/Stenny.zip "https://stenny.eu/api/download?asset=Stenny.zip"
 ditto -x -k /tmp/stenny-setup/Stenny.zip /tmp/stenny-setup
 ```
 
+After step 3, save the invite so Stenny finds its updates: `echo "<their-code>" | stenny invite --stdin`.
+
 **Check:** `ls /tmp/stenny-setup/stenny.noindex/app/build.noindex/Stenny.app/Contents/Resources/engine/bin/python3` finds it.
 
-Stenny's app is signed with its author's own certificate, not one from Apple. Say so in one sentence, and that the code is open at github.com/hendrikboettcher/stenny.
+Stenny's app is signed with its author's own certificate, not one from Apple. Say so in one sentence.
 
 **If they already downloaded Stenny in a browser,** don't use that copy: macOS marks it as downloaded and refuses to open the app. Downloading it here, as above, doesn't.
 
@@ -291,7 +295,7 @@ Say clearly: **✅ Setup is finished.** Then, short:
 - New versions: Stenny looks for them by itself; when there is one, the bottom of its window says *Update to …* (otherwise *Check for Updates…*) ▸ *Update Now*: Stenny downloads the new version, installs it and opens again by itself (never during a recording or a final transcript). No Terminal needed.
 - Docs: https://stenny.eu/docs/quickstart/
 
-**Stenny is made to be built on.** It's open source (github.com/hendrikboettcher/stenny). Whenever they want something different, they can reopen this chat and ask in plain language: "add a course", "change my pause shortcut". For a new feature, Claude Code can get Stenny's code with `git clone` and work on it there (desktop/README.md says how to build the app); that needs Apple's Command Line Tools, which Claude Code can set up then.
+**Stenny is made to be adjusted.** Whenever they want something different, they can reopen this chat and ask in plain language: "add a course", "change my pause shortcut".
 
 **Feedback is very welcome:** *Send Feedback…* at the bottom of Stenny's window, or the form at https://stenny.eu.
 
@@ -348,29 +352,31 @@ Tell the user in one sentence how fast transcription will be: with an NVIDIA car
 **First, Stenny's installer.** It does W2–W5 and W11 in one go (the app through its setup program, with Stenny's engine inside it and without the *"Windows protected your PC"* warning, the `stenny` command, the Stenny folder `Documents\Stenny`, the task for final transcripts, the Whisper model) and starts Stenny. Run it in the background and say so:
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command 'irm https://github.com/hendrikboettcher/stenny/releases/latest/download/install.ps1 | iex'
+powershell -NoProfile -ExecutionPolicy Bypass -Command 'irm https://stenny.eu/i/<their-code>/win | iex'
 ```
+
+As on a Mac, that's the user's own line from their invite; without one, stop and point them to https://stenny.eu.
 
 If it ends with `Stenny … is installed`, go on with W6 (the config exists: for another folder change `folder` in config.toml). If it stops with `X`, tell the user what it says and do W2–W5 below by hand.
 
 The Windows app comes as a setup program, `Stenny_<version>_x64-setup.exe`, attached to the release:
 
 ```bash
-powershell -NoProfile -Command '(Invoke-RestMethod https://api.github.com/repos/hendrikboettcher/stenny/releases/latest).assets | ? name -like "*-setup.exe" | % browser_download_url'
+powershell -NoProfile -Command '(Invoke-RestMethod https://stenny.eu/api/release -Headers @{ "X-Stenny-Invite" = "<their-code>" }).assets | ? name -like "*-setup.exe" | % browser_download_url'
 ```
 
-**Check:** it prints a link. If it prints nothing, the newest release's Windows app is still being built: wait a few minutes and try again.
+**Check:** it prints a link (one on stenny.eu, which wants the invite too: add `-H "X-Stenny-Invite: <their-code>"` to the download below). After W4, save the invite for Stenny's updates: `echo "<their-code>" | stenny invite --stdin`. If it prints nothing, the newest release's Windows app is still being built: wait a few minutes and try again.
 
 ## W3. Install the app
 
 Download the setup program and start it:
 
 ```bash
-curl -fL -o "$USERPROFILE/Downloads/Stenny-setup.exe" "<the link>"
+curl -fL -H "X-Stenny-Invite: <their-code>" -o "$USERPROFILE/Downloads/Stenny-setup.exe" "<the link>"
 cmd //c start "" "$USERPROFILE\Downloads\Stenny-setup.exe"
 ```
 
-Stenny isn't signed with a certificate yet, so Windows shows **"Windows protected your PC"**. Tell the user to click **More info ▸ Run anyway**, and that the code is open at github.com/hendrikboettcher/stenny. The installer speaks English or German (Windows' language), installs for this user only (no administrator) into `%LOCALAPPDATA%\Stenny`, next to Stenny's own data, and sets up Microsoft's WebView2 if the PC lacks it. Its uninstaller removes only the app's own files, never recordings. They can uncheck *Run Stenny* at the end; it opens in W10.
+Stenny isn't signed with a certificate yet, so Windows shows **"Windows protected your PC"**. Tell the user to click **More info ▸ Run anyway**. The installer speaks English or German (Windows' language), installs for this user only (no administrator) into `%LOCALAPPDATA%\Stenny`, next to Stenny's own data, and sets up Microsoft's WebView2 if the PC lacks it. Its uninstaller removes only the app's own files, never recordings. They can uncheck *Run Stenny* at the end; it opens in W10.
 
 **Check:** `"$LOCALAPPDATA/Stenny/ffmpeg.exe" -version` prints a version and `ls "$LOCALAPPDATA/Stenny/engine/python.exe"` finds the engine. If they picked another folder in the installer, both are in that one ("the app's folder" below).
 
@@ -437,7 +443,7 @@ Step 12. If `stenny schedule install` says it can't do that on Windows yet, skip
 
 ## W12. Let Claude read the transcripts
 
-As in step 13, with the Claude desktop app for Windows (claude.ai/download). The extension comes with the app as `%LOCALAPPDATA%\Stenny\Stenny.mcpb`; without the app, download it: `curl -fL -o "$USERPROFILE/Downloads/Stenny.mcpb" https://github.com/hendrikboettcher/stenny/releases/latest/download/Stenny.mcpb`.
+As in step 13, with the Claude desktop app for Windows (claude.ai/download). The extension comes with the app as `%LOCALAPPDATA%\Stenny\Stenny.mcpb`; without the app, download it: `curl -fL -H "X-Stenny-Invite: <their-code>" -o "$USERPROFILE/Downloads/Stenny.mcpb" "https://stenny.eu/api/download?asset=Stenny.mcpb"`.
 
 Claude on Windows reads a `.mcpb` it's handed only when it starts: a running Claude just brings its window up and ignores the file. So the app's **Connect** starts Claude with the file when Claude isn't running; if it is, the app asks the user to close Claude (*Close Claude. Stenny opens it again.*) and opens it with the file once it's gone. Claude then shows its Install window, and the user clicks **Install**. Without the app, do the same: have them quit Claude, then run `"$LOCALAPPDATA/AnthropicClaude/claude.exe" "<folder>/Stenny.mcpb"`. Claude from the Microsoft Store can't be started with a file (and its own Install extension is reported broken, anthropics/claude-code#102035): the app then shows **Didn't work?** with **Tell us**, which sends a report. **Check:** as in step 13.
 
@@ -462,3 +468,15 @@ As on a Mac: the bottom of Stenny's window says *Update to …* when there is a 
 | `ffmpeg` not found | `%LOCALAPPDATA%\Stenny\ffmpeg.exe` (or in the folder the installer was given) should exist; otherwise W3. |
 | Transcription is very slow | Without an NVIDIA card (and its CUDA libraries) the processor does it: about as long as the lecture. That's expected. |
 | Anything else | Logs are in `%LOCALAPPDATA%\Stenny\Logs\`. Read the end of the newest one. |
+
+# Invites (closed alpha)
+
+**For Stenny's author, and for anyone wondering how the install line works.** During the closed alpha the repo and its releases are private, and only stenny.eu hands Stenny out: to people with an invite, and only Hendrik makes invites. Invited users can't make invites. The website's side is in the stenny-website repo (`api/`, `lib/`, `admin/`).
+
+- **An invite** is a code like `42-k7m2q9x4c3v8b6n5`: the number of an issue labelled `invite` in the private feedback repo, then 16 random characters. The issue keeps only the code's SHA-256, so the repo doesn't hold working codes. Closing the issue revokes the invite (within a minute); reopening it gives it back. Each run of its install line adds a comment to the issue.
+- **Making one:** https://stenny.eu/admin/, with the admin password (`ADMIN_TOKEN` in Vercel's env vars, never in a repo). It shows the invite's two install lines and a message to send, in English or German, and lists everyone invited, with Revoke. The code is shown only once.
+- **The install line** `curl -fsSL https://stenny.eu/i/<code> | zsh` (Windows: `irm https://stenny.eu/i/<code>/win | iex`) gets the newest release's `install.sh` / `install.ps1` with the code set on its first line. A wrong or revoked code gets a script that only says so. The old lines (`stenny.eu/install.sh`, `install.ps1`) say Stenny is invite-only.
+- **Downloads** (`/api/download?asset=…`, `/api/release`) want the code in the `X-Stenny-Invite` header and redirect to GitHub's short-lived signed link for the file, so nothing big passes through Vercel.
+- **Updates:** the install scripts save the code with `stenny invite --stdin` (in the Keychain or Windows' Credential Manager, `src/stenny/update.py`). The app's updater asks `https://stenny.eu/api/update` with the code in the same header (`desktop/src-tauri/src/updater.rs`); the answer is the release's `latest.json` with its downloads behind the gateway, still checked against Stenny's updater key. `stenny update` asks the same place. A revoked invite gets no more updates; Stenny keeps working.
+- **Vercel env vars:** `ADMIN_TOKEN` (at least 20 characters), `RELEASES_TOKEN` (a fine-grained GitHub token with Contents: read-only on the Stenny repo), `RELEASES_REPO` (default `hendrikboettcher/stenny`), and the existing `FEEDBACK_TOKEN` / `FEEDBACK_REPO` (invites and invite requests are issues there).
+- **What it can't do:** someone with Stenny can pass on the app they downloaded, or their line until it's revoked. Invites are personal and visible, so that shows up in the issue's install comments.

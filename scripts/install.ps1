@@ -1,5 +1,10 @@
-# Installs Stenny on a Windows PC, or updates it, with one line in PowerShell and no questions:
-#   irm https://github.com/hendrikboettcher/stenny/releases/latest/download/install.ps1 | iex
+# Installs Stenny on a Windows PC, or updates it, with one line in PowerShell and no questions. Stenny is invite-only
+# during its closed alpha, so the line is the invite's own:
+#   irm https://stenny.eu/i/<code>/win | iex
+# stenny.eu answers with this script and $env:STENNY_INVITE set on its first line (the stenny-website repo,
+# api/install.js); it finds and downloads the setup program on stenny.eu with the code (api/release.js,
+# api/download.js), saves the code for Stenny's updates (`stenny invite`, in the Credential Manager) and clears
+# $env:STENNY_INVITE again at the end.
 #
 # 1. checks the PC (64-bit Intel/AMD, Windows 10 1809+, 5 GB free) and that nothing is being recorded
 # 2. downloads the newest release's setup program
@@ -13,7 +18,8 @@
 # your PC"). Speaks German when Windows does.
 #
 # For testing: $env:STENNY_TAG = "v0.5.14" installs that release instead of the newest (0.5.12 or newer: the first
-# with the engine inside the app).
+# with the engine inside the app); $env:STENNY_SITE = "<url>" asks a preview deployment of stenny.eu instead.
+# Only ASCII in here: Windows PowerShell 5.1 reads what irm fetched in the console's old code page.
 
 # One script block that runs on the last line, so a download cut off halfway runs nothing.
 & {
@@ -31,11 +37,19 @@
     $ProgressPreference = 'SilentlyContinue'   # Invoke-WebRequest's progress bar makes big downloads very slow
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
-    $Repo = 'hendrikboettcher/stenny'
+    $Site = if ($env:STENNY_SITE) { $env:STENNY_SITE.TrimEnd('/') } else { 'https://stenny.eu' }
+    $Invite = "$env:STENNY_INVITE".Trim()
     $de = (Get-UICulture).TwoLetterISOLanguageName -eq 'de'
     function Say($en, $deText) { if ($de) { Write-Host $deText } else { Write-Host $en } }
     function Step($en, $deText) { Write-Host ''; if ($de) { Write-Host $deText -ForegroundColor Cyan } else { Write-Host $en -ForegroundColor Cyan } }
     function Fail($en, $deText) { Write-Host ''; if ($de) { Write-Host "X $deText" -ForegroundColor Red } else { Write-Host "X $en" -ForegroundColor Red } }
+
+    # 0. The invite: the line from stenny.eu set it
+    if (-not $Invite) {
+        Fail "Stenny is invite-only during its closed alpha. Run the install line from your invite, or ask for one on $Site" "Stenny gibt es in der geschlossenen Alpha nur mit Einladung. Fuehr die Installationszeile aus deiner Einladung aus, oder frag auf $Site nach einer."
+        return
+    }
+    $headers = @{ 'X-Stenny-Invite' = $Invite }
 
     # 1. The PC
     Step 'Checking this PC...' 'Pruefe den PC...'
@@ -66,8 +80,19 @@
 
     # 2. The release's setup program
     Step 'Downloading Stenny...' 'Lade Stenny herunter...'
-    $api = "https://api.github.com/repos/$Repo/releases/" + $(if ($env:STENNY_TAG) { "tags/$env:STENNY_TAG" } else { 'latest' })
-    $release = Invoke-RestMethod $api
+    $api = "$Site/api/release" + $(if ($env:STENNY_TAG) { "?tag=$env:STENNY_TAG" } else { '' })
+    try {
+        $release = Invoke-RestMethod $api -Headers $headers -UseBasicParsing
+    } catch {
+        $status = 0
+        if ($_.Exception.Response) { $status = [int]$_.Exception.Response.StatusCode }
+        if ($status -eq 403) {
+            Fail "This invite isn't valid (any more). Ask for a new one on $Site" "Diese Einladung gilt nicht (mehr). Frag auf $Site nach einer neuen."
+        } else {
+            Fail "Stenny couldn't be found on $Site ($($_.Exception.Message)). Please try again in a few minutes." "Stenny war auf $Site nicht zu finden ($($_.Exception.Message)). Versuch es bitte in ein paar Minuten noch mal."
+        }
+        return
+    }
     $version = $release.tag_name.TrimStart('v')
     $setupAsset = $release.assets | Where-Object { $_.name -like '*-setup.exe' } | Select-Object -First 1
     if (-not $setupAsset) {
@@ -78,7 +103,7 @@
     New-Item -ItemType Directory $work | Out-Null
     try {
         $setup = Join-Path $work $setupAsset.name
-        Invoke-WebRequest $setupAsset.browser_download_url -OutFile $setup -UseBasicParsing
+        Invoke-WebRequest $setupAsset.browser_download_url -Headers $headers -OutFile $setup -UseBasicParsing
 
         # Quit Stenny: Windows won't replace the app (and the engine inside it) while they run
         $running = Get-CimInstance Win32_Process | Where-Object {
@@ -118,6 +143,9 @@
     if (-not ((Invoke-Stenny where --json) -match '"error": null')) { Invoke-Stenny init | Out-Null }
     Invoke-Stenny schedule install | Out-Null
     if ($LASTEXITCODE -ne 0) { Say "! The task for final transcripts couldn't be added." '! Die Aufgabe fuer finale Transkripte liess sich nicht anlegen.' }
+    # The invite, for Stenny's updates (in the Credential Manager, through the engine; on stdin, not a command line)
+    $Invite | Invoke-Stenny invite --stdin | Out-Null
+    if ($LASTEXITCODE -ne 0) { Say "! Your invite couldn't be saved: Stenny won't find updates. Run this line again later." '! Deine Einladung liess sich nicht speichern: Stenny findet keine Updates. Fuehr die Zeile spaeter noch mal aus.' }
 
     # 5. Stenny, then Whisper in the foreground, so its progress shows
     # Says it's open only if it was opened: otherwise where to find it
@@ -146,5 +174,6 @@
         try { [Console]::OutputEncoding = $savedEncoding } catch {}
         $env:PYTHONUTF8 = $savedPythonUtf8
         $env:PYTHONDONTWRITEBYTECODE = $savedNoBytecode
+        Remove-Item Env:STENNY_INVITE -ErrorAction SilentlyContinue   # irm | iex set it in the user's own window
     }
 }

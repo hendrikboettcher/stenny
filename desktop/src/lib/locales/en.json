@@ -486,6 +486,7 @@
   "updates.alreadyDownloading": "Stenny is already downloading the update. It installs it and opens again by itself.",
   "updates.installFailed": "The update couldn't be installed here ({error}). A window with the install line opens instead: it installs the new version the way Stenny was installed.",
   "updates.notNow": "Not Now",
+  "updates.noInvite": "This Stenny has no invite saved. Run the install line from your invite again: it updates Stenny and saves the invite.",
 
   "error.noAgentPdf": "The PDF couldn't be made: stenny-agent is missing.",
   "error.pdf": "The PDF couldn't be made.",

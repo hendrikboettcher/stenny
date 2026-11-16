@@ -1,6 +1,6 @@
 #!/bin/zsh
 # Removes Stenny from a Mac with one line in Terminal:
-#   curl -fsSL https://github.com/hendrikboettcher/stenny/releases/latest/download/uninstall.sh | zsh
+#   curl -fsSL https://stenny.eu/uninstall.sh | zsh   (needs no invite: the stenny-website repo, api/install.js)
 #
 # 1. stops if Stenny is recording or making a final transcript, or runs from a git checkout (a developer's Mac)
 # 2. quits Stenny
