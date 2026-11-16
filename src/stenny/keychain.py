@@ -58,10 +58,13 @@ def get_secret(account: str) -> str | None:
 def save_secret(account: str, secret: str, label: str) -> None:
     try:
         if sys.platform == "darwin":
-            # -w as the last option reads the password from stdin, asked twice; -U replaces an existing one
+            # -w as the last option reads the password from stdin, asked twice; -U replaces an existing one. In its
+            # own session: with a terminal attached (install.sh's `stenny invite --stdin`, `stenny` typed by hand),
+            # security asks the terminal instead of reading stdin, and waited there until the timeout.
             p = subprocess.run([SECURITY, "add-generic-password", "-U", "-s", SERVICE, "-a", account,
                                 "-l", label, "-w"],
-                               input=f"{secret}\n{secret}\n", capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10)
+                               input=f"{secret}\n{secret}\n", capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
+                               start_new_session=True)
             if p.returncode != 0:
                 raise KeychainError(p.stderr.strip() or f"security exited with {p.returncode}")
             return
