@@ -65,6 +65,7 @@ export interface ConnectorStatus {
   version: string | null;
   file: string | null;
   code: { available: boolean; added: boolean };
+  used: string | null;  // when Claude last read something through the connector (ISO time): it's connected
 }
 // The calendar, as Settings ▸ Calendar and the setup card show it (src/stenny/calendars.py): counts and names only.
 // "ask": macOS hasn't been asked yet; "unknown": Stenny couldn't tell; null: not this system's (Windows has no

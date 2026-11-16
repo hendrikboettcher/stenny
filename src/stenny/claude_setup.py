@@ -25,6 +25,7 @@ import sys
 import tempfile
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 
 from . import keychain, paths
@@ -265,8 +266,12 @@ def _start_claude_with(exe: Path, file: Path) -> None:
 
 
 def installed_extension(data: Path | None = None) -> dict | None:
-    """The Stenny extension Claude Desktop has installed: {"id", "version", "enabled"}, else None."""
-    data = data or claude_data_dir()
+    """The Stenny extension Claude Desktop has installed: {"id", "version", "enabled"}, else None. Without `data`,
+    in every folder a Claude app keeps its data in: on Windows %APPDATA%\\Claude and the app package's own can both
+    be there, and the extension may be in the one claude_data_dir() doesn't pick (the setup checklist then never
+    ticked "Connect Claude", though Claude had Stenny)."""
+    if data is None:
+        return next((ext for d in _claude_config_dirs() if (ext := installed_extension(d))), None)
     for folder in sorted((data / "Claude Extensions").glob("*")):
         try:
             manifest = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
@@ -386,6 +391,27 @@ def _claude_code_has_it() -> bool:
     return "stenny" in (data.get("mcpServers") or {})
 
 
+CONNECTOR_USED = "connector-used.json"  # in the data place: when Claude last read something through the connector
+
+
+def mark_connector_used() -> None:
+    """`stenny mcp` answered a tool call: Claude really talks to Stenny. Never an error that could stop the answer."""
+    try:
+        paths.DATA_DIR.mkdir(parents=True, exist_ok=True)
+        (paths.DATA_DIR / CONNECTOR_USED).write_text(
+            json.dumps({"at": datetime.now().isoformat(timespec="seconds")}), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def connector_used() -> str | None:
+    """When Claude last used the connector (ISO time), None if it never did."""
+    try:
+        return json.loads((paths.DATA_DIR / CONNECTOR_USED).read_text(encoding="utf-8")).get("at")
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
 def connector_status(cfg) -> dict:
     """`via`: how Claude Desktop has it, "extension" (Stenny.mcpb) or "config" (an entry in
     claude_desktop_config.json, from Stenny 0.5.7 on Windows)."""
@@ -400,6 +426,8 @@ def connector_status(cfg) -> dict:
         "version": ext and ext["version"],
         "file": str(file) if file else None,
         "code": {"available": find_claude() is not None, "added": _claude_code_has_it()},
+        # Claude has read through it: connected, whatever Stenny can or can't see of Claude's own settings
+        "used": connector_used(),
     }
 
 

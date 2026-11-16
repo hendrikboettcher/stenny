@@ -245,10 +245,15 @@ def test_suggested_corrections_are_taken_as_given_and_never_beat_the_students(cf
         connector.suggest_glossary_corrections(cfg, "Some Talk", ["a b → c"])
 
 
-def test_mcp_server_serves_the_tools(cfg):
+def test_mcp_server_serves_the_tools(cfg, monkeypatch):
     from mcp import Client
 
+    from stenny import claude_setup, mcp_server
     from stenny.mcp_server import build
+
+    monkeypatch.setattr(mcp_server, "_marked", False)
+    (claude_setup.paths.DATA_DIR / claude_setup.CONNECTOR_USED).unlink(missing_ok=True)
+    assert claude_setup.connector_used() is None
 
     server = build()
     assert "slide" not in server.instructions.casefold()
@@ -274,3 +279,6 @@ def test_mcp_server_serves_the_tools(cfg):
     assert not hit.is_error and "Calculus, Lecture 1 (2026-10-20) [0:25:00]" in hit.content[0].text
     assert bad.is_error and "Known: Calculus" in bad.content[0].text
     assert "study Calculus" in prompt.messages[0].content.text
+    # Claude really read through it: the setup checklist ticks "Connect Claude", wherever Claude keeps the extension
+    from stenny import claude_setup
+    assert claude_setup.connector_used()

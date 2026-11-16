@@ -85,7 +85,8 @@
   }
 
   const aiDone = (ai?: AiStatus) => ai?.state === "ready" || ai?.state === "off";
-  const claudeDone = (c?: ConnectorStatus) => !!c && (c.installed || c.code.added);
+  // installed in Claude Desktop or Claude Code, or Claude has already read through it (wherever Claude put it)
+  const claudeDone = (c?: ConnectorStatus) => !!c && (c.installed || c.code.added || !!c.used);
   // Stenny can read a calendar (the Mac's, or one by link), or the reminders are switched off, as the user chose
   const calendarDone = (c?: CalendarStatus) => !!c && (c.connected || !c.reminders);
   let courseCount = $derived(courses ?? status?.courses ?? 0);

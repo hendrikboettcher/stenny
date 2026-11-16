@@ -417,3 +417,17 @@ def test_real_power_memory_and_keep_awake():
     awake.terminate()
     awake.join(5)
     assert not awake.is_alive()
+
+
+def test_the_extension_is_found_in_the_app_packages_folder_too(claude_windows, monkeypatch):
+    """Claude from the Store keeps its extensions in its package's folder; a %APPDATA%\\Claude folder can be there
+    as well (an older Claude, Stenny 0.5.7's config). Stenny counts as connected wherever Claude put it."""
+    (claude_windows.roaming / "Claude").mkdir(parents=True)
+    package = claude_windows.local / "Packages/Claude_pzs8sxrjxfjjc/LocalCache/Roaming/Claude"
+    ext = package / "Claude Extensions/local.mcpb.hendrik-boettcher.stenny"
+    ext.mkdir(parents=True)
+    assert claude_setup.installed_extension() is None
+    (ext / "manifest.json").write_text('{"name": "stenny", "version": "0.5.14"}', encoding="utf-8")
+    assert claude_setup.installed_extension() == {"id": ext.name, "version": "0.5.14", "enabled": True}
+    monkeypatch.setattr(claude_setup, "find_claude", lambda: None)
+    assert claude_setup.connector_status(None)["installed"] is True
