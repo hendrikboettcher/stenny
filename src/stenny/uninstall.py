@@ -13,7 +13,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from . import calendars, claude_setup, jobs, keychain, launcher, paths, update
+from . import calendars, claude_setup, jobs, keychain, launcher, paths
 from . import config as config_mod
 from .llm.claude_code import find_claude
 
@@ -98,8 +98,8 @@ def run(act: bool) -> dict:
         except OSError as e:
             problems.append(f"{launcher.path()} couldn't be removed: {e}")
 
-    # saved secrets: the API key, every calendar link and the invite (update.py)
-    accounts = [keychain.ACCOUNT, update.INVITE_ACCOUNT, *(calendars._account(link["id"]) for link in calendars._load())]
+    # saved secrets: the API key and every calendar link
+    accounts = [keychain.ACCOUNT, *(calendars._account(link["id"]) for link in calendars._load())]
     for account in accounts:
         if not act:
             continue
@@ -107,7 +107,7 @@ def run(act: bool) -> dict:
             keychain.delete_secret(account)
         except keychain.KeychainError as e:
             problems.append(f"A saved secret couldn't be removed: {e}")
-    removed.append("saved API key, calendar links and invite")
+    removed.append("saved API key and calendar links")
 
     # what can be made again
     model = cfg.model if cfg else config_mod.Config.model

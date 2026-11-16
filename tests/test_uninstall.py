@@ -41,7 +41,7 @@ def test_removes_what_can_be_made_again_and_lists_settings_and_recordings(places
     assert (places.data_dir / "Recordings" / "file").exists()  # the script trashes it, not the engine
     assert result["folder"] == str(folder)
     assert (folder / "Course" / "Lecture.md").read_text(encoding="utf-8") == "mine"
-    assert deleted == [keychain.ACCOUNT, "invite", "calendar-link-abc"]  # the API key, the invite, each link
+    assert deleted == [keychain.ACCOUNT, "calendar-link-abc"]
     assert result["problems"] == []
 
 

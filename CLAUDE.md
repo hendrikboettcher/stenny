@@ -83,8 +83,7 @@ src/stenny/
                   written at each start, never over another `stenny`
   old_engine.py   the engine older setups installed with `uv tool install -e` (until 0.5.13), removed at the app's
                   start (`migrate.on_start`): only the setup's own, never during a recording or a final pass
-  update.py       `stenny update`: only checks (the app updates itself, desktop/src-tauri/src/updater.rs); the invite
-                  (`stenny invite`, keychain) that stenny.eu wants for every update and download (closed alpha)
+  update.py       `stenny update`: only checks (the app updates itself, desktop/src-tauri/src/updater.rs)
   uninstall.py    `stenny uninstall`: the background job, Claude Code's connector, saved secrets, logs, cache and the
                   Whisper model removed; settings and data listed for the Trash; never the Stenny folder.
                   scripts/uninstall.sh / uninstall.ps1 run it, then remove the app and the engine
@@ -143,9 +142,6 @@ Stenny folder (`folder` in config.toml, default `~/Documents/Stenny`, may be ins
 - **The app speaks English and German.** New user-facing text goes into both `desktop/src/lib/locales/*.json`
   (Svelte `t()`, Rust `tr!`) or, for the engine, `tr()` with an entry in `i18n.DE`; German with "du" and the terms
   in desktop/README.md ("Language"). Vault content (transcripts, summaries, file names) is never translated.
-- **Invite-only during the closed alpha.** The repo and its releases are private; only stenny.eu hands Stenny out,
-  to people with an invite (SETUP.md, "Invites"; the stenny-website repo's `api/`). Nothing users run may fetch from
-  GitHub directly: installs, updates and downloads go through stenny.eu with the invite (`X-Stenny-Invite` header).
 - **One branch, `main`.** Work on a short branch, open a pull request into `main`; CI's quick tier (engine tests and
   the app compiled on macOS and Windows, English/German checked by tests/test_i18n.py) must pass before merging. A
   release is a tag `vX.Y.Z` on main, which also runs the full tier (installers built on both systems). There is no

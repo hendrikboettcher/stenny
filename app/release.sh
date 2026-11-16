@@ -82,13 +82,12 @@ if [[ "${1:-}" == "--publish" ]]; then
     # How to update comes first: Stenny's Check for Updates… led here before it could update by itself (up to
     # 0.5.7), and the files below can't simply be downloaded (the engine and the app must be updated together, and a
     # browser download is blocked). gh puts these notes before the generated list of changes.
-    # Stenny is invite-only during its closed alpha: the repo is private, and stenny.eu hands this release out to
-    # invited users (the stenny-website repo, api/install.js, api/update.js), the app's updater included.
+    repo_url="https://github.com/hendrikboettcher/stenny/releases/latest/download"
     notes="$(cat <<NOTES
-**Update or install:** in Stenny, *Check for Updates…* ▸ *Update Now*, or run the line from your invite again:
+**Update or install:** in Stenny, *Check for Updates…* ▸ *Update Now*, or run the line that installed it again:
 
-- **Mac**, in Terminal: \`curl -fsSL https://stenny.eu/i/<your-code> | zsh\`
-- **Windows**, in PowerShell: \`irm https://stenny.eu/i/<your-code>/win | iex\`
+- **Mac**, in Terminal: \`curl -fsSL $repo_url/install.sh | zsh\`
+- **Windows**, in PowerShell: \`irm $repo_url/install.ps1 | iex\`
 
 It updates the engine and the app together and keeps your lectures. Please don't download the files below by hand: the line does that.
 

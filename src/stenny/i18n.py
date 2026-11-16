@@ -208,19 +208,6 @@ DE = {
         "stenny.eu ist nicht erreichbar. Prüf bitte deine Internetverbindung und versuch es noch einmal.",
     "Couldn't check for updates. Check your internet connection and try again.":
         "Die Suche nach Updates ist fehlgeschlagen. Prüf bitte deine Internetverbindung und versuch es noch einmal.",
-    "Couldn't reach stenny.eu: {error}": "stenny.eu ist nicht erreichbar: {error}",
-    "That isn't an invite code. It looks like 42-abcdefghjkmnpqrs, at the end of your install line.":
-        "Das ist kein Einladungscode. Er sieht so aus: 42-abcdefghjkmnpqrs, am Ende deiner Installationszeile.",
-    "This Stenny has no invite saved, so it can't look for updates. Run the install line from your invite again.":
-        "In diesem Stenny ist keine Einladung gespeichert, deshalb kann es nicht nach Updates suchen. Führ die "
-        "Installationszeile aus deiner Einladung noch einmal aus.",
-    "stenny.eu doesn't accept this Stenny's invite any more, so there are no updates. Stenny keeps working as it is.":
-        "stenny.eu nimmt die Einladung dieses Stenny nicht mehr an, deshalb gibt es keine Updates. Stenny läuft so "
-        "weiter, wie es ist.",
-    "In Stenny: Check for Updates…. Or run the install line from your invite again.":
-        "In Stenny: Nach Updates suchen …. Oder führ die Installationszeile aus deiner Einladung noch einmal aus.",
-    "In Stenny: Check for Updates…. Or run the install line again: {line}":
-        "In Stenny: Nach Updates suchen …. Oder führ die Installationszeile noch einmal aus: {line}",
 
     # Settings ▸ Transcripts & AI and Use with Claude (claude_setup.py)
     "Anthropic couldn't be reached. Check your internet connection.":

@@ -12,21 +12,19 @@ Stenny records your lectures on your Mac or Windows laptop and transcribes them 
 
 ## Install
 
-Stenny is in a **closed alpha: invite only.** Ask for an invite on [stenny.eu](https://stenny.eu/). Each invite comes with its own install line:
-
 **Mac** (Apple chip, macOS 14.4 or newer): in Terminal, run
 
 ```bash
-curl -fsSL https://stenny.eu/i/<your-code> | zsh
+curl -fsSL https://github.com/hendrikboettcher/stenny/releases/latest/download/install.sh | zsh
 ```
 
 **Windows** (10 or 11, 64-bit Intel or AMD): in PowerShell, run
 
 ```powershell
-irm https://stenny.eu/i/<your-code>/win | iex
+irm https://github.com/hendrikboettcher/stenny/releases/latest/download/install.ps1 | iex
 ```
 
-It asks nothing, needs no password and takes about 5 minutes, mostly downloading the speech model (1.6 GB). Stenny then updates itself with the invite the line saved; running the line again works too. How invites work (and how to make one): [SETUP.md](SETUP.md#invites-closed-alpha). What it sets up, and how to remove it: [Installation](https://stenny.eu/docs/installation/). The scripts are [install.sh](scripts/install.sh) and [install.ps1](scripts/install.ps1).
+It asks nothing, needs no password and takes about 5 minutes, mostly downloading the speech model (1.6 GB). Run it again to update. What it sets up, and how to remove it: [Installation](https://stenny.eu/docs/installation/). The scripts are [install.sh](scripts/install.sh) and [install.ps1](scripts/install.ps1).
 
 ## Development
 
