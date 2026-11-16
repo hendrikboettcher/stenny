@@ -31,6 +31,8 @@ struct Prefs {
     microphone: Option<String>, // None: the system's input device
     #[serde(default)]
     login_item: bool,           // added itself to the login items once; after that it's the user's choice
+    #[serde(default)]
+    announced: Vec<String>,     // calendar events already announced (`event_key`), so a restart doesn't ask again
 }
 
 #[derive(Default)]
@@ -51,7 +53,6 @@ struct State {
     lists_loaded: Option<Instant>,
     suggestion: Option<Suggestion>,          // the calendar's lecture on now (or within 10 minutes)
     course_for_title: HashMap<String, Option<String>>,
-    notified: HashSet<String>,               // calendar events already announced (title and start)
     #[cfg_attr(windows, allow(dead_code))]
     agent_events: Vec<Value>,                // macOS: the Mac's own calendars' events on now (stenny-agent)
     link_events: Vec<Value>,                 // the linked calendars' events on now (the engine, calendars.py)
@@ -1133,6 +1134,7 @@ fn calendar(app: &AppHandle) {
         }
     }
     let mut announce = None;
+    let mut remembered = None;
     {
         let mut st = bar.0.lock().unwrap();
         let first = events.iter().find_map(|e| {
@@ -1142,10 +1144,14 @@ fn calendar(app: &AppHandle) {
         st.suggestion = first.as_ref().map(|(s, _)| s.clone());
         let busy = !matches!(str_of(&st.status, "state"), "idle" | "");
         if let Some((sg, key)) = first {
-            if !busy && !st.no_reminders && st.notified.insert(key.clone()) {
+            if !busy && !st.no_reminders && remember_announced(&mut st.prefs.announced, &key, now()) {
                 announce = Some((key, sg));
+                remembered = Some(st.prefs.clone());
             }
         }
+    }
+    if let Some(prefs) = remembered {
+        save_prefs(app, &prefs); // once per lecture, also when Stenny is quit and opened again while it's on
     }
     // a notification of the app's own with Start Recording: macos_notifications.rs, windows_agent.rs
     #[cfg(target_os = "macos")]
@@ -1158,6 +1164,22 @@ fn calendar(app: &AppHandle) {
     }
     let _ = announce;
     redraw(app, false);
+}
+
+/// Notes `key` (`event_key`) as announced; false if it already was. Lectures that started more than two days ago
+/// are forgotten, so the list in prefs.json stays short.
+fn remember_announced(announced: &mut Vec<String>, key: &str, now: f64) -> bool {
+    if announced.iter().any(|k| k == key) {
+        return false;
+    }
+    let oldest = (now / 60.0).round() as i64 - 2 * 24 * 60;
+    announced.retain(|k| k.rsplit_once('|').and_then(|(_, m)| m.parse::<i64>().ok()).is_some_and(|m| m >= oldest));
+    announced.push(key.to_string());
+    true
+}
+
+fn now() -> f64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0)
 }
 
 fn start_of(event: &Value) -> f64 {
@@ -1419,6 +1441,23 @@ fn restart_agent(app: &AppHandle) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_lecture_is_announced_once() {
+        let now = 1_800_000_000.0;
+        let event = json!({"title": "Data Engineering", "start": now - 600.0});
+        let key = event_key(&event);
+        let mut announced = vec![];
+        assert!(remember_announced(&mut announced, &key, now));
+        assert!(!remember_announced(&mut announced, &key, now)); // Stenny quit and opened again: not asked again
+        // a week later the same lecture starts at another minute: asked again, and old ones are forgotten
+        let next = event_key(&json!({"title": "Data Engineering", "start": now + 7.0 * 86400.0 - 600.0}));
+        assert!(remember_announced(&mut announced, &next, now + 7.0 * 86400.0));
+        assert_eq!(announced, vec![next]);
+        // what prefs.json from before this change has (no "announced") still loads
+        let old: Prefs = serde_json::from_str(r#"{"microphone": null, "login_item": true}"#).unwrap();
+        assert!(old.announced.is_empty());
+    }
 
     #[test]
     fn shortcut_as_windows_has_it() {
