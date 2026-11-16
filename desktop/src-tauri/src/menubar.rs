@@ -864,32 +864,24 @@ pub fn check_updates(app: &AppHandle) {
                 alert(app, &tr!("updates.available.title", version = latest), &tr!("updates.recording"));
                 return;
             }
-            if let Err(e) = open_installer(app) {
-                // whatever went wrong, the page that says how to install is still there
-                let _ = tauri_plugin_opener::open_url(INSTALL_DOCS, None::<&str>);
+            if let Err(e) = open_installer() {
+                // whatever went wrong, the page with the release is still there
+                let _ = tauri_plugin_opener::open_url(RELEASES, None::<&str>);
                 alert(app, &tr!("updates.failed"), &e);
             }
         }
     }
 }
 
-const INSTALL_DOCS: &str = "https://stenny.eu/docs/installation/";
-
-/// This Stenny's install line: Stenny is invite-only during its closed alpha, so it is the invite's own
-/// (`curl -fsSL https://stenny.eu/i/<code> | zsh`), from the engine (update.install_line).
-fn install_line(app: &AppHandle) -> Result<String, String> {
-    let answer = engine(app).call("invite", json!({}))?;
-    answer.get("install_line").and_then(Value::as_str).map(String::from).ok_or_else(|| tr!("updates.noInvite"))
-}
+const RELEASES: &str = "https://github.com/hendrikboettcher/stenny/releases/latest";
 
 /// The install line in a window of its own (README: Install). On a Mac a .command file, which Terminal opens and runs
 /// without asking for any permission; on Windows a PowerShell window that stays open at the end (-NoExit).
 #[cfg(target_os = "macos")]
-pub(crate) fn open_installer(app: &AppHandle) -> Result<(), String> {
+pub(crate) fn open_installer() -> Result<(), String> {
     use std::os::unix::fs::PermissionsExt;
-    let line = install_line(app)?;
     let file = std::env::temp_dir().join("Update Stenny.command");
-    let script = format!("#!/bin/zsh\n{line}\n");
+    let script = format!("#!/bin/zsh\ncurl -fsSL {RELEASES}/download/install.sh | zsh\n");
     std::fs::write(&file, script).map_err(|e| e.to_string())?;
     std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
     let status = std::process::Command::new("/usr/bin/open").args(["-a", "Terminal"]).arg(&file).status();
@@ -901,13 +893,12 @@ pub(crate) fn open_installer(app: &AppHandle) -> Result<(), String> {
 }
 
 #[cfg(windows)]
-pub(crate) fn open_installer(app: &AppHandle) -> Result<(), String> {
+pub(crate) fn open_installer() -> Result<(), String> {
     use std::os::windows::process::CommandExt;
     const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
-    let line = install_line(app)?;
     std::process::Command::new("powershell.exe")
         .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-NoExit", "-Command"])
-        .arg(line)
+        .arg(format!("irm {RELEASES}/download/install.ps1 | iex"))
         .creation_flags(CREATE_NEW_CONSOLE)
         .spawn()
         .map(|_| ())
@@ -915,7 +906,7 @@ pub(crate) fn open_installer(app: &AppHandle) -> Result<(), String> {
 }
 
 #[cfg(not(any(target_os = "macos", windows)))]
-pub(crate) fn open_installer(_app: &AppHandle) -> Result<(), String> {
+pub(crate) fn open_installer() -> Result<(), String> {
     Err("no installer for this system".into())
 }
 

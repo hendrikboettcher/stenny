@@ -76,12 +76,10 @@ def test_the_command_line_writes_the_file(tmp_path):
     assert manifest["version"] == "0.5.12" and manifest["platforms"]["darwin-aarch64"]["signature"] == "c2ln"
 
 
-def test_the_app_asks_stenny_eu_for_its_updates():
-    """Invite-only (closed alpha): stenny.eu hands out the newest release's latest.json to invited users (the
-    stenny-website repo, api/update.js); the app sends the invite along (updater.rs)."""
+def test_the_app_reads_the_newest_releases_latest_json():
     conf = json.loads((SCRIPT.parents[1] / "src-tauri/tauri.conf.json").read_text(encoding="utf-8"))
     updater = conf["plugins"]["updater"]
-    assert updater["endpoints"] == ["https://stenny.eu/api/update?target={{target}}&arch={{arch}}&current={{current_version}}"]
+    assert updater["endpoints"] == ["https://github.com/hendrikboettcher/stenny/releases/latest/download/latest.json"]
     assert updater["pubkey"]
     # the update archives are made only for releases (release.sh, CI's installer job), never by every build
     assert not conf["bundle"].get("createUpdaterArtifacts")

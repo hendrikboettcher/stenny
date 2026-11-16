@@ -10,6 +10,10 @@
     "url": "https://stenny.eu"
   },
   "homepage": "https://stenny.eu",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hendrikboettcher/stenny"
+  },
   "license": "MIT",
   "icon": "icon.png",
   "keywords": ["lectures", "transcripts", "study", "university", "whisper"],

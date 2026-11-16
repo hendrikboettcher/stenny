@@ -892,26 +892,6 @@ def cmd_update(args) -> None:
     print(f"Stenny {result['latest']} is available (you have {result['current']}). {update.how()}")
 
 
-def cmd_invite(args) -> None:
-    """Stenny is invite-only during its closed alpha (update.py): the install scripts save the invite from their line
-    here, `--stdin` so the code never shows up in a process list. Without options: whether one is saved."""
-    from . import keychain, update
-
-    try:
-        if args.forget:
-            update.forget_invite()
-            print("The invite is forgotten. Stenny can't look for updates until an install line saves one again.")
-            return
-        if args.stdin or args.code:
-            code = update.save_invite(sys.stdin.read() if args.stdin else args.code)
-            print(f"Saved the invite {code.split('-')[0]}-… for Stenny's updates.")
-            return
-    except (update.InviteError, keychain.KeychainError) as e:
-        sys.exit(str(e))
-    code = update.invite()
-    print(f"Invite {code.split('-')[0]}-… is saved." if code else "No invite is saved.")
-
-
 def cmd_watch(args) -> None:
     """v0 workflow: watch a folder (default iCloud Drive/Lectures) and queue/process new recordings."""
     cfg = load_config()
@@ -1160,12 +1140,6 @@ def main() -> None:
     p = sub.add_parser("update", help="check for a newer Stenny and say how to get it (in the app: Check for Updates…)")
     p.add_argument("--check", action="store_true", help="only print whether a newer version exists, as JSON")
     p.set_defaults(func=cmd_update)
-
-    p = sub.add_parser("invite", help="save the invite from your install line, for Stenny's updates (closed alpha)")
-    p.add_argument("code", nargs="?", help="the code, or the whole install line")
-    p.add_argument("--stdin", action="store_true", help="read it from stdin (the install scripts)")
-    p.add_argument("--forget", action="store_true", help="remove the saved invite")
-    p.set_defaults(func=cmd_invite)
 
     p = sub.add_parser("watch", help="watch a folder (default: iCloud Drive/Lectures) and queue new recordings")
     p.add_argument("--inbox", type=Path, default=ICLOUD_INBOX)
