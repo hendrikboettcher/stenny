@@ -50,12 +50,16 @@ function run(argv) {
 
 
 # Windows: the Recycle Bin, as Explorer's Delete does (so Restore works). The paths come in an environment variable
-# as JSON, so no quoting can go wrong; errors come back one per line, in UTF-8.
+# as JSON, so no quoting can go wrong; errors come back one per line, in UTF-8. The list goes into a variable first:
+# Windows PowerShell 5.1's ConvertFrom-Json writes a JSON array to the pipeline as ONE object, so
+# `foreach ($p in @(… | ConvertFrom-Json))` got every path at once, joined by spaces ("path format not supported").
 RECYCLE_PS = r"""
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 Add-Type -AssemblyName Microsoft.VisualBasic
 $failed = @()
-foreach ($p in @($env:STENNY_TRASH | ConvertFrom-Json)) {
+$items = $env:STENNY_TRASH | ConvertFrom-Json
+foreach ($item in $items) {
+  $p = [string]$item
   try {
     if (Test-Path -LiteralPath $p -PathType Container) {
       [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($p, 'OnlyErrorDialogs', 'SendToRecycleBin')

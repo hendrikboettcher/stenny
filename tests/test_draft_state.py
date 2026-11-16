@@ -2,6 +2,7 @@
 or being made. Its file in the vault is a placeholder without text (Stenny 0.4's live drafts had a rough text)."""
 import json
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -178,3 +179,26 @@ def test_make_final_transcript_now_says_being_made_at_once_and_waits_again_if_it
         with pytest.raises(SystemExit):
             cli.cmd_queue(args)
     assert status() == "queued" and len(started) == 1
+
+
+def test_a_final_pass_that_died_hard_waits_again_instead_of_finalizing_for_good(cfg, monkeypatch):
+    """A native crash (or a killed process) skips every `except`: the draft said "finalizing" for days, with no
+    button. When no pass holds the queue lock, the window shows it waiting again, its job still queued."""
+    import os
+    import time
+    from stenny import app_server
+    monkeypatch.setattr(jobs, "on_ac_power", lambda: False)
+    session = StoppedSession(cfg)
+    cli.finalize(session, cfg, "auto", True, object())
+    [job] = jobs.pending()
+    cli.mark_job_draft(cfg, job, "finalizing")  # what run_job writes before Whisper starts
+    status = lambda: app_server.library(cfg, {})["entries"][0]["status"]  # noqa: E731
+    draft = Path(share.library(cfg)[0]["transcript"])
+
+    assert status() == "finalizing"  # marked a moment ago: a pass that is just starting
+    old = time.time() - cli.STARTING_GRACE_S - 5
+    os.utime(draft, (old, old))
+    with jobs.QueueLock():
+        assert status() == "finalizing"  # a pass runs: it is being made
+    assert status() == "queued" and jobs.pending() == [job]
+    assert cli.lecture_job(cfg, "Calculus", "2026-10-31") == job  # "Make Final Transcript Now" finds it again

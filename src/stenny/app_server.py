@@ -7,6 +7,7 @@ only replies. The methods are plain functions of (cfg, params), so the phone pag
 """
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -68,8 +69,14 @@ def _entry(cfg, params: dict) -> dict:
 def library(cfg, params: dict) -> dict:
     """Every lecture and talk (oldest first within a course) and the courses in the config. A lecture whose final
     pass runs has `final_pass`: how far it is (progress.read), or None before it reports anything; the recording
-    that runs now has `live` (_with_live)."""
-    entries = _with_live(share.library(cfg))
+    that runs now has `live` (_with_live). A "finalizing" lecture whose pass died shows as waiting again
+    (cli.unstick_finalizing), with its button to start it."""
+    entries = share.library(cfg)
+    if any(e["status"] == "finalizing" for e in entries):
+        from .cli import unstick_finalizing
+        if unstick_finalizing(cfg):
+            entries = share.library(cfg)
+    entries = _with_live(entries)
     for entry in entries:
         if entry["status"] == "finalizing":
             entry["final_pass"] = final_pass(cfg, entry)
@@ -159,9 +166,10 @@ def finish_now(cfg, params: dict) -> dict:
             raise AppError(tr("A transcript is being made right now. Try again when it's done."))
     mark_job_draft(cfg, job, "finalizing")
     args = [sys.executable, "-m", "stenny", "queue", "run", "--lecture", entry["course"], entry["folder"]]
-    try:
-        subprocess.Popen(args + (["--event"] if event else []), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                         stderr=subprocess.DEVNULL, start_new_session=True)
+    try:  # what it prints goes to queue.log, like the scheduled runs': a pass that fails must leave a trace
+        with app_live.open_log("queue.log") as log:
+            subprocess.Popen(args + (["--event"] if event else []), stdin=subprocess.DEVNULL, stdout=log, stderr=log,
+                             start_new_session=True, env={**os.environ, "PYTHONIOENCODING": "utf-8"})
     except OSError:
         mark_job_draft(cfg, job, "queued")
         raise
@@ -458,6 +466,27 @@ def _answer(line: str) -> dict:
     return handle(cfg, request)
 
 
+class _Tee:
+    """The engine's stderr, also into stenny.log: the app on Windows has no console to show it, and Send Feedback
+    sends that log's end. Writing the log never stops the engine."""
+
+    def __init__(self, stream, log):
+        self.stream, self.log = stream, log
+
+    def write(self, text: str) -> int:
+        for out in (self.stream, self.log):
+            try:
+                if out is not None:
+                    out.write(text)
+                    out.flush()
+            except (OSError, ValueError):
+                pass
+        return len(text)
+
+    def flush(self) -> None:
+        pass
+
+
 def serve(stdin=None, stdout=None) -> None:
     """Reads requests until stdin closes (the app quit), each in its own thread: a slow one (the microphone
     list, a share copy) mustn't hold up the recording's status. Replies carry their request's id, so their order
@@ -473,6 +502,7 @@ def serve(stdin=None, stdout=None) -> None:
         sys.stdout.reconfigure(encoding="utf-8")
         stdout = sys.stdout
     lock = threading.Lock()
+    sys.stderr = _Tee(sys.stderr, app_live.open_log("stenny.log"))
     sys.stdout = sys.stderr
     from .migrate import on_start
     on_start()

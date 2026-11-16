@@ -317,7 +317,7 @@ If it prints `{"ok":true}`, say it was sent; otherwise say it didn't go through 
 | The calendar lecture isn't offered | `stenny match-course "<event title>"` (step 14); events shorter than 20 minutes are ignored. |
 | Transcript is empty or wrong language | Check the course's `language`; for lectures that switch languages use `"mixed"`. Check the microphone level meter. |
 | The AI step fails ("claude CLI not found") | Step 9. Or set `[llm] backend = "none"`. The transcript is always written anyway. |
-| Anything else | Logs are in `~/Library/Logs/Stenny/`: `stenny.log` (the menu bar app), `live.log` (the running recording), `queue.log` (waiting transcripts). Read the end of the newest one. |
+| Anything else | Logs are in `~/Library/Logs/Stenny/` (Windows: `%LOCALAPPDATA%\Stenny\Logs\`): `stenny.log` (the app's engine), `live.log` (the recordings, each one added under a `---` line), `queue.log` (final transcripts, also those started with Make Final Transcript Now). Read the end of the newest one. Send Feedback with the details ticked sends the end of all three. |
 
 # Stenny on Windows (preview)
 
