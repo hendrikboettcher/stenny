@@ -11,7 +11,9 @@ from . import i18n
 from .i18n import tr
 from .config import LANGUAGE_MODES, Config, ConfigError, parse_shortcut
 from .courses import _section, _write
+from .llm.tasks import SUMMARY_INSTRUCTIONS
 
+PROMPT_MAX = 4000  # characters of the student's own summary instructions
 TIME = re.compile(r"([01]\d|2[0-3]):[0-5]\d")
 SUPPORTED = ("en", "de", "fr")  # the languages Stenny is built and tested for; the window offers only these
 
@@ -47,6 +49,19 @@ def _languages(v) -> list[str]:
     return list(dict.fromkeys(v))
 
 
+def _prompt(v) -> str | None:
+    """The student's instructions for the summary: None (the line goes) when empty or Stenny's own."""
+    if v is None:
+        return None
+    if not isinstance(v, str):
+        raise ConfigError(tr("Expected text."))
+    v = "\n".join(line.rstrip() for line in v.replace("\r\n", "\n").replace("\r", "\n").strip().split("\n"))
+    v = "".join(c for c in v if c in "\n\t" or c.isprintable())
+    if len(v) > PROMPT_MAX:
+        raise ConfigError(tr("Keep it under {n} characters.", n=PROMPT_MAX))
+    return None if not v or v == SUMMARY_INSTRUCTIONS else v
+
+
 def _backup(v) -> str:
     if not isinstance(v, str) or not v.strip():
         raise ConfigError(tr("Pick a microphone, Automatic or Off."))
@@ -60,6 +75,7 @@ SETTINGS = {
     "live.backup": _backup,
     "llm.backend": _choice("claude-code", "api", "none"),
     "llm.summary": _bool,
+    "llm.summary_prompt": _prompt,
     "processing.priority": _choice("normal", "low", "background"),
     "processing.require_ac_for_queue": _bool,
     "processing.night_only": _bool,
@@ -78,7 +94,9 @@ def get(cfg: Config) -> dict:
     return {
         "keep_audio": cfg.keep_audio,
         "live": {"draft": cfg.live_draft, "backup": cfg.live_backup},
-        "llm": {"backend": cfg.llm_backend, "summary": cfg.summary},
+        "llm": {"backend": cfg.llm_backend, "summary": cfg.summary,
+                # the student's own instructions ("" = none) and Stenny's, to start from or go back to
+                "summary_prompt": cfg.summary_prompt, "summary_prompt_default": SUMMARY_INSTRUCTIONS},
         "processing": {"priority": cfg.priority, "require_ac_for_queue": cfg.require_ac_for_queue,
                        "night_only": cfg.night_only, "night_start": cfg.night_start, "night_end": cfg.night_end},
         "app": {"pause_shortcut": cfg.pause_shortcut, "language": cfg.app_language,

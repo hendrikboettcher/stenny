@@ -512,7 +512,7 @@ def _postprocess(lec: Lecture, folder: Path, segments: list[dict], glossary: Glo
                 + f", {len(applied)} term fixes applied, {len(rejected)} rejected, {len(lec.topics)} topics")
             if with_summary:
                 log("Writing summary")
-                body, u = tasks.summarize(paragraphs, lec.languages, backend)
+                body, u = tasks.summarize(paragraphs, lec.languages, backend, cfg.summary_prompt)
                 usage += u
                 vault.write(files.target("summary"), summary_md(lec, body, backend.name))
         except LLMError as e:

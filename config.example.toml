@@ -20,6 +20,10 @@ backend = "claude-code"      # claude-code (subscription, `claude -p`) | api (An
 model = "claude-haiku-5-5"   # model for claude-code
 api_model = "claude-haiku-5-5"
 summary = true               # write the AI summary (… (summary).md)
+# summary_prompt = "Use the sections ## Overview, ## Exam topics and ## Questions to test myself."
+#                            # what the summary contains, in your words (Settings ▸ Transcripts & AI); left out =
+#                            # Stenny's sections. The lecture's language and transcript are always added, and the
+#                            # summary only uses what was said
 
 [processing]
 priority = "low"             # normal | low (nice + utility QoS; Windows: below normal) | background (heavily throttled)
