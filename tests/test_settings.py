@@ -67,6 +67,7 @@ def test_the_setup_card_goes_for_good(path):
     ("llm.backend", "gpt"), ("processing.night_start", "25:00"), ("app.pause_shortcut", "shift+p"),
     ("keep_audio", "yes"), ("vault", "/elsewhere"), ("recordings.languages", ["English"]),
     ("recordings.languages", ["en", "es"]), ("app.setup_checklist", "no"),
+    ("llm.summary_prompt", 42), ("llm.summary_prompt", "x" * (settings.PROMPT_MAX + 1)),
 ])
 def test_refuses_and_leaves_the_file_alone(path, key, value):
     with pytest.raises(ConfigError):
@@ -96,3 +97,24 @@ def test_get_lists_visible_courses_and_paths(path):
     got = settings.get(config_mod.load(path))
     assert [c["name"] for c in got["courses"]] == ["Calculus", "Economics"]
     assert got["paths"]["lectures"].endswith("Lectures")
+
+
+def test_summary_prompt_in_the_students_words(path):
+    assert settings.get(config_mod.load(path))["llm"] == {
+        "backend": "claude-code", "summary": True, "summary_prompt": "",
+        "summary_prompt_default": settings.SUMMARY_INSTRUCTIONS}
+    mine = 'Only two sections:\r\n\r\n## Exam topics  \n## Questions to test myself, with "answers" # and {braces}\n\n'
+    got = change(path, "llm.summary_prompt", mine)
+    want = 'Only two sections:\n\n## Exam topics\n## Questions to test myself, with "answers" # and {braces}'
+    assert got["llm"]["summary_prompt"] == want and config_mod.load(path).summary_prompt == want
+    text = path.read_text(encoding="utf-8")
+    assert "summary = true" in text and "# my comment" in text and text.index("summary_prompt") < text.index("[processing]")
+    change(path, "llm.summary_prompt", "Shorter, please.")  # replaced, not added again
+    assert path.read_text(encoding="utf-8").count("summary_prompt") == 1
+
+
+@pytest.mark.parametrize("back", [None, "", "   \n ", settings.SUMMARY_INSTRUCTIONS])
+def test_summary_prompt_back_to_stennys(path, back):
+    change(path, "llm.summary_prompt", "Shorter, please.")
+    got = change(path, "llm.summary_prompt", back)
+    assert got["llm"]["summary_prompt"] == "" and path.read_text(encoding="utf-8") == CONFIG

@@ -9,6 +9,7 @@ import pytest
 from pdfgen import make_pdf
 
 from stenny import pipeline
+from stenny.llm import tasks
 from stenny.config import Config, Course
 from stenny.llm import Usage
 from stenny.textproc import SAMPLE_RATE
@@ -98,6 +99,38 @@ def test_process_writes_raw_transcript_summary_and_audio(setup):
     assert (cfg.recordings_dir / "Calculus" / "2026-10-15.segments.json").exists()
     assert cfg.vault_for().violations() == []
 
+
+
+class PromptLLM(FakeLLM):
+    def __init__(self):
+        self.summary = None
+
+    def complete(self, system, prompt):
+        if "JSON" not in system:
+            self.summary = (system, prompt)
+        return super().complete(system, prompt)
+
+
+def test_summary_follows_the_students_instructions(setup, monkeypatch):
+    cfg, wav = setup
+    cfg.keep_audio, cfg.summary_prompt = False, "Only ## Exam topics, as {bullets}."
+    llm = PromptLLM()
+    monkeypatch.setattr(pipeline, "get_backend", lambda cfg: llm)
+    pipeline.process(wav, cfg, Course("Calculus", language="fr", languages=["fr"]), FakeEngine({"fr": 1.0}))
+    system, prompt = llm.summary
+    assert system == tasks.SUMMARY_SYSTEM                          # Stenny's rules stay
+    assert "Only ## Exam topics, as {bullets}." in prompt and "## Organisational" not in prompt
+    assert "in French" in prompt and "Phrase 1 en fr" in prompt    # the language and the transcript are always added
+
+
+def test_summary_default_instructions():
+    class Backend:
+        def complete(self, system, prompt):
+            self.prompt = prompt
+            return "ok", Usage(1, 1)
+    b = Backend()
+    tasks.summarize([{"start": 0, "text": "Bonjour."}], ["fr"], b, "  ")
+    assert tasks.SUMMARY_INSTRUCTIONS in b.prompt and "[0:00:00] Bonjour." in b.prompt
 
 def test_mixed_language_course_switches_per_chunk(setup, monkeypatch):
     cfg, wav = setup

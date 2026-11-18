@@ -21,7 +21,7 @@
   interface Settings {
     keep_audio: boolean;
     live: { draft: boolean; backup: string };
-    llm: { backend: "claude-code" | "api" | "none"; summary: boolean };
+    llm: { backend: "claude-code" | "api" | "none"; summary: boolean; summary_prompt: string; summary_prompt_default: string };
     processing: { priority: "normal" | "low" | "background"; require_ac_for_queue: boolean; night_only: boolean; night_start: string; night_end: string };
     app: { pause_shortcut: string; language: "system" | "en" | "de"; setup_checklist: boolean; reminders: boolean };
     ui_language: "en" | "de";        // what "system" comes to, or the language picked
@@ -423,6 +423,19 @@
     savedTimer = setTimeout(() => (saved = false), 1400);
   }
 
+  // the student's own instructions for the summary: a draft until Save; "" or Stenny's own text means Stenny's
+  let promptDraft = $state<string | null>(null);  // null: not edited, the box shows what's saved
+  const promptSaved = $derived(s ? s.llm.summary_prompt || s.llm.summary_prompt_default : "");
+  const promptText = $derived(promptDraft ?? promptSaved);
+  const promptDirty = $derived(promptDraft !== null && promptDraft.trim() !== promptSaved.trim());
+  let promptBusy = $state(false);
+
+  async function savePrompt(value: string | null) {
+    promptBusy = true;
+    if (await set("llm.summary_prompt", value)) promptDraft = null;
+    promptBusy = false;
+  }
+
   async function set(key: string, value: unknown) {
     try {
       s = await engine<Settings>("set_preference", { key, value });
@@ -794,6 +807,27 @@
               <input type="checkbox" class="switch" checked={s.llm.summary} disabled={s.llm.backend === "none"}
                      onchange={(e) => set("llm.summary", e.currentTarget.checked)} />
             </div>
+            {#if s.llm.summary && s.llm.backend !== "none"}
+              <div class="row stack prompt">
+                <div class="what">
+                  <label class="name" for="summary-prompt">{t("settings.summary.prompt")}</label>
+                  <div class="hint">{t("settings.summary.prompt.hint")}</div>
+                </div>
+                <textarea id="summary-prompt" rows="10" spellcheck="true" disabled={promptBusy} value={promptText}
+                          oninput={(e) => (promptDraft = e.currentTarget.value)}></textarea>
+                <div class="do">
+                  {#if promptDirty}
+                    <button class="pill primary" disabled={promptBusy || !promptText.trim()} onclick={() => savePrompt(promptText)}>{t("settings.summary.prompt.save")}</button>
+                    <button class="link" disabled={promptBusy} onclick={() => (promptDraft = null)}>{t("common.cancel")}</button>
+                  {:else if s.llm.summary_prompt}
+                    <span class="hint">{t("settings.summary.prompt.yours")}</span>
+                  {/if}
+                  {#if s.llm.summary_prompt || promptDirty}
+                    <button class="link" disabled={promptBusy} onclick={() => savePrompt(null)}>{t("settings.summary.prompt.reset")}</button>
+                  {/if}
+                </div>
+              </div>
+            {/if}
           </div>
           <p class="foot">{t("settings.model", { model: s.model.split("/").pop() ?? s.model })}</p>
         {:else if section === "claude"}
@@ -1302,6 +1336,15 @@
     flex: 1; min-width: 0; font: 400 12.5px var(--mono); min-height: 32px;
     color: var(--ink); background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r-ctl); padding: 0 10px;
   }
+  /* the summary's instructions: a text box under "Write a summary", Save / Reset to default under it */
+  .prompt textarea {
+    flex-basis: 100%; min-width: 0; resize: vertical; min-height: 120px; padding: 9px 11px; line-height: 1.5;
+    font: 400 12.5px/1.5 var(--mono); color: var(--ink); background: var(--surface);
+    border: 1px solid var(--hairline); border-radius: var(--r-ctl);
+  }
+  .prompt textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .prompt .do { flex-basis: 100%; margin-top: 0; }
+  .prompt .do .hint { margin: 0; }
   .key input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
   .lead.example { font-style: italic; margin-top: -8px; }
   /* where to find a calendar's iCal link, in the "Add a calendar link" sheet */

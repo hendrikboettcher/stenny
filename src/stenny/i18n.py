@@ -160,6 +160,8 @@ DE = {
     "Use one of: {options}.": "Möglich sind: {options}.",
     "Use a time such as 01:00.": "Bitte gib eine Uhrzeit wie 01:00 an.",
     "Pick a microphone, Automatic or Off.": "Wähle ein Mikrofon, „Automatisch“ oder „Aus“.",
+    "Expected text.": "Erwartet wird ein Text.",
+    "Keep it under {n} characters.": "Bitte bleib unter {n} Zeichen.",
     "'{key}' can't be changed here.": "„{key}“ lässt sich hier nicht ändern.",
     "Stenny is made for English, German and French so far (or mixed, or one per lecture).":
         "Stenny unterstützt bisher Englisch, Deutsch und Französisch (auch gemischt oder eine Sprache pro Vorlesung).",

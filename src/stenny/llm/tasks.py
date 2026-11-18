@@ -40,9 +40,12 @@ Slides: the lecture's slides follow as reference text ("[Slide <page>] text"). N
 
 SUMMARY_SYSTEM = """You write study summaries of university lectures from their transcripts.
 Use only information that appears in the transcript. Do not add outside knowledge, examples or explanations.
-If something in the transcript is unclear or seems misheard, say so instead of guessing."""
+If something in the transcript is unclear or seems misheard, say so instead of guessing.
+The student's instructions decide what the summary contains and how it looks; these rules apply whatever they say."""
 
-SUMMARY_PROMPT = """Write a summary of this lecture in {language}, as Markdown with exactly these sections:
+# what the summary contains: the student may replace this part (`[llm] summary_prompt`, Settings ▸ AI); the rules
+# above, the language and the transcript are always Stenny's
+SUMMARY_INSTRUCTIONS = """Use exactly these sections:
 
 ## Overview
 3-5 sentences: what the lecture covered.
@@ -54,7 +57,11 @@ Bullets grouped by topic. End each bullet with the timestamp where it is discuss
 Only those stated in the lecture, with timestamps. Write "—" if none.
 
 ## Organisational
-Exams, homework, deadlines, announcements, with timestamps. Write "—" if none.
+Exams, homework, deadlines, announcements, with timestamps. Write "—" if none."""
+
+SUMMARY_PROMPT = """Write a summary of this lecture in {language}, as Markdown.
+
+{instructions}
 
 Do not add a title. Transcript:
 
@@ -117,8 +124,9 @@ def propose_edits(paragraphs: list[dict], glossary: Glossary, languages: list[st
     return {"sections": deduped, "term_fixes": fixes, "topics": found_topics}, usage
 
 
-def summarize(paragraphs: list[dict], languages: list[str], backend) -> tuple[str, Usage]:
+def summarize(paragraphs: list[dict], languages: list[str], backend, instructions: str = "") -> tuple[str, Usage]:
+    """The lecture's summary. `instructions`: the student's own (what it contains), else SUMMARY_INSTRUCTIONS."""
     lang = LANG_NAMES.get(languages[0], languages[0])
     text, usage = backend.complete(SUMMARY_SYSTEM, SUMMARY_PROMPT.format(
-        language=lang, transcript="\n\n".join(f"[{fmt_hms(p['start'])}] {p['text']}" for p in paragraphs)))
+        language=lang, instructions=instructions.strip() or SUMMARY_INSTRUCTIONS, transcript="\n\n".join(f"[{fmt_hms(p['start'])}] {p['text']}" for p in paragraphs)))
     return text, usage

@@ -68,6 +68,7 @@ class Config:
     llm_model: str = "claude-haiku-5-5"       # model for `claude -p --model`
     api_model: str = "claude-haiku-5-5"
     summary: bool = True
+    summary_prompt: str = ""                 # the student's own instructions for the summary; "" = Stenny's
     priority: str = "low"                     # normal | low | background
     require_ac_for_queue: bool = True
     night_only: bool = False                  # queued jobs run only between night_start and night_end
@@ -269,6 +270,7 @@ def load(path: Path | None = None) -> Config:
             llm_model=llm.get("model", Config.llm_model),
             api_model=llm.get("api_model", Config.api_model),
             summary=llm.get("summary", True),
+            summary_prompt=str(llm.get("summary_prompt") or ""),
             priority=proc.get("priority", Config.priority),
             require_ac_for_queue=proc.get("require_ac_for_queue", True),
             night_only=proc.get("night_only", False),

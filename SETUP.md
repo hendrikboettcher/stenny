@@ -189,6 +189,7 @@ claude auth status 2>/dev/null
 - **Not signed in:** run `~/.local/bin/claude auth login` in the background. It opens the browser: the user signs in and clicks *Authorize*. Then check again.
 - **Skip:** set `[llm] backend = "none"` in the config. Transcripts work the same, just without headings and summaries.
 - **They'd rather pay per use with an Anthropic API key** (no subscription): they run `stenny api-key` in their own terminal and paste the key there (never into this chat), then set `[llm] backend = "api"`. Stenny checks the key and keeps it in the system keychain. Later they can do all of this in Stenny's *Settings… ▸ Transcripts & AI*.
+- **The summary their way:** under *Write a summary* in *Settings… ▸ Transcripts & AI* they can say in their own words what a summary should contain (sections, focus, length); empty means Stenny's own sections (`[llm] summary_prompt`). Nothing to set up now.
 
 **Check:** `claude auth status` shows `"loggedIn": true` (or `stenny api-key status` says the key works, or the backend is `"none"`).
 
