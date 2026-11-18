@@ -311,7 +311,7 @@
   "settings.summary": "Write a summary",
   "settings.summary.hint": "An AI summary next to each transcript, clearly labelled as one.",
   "settings.summary.prompt": "What the summary contains",
-  "settings.summary.prompt.hint": "Say in your own words what the summary should look like: its sections, what to focus on, how long. Stenny always adds the lecture's language and its transcript, and the AI only uses what was said. New summaries follow it; earlier ones stay as they are.",
+  "settings.summary.prompt.hint": "Tell the AI what you want: sections, focus, length. It only uses what was said in the lecture. Applies to new summaries.",
   "settings.summary.prompt.save": "Save",
   "settings.summary.prompt.yours": "Your own instructions.",
   "settings.summary.prompt.reset": "Reset to default",

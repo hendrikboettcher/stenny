@@ -311,7 +311,7 @@
   "settings.summary": "Zusammenfassung erstellen",
   "settings.summary.hint": "Eine KI-Zusammenfassung zu jedem Transkript, klar als solche gekennzeichnet.",
   "settings.summary.prompt": "Inhalt der Zusammenfassung",
-  "settings.summary.prompt.hint": "Beschreib in deinen eigenen Worten, wie die Zusammenfassung aussehen soll – Abschnitte, Schwerpunkte, Länge. Sprache und Transkript der Vorlesung fügt Stenny immer selbst hinzu, und die KI nutzt nur, was gesagt wurde. Neue Zusammenfassungen folgen diesen Vorgaben, frühere bleiben unverändert.",
+  "settings.summary.prompt.hint": "Sag der KI, was du willst: Abschnitte, Schwerpunkte, Länge. Sie nutzt nur, was in der Vorlesung gesagt wurde. Gilt für neue Zusammenfassungen.",
   "settings.summary.prompt.save": "Sichern",
   "settings.summary.prompt.yours": "Deine eigenen Vorgaben.",
   "settings.summary.prompt.reset": "Auf Standard zurücksetzen",
