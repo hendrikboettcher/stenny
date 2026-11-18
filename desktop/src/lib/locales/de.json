@@ -247,6 +247,7 @@
   "settings.ai.options": "Wie der KI-Schritt läuft",
   "settings.ai.claudeCode.line": "Nutzt dein Claude-Abo. Keine Zusatzkosten.",
   "settings.ai.api.line": "Bezahlung nach Nutzung mit deinem eigenen API-Schlüssel, etwa 0,01 $ pro Vorlesung.",
+  "settings.ai.api.fine": "Schätzung nach Anthropics Preisen von Oktober 2026. Anthropic rechnet direkt mit dir ab.",
   "settings.ai.off.line": "Nur Transkripte: keine Überschriften, keine korrigierten Begriffe, keine Zusammenfassungen.",
   "settings.ai.checking": "Wird geprüft …",
   "settings.ai.checkAgain": "Erneut prüfen",

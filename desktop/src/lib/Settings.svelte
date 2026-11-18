@@ -791,6 +791,10 @@
                 <span class="what">
                   <span class="name">{v === "claude-code" ? "Claude Code" : v === "api" ? "Anthropic API" : t("common.off")}</span>
                   <span class="hint">{t(v === "claude-code" ? "settings.ai.claudeCode.line" : v === "api" ? "settings.ai.api.line" : "settings.ai.off.line")}</span>
+                  {#if v === "api"}
+                    <!-- the date matches PRICES in src/stenny/llm/anthropic_api.py: change both together -->
+                    <span class="hint fine">{t("settings.ai.api.fine")}</span>
+                  {/if}
                 </span>
               </button>
               {#if chosen}
@@ -1303,6 +1307,7 @@
   .option:first-child { border-radius: 16px 16px 0 0; }
   .option:hover .radio { box-shadow: inset 0 0 0 1.5px var(--muted); }
   .option .name, .option .hint { display: block; }
+  .option .hint.fine { font-size: 11.5px; margin-top: 4px; }
   .radio {
     flex: none; width: 18px; height: 18px; margin-top: 0; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--hairline);
     background: var(--surface); position: relative; transition: box-shadow 0.15s ease, background 0.15s ease;

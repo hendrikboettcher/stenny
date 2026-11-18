@@ -247,6 +247,7 @@
   "settings.ai.options": "How the AI step runs",
   "settings.ai.claudeCode.line": "Uses your Claude subscription. No extra cost.",
   "settings.ai.api.line": "Pay as you go with your own API key, about $0.01 per lecture.",
+  "settings.ai.api.fine": "An estimate at Anthropic's prices of October 2026. Anthropic bills you directly.",
   "settings.ai.off.line": "Transcripts only: no headings, no fixed terms, no summaries.",
   "settings.ai.checking": "Checking…",
   "settings.ai.checkAgain": "Check again",
