@@ -2,7 +2,8 @@
 
 from . import LLMError, Usage
 
-# USD per million tokens (prompts up to 100K tokens), list prices as of 2026-10
+# USD per million tokens (prompts up to 100K tokens), list prices as of 2026-10; Settings names that month
+# (settings.ai.api.fine in desktop/src/lib/locales/*.json): change both together
 PRICES = {"claude-haiku-5-5": (0.10, 0.50)}
 
 
