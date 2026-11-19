@@ -29,7 +29,8 @@ class AppError(Exception):
 def with_live(entries: list[dict]) -> list[dict]:
     """The running recording's entry, while it records: its length from the session itself, as the menu bar's timer
     shows it (pauses left out; the placeholder's `duration` is only written now and then), and `live`, what the
-    window needs between two looks: whether the length is counting up, whether the text so far is being
+    window needs between two looks (and Claude, connector.py: `clock_s`, the lecture clock with pauses, which the
+    timestamps use): whether the length is counting up, whether the text so far is being
     transcribed, and a warning (low battery or memory, a full disk) while one applies."""
     if not any(e["status"] == "live" for e in entries):
         return entries
@@ -44,7 +45,8 @@ def with_live(entries: list[dict]) -> list[dict]:
         if e["status"] == "live" and _same_file(Path(e["transcript"]), running):
             length = max(0.0, float(st.get("elapsed_s") or 0) - float(st.get("paused_s") or 0))
             e["duration"] = fmt_hms(length)
-            e["live"] = {"length_s": round(length, 1), "counting": st["state"] == "recording" and not st.get("input_lost"),
+            e["live"] = {"length_s": round(length, 1), "clock_s": round(float(st.get("elapsed_s") or 0), 1),
+                         "counting": st["state"] == "recording" and not st.get("input_lost"),
                          "draft": bool(st.get("draft")), "transcribing": bool(st.get("transcribing")),
                          "warning": st.get("warning") or ""}
     return entries

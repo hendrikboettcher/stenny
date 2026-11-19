@@ -160,11 +160,12 @@ def test_a_recording_gives_its_text_so_far_marked_as_raw(cfg, monkeypatch):
 def test_a_recording_says_how_long_it_runs_and_when_it_only_records(cfg, monkeypatch):
     from stenny import app_live
     path = next((cfg.folder / "Calculus" / "2026-11-03").glob("*.md"))
-    status = {"state": "recording", "transcript": str(path), "elapsed_s": 2520.0, "paused_s": 0.0,
+    # 42 min on the lecture clock, 10 of them paused: the timestamps count the pause, so Claude gets the clock
+    status = {"state": "recording", "transcript": str(path), "elapsed_s": 2520.0, "paused_s": 600.0,
               "draft": True, "transcribing": True}
     monkeypatch.setattr(app_live.control, "send", lambda cmd, timeout=3: status)
     text = connector.get_transcript(cfg, "Calculus", "3")
-    assert "[Recording now, 0:42:00 so far. Text so far, transcribed up to 0:00:09" in text
+    assert "[Recording now, at 0:42:00 on the lecture clock. Text so far, transcribed up to 0:00:09" in text
     assert "only records" not in text
     status["transcribing"] = False  # battery or memory low: the text so far stays behind
     assert "Stenny only records for now (battery or memory low)" in connector.get_transcript(cfg, "Calculus", "3")

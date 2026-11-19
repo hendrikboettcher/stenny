@@ -132,14 +132,15 @@ def _status_note(entry: dict, paragraphs: list[dict]) -> str:
         return ""
     live = entry.get("live")
     if entry["status"] == "live":
-        notes = ["Recording now" + (f", {fmt_hms(live['length_s'])} so far." if live else ".")]
+        # the lecture clock (pauses included), like the timestamps; the window's length leaves pauses out
+        notes = ["Recording now" + (f", at {fmt_hms(live['clock_s'])} on the lecture clock." if live else ".")]
     else:
         notes = [draft_status(entry["status"], entry.get("waiting"))]  # in English, like everything Claude gets
     if paragraphs:
         up_to = paragraphs[-1]["end"]
         notes.append(f"Text so far, transcribed up to {fmt_hms(up_to)}: Whisper's raw text, not yet cleaned or "
                      "corrected by the glossary, so the final transcript may differ a little.")
-        if live and not live["transcribing"] and live["length_s"] - up_to > LIVE_LAG:
+        if live and not live["transcribing"] and live["clock_s"] - up_to > LIVE_LAG:
             notes.append("Stenny only records for now (battery or memory low) and transcribes the rest later.")
     elif entry["status"] == "live":
         notes.append("Nothing transcribed yet: Stenny transcribes while it records, about half a minute behind; when "

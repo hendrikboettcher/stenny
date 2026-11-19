@@ -108,7 +108,7 @@ def test_the_running_recording_counts_its_length_with_the_menu_bar(cfg, monkeypa
     live = next(e for e in entries if e["folder"] == "2026-11-09")
     # the menu bar shows elapsed_s - paused_s (menubar.rs), not the placeholder's 4 s from the start
     assert live["duration"] == "0:03:29"
-    assert live["live"] == {"length_s": 209.4, "counting": True, "draft": True, "transcribing": False,
+    assert live["live"] == {"length_s": 209.4, "clock_s": 239.4, "counting": True, "draft": True, "transcribing": False,
                             "warning": status["warning"]}
     assert all("live" not in e for e in entries if e is not live)
     assert app_server._entry(cfg, {"course": "Calculus", "folder": "2026-11-09"})["duration"] == "0:03:29"
