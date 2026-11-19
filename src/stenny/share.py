@@ -62,6 +62,7 @@ def _entries(cfg, kind: str) -> list[dict]:
                 "status": fm.get("status") or "final",  # live | queued | finalizing: still the live draft
                 # in the app's language; the note in the placeholder file itself stays English (render.draft_note)
                 "draft_note": tr(draft_status(fm["status"], fm.get("waiting"))) if fm.get("status") in DRAFT_STATES else None,
+                "waiting": fm.get("waiting"),  # why a finished recording waits for its transcript ("battery")
                 "transcript": str(transcript),
                 "summary": str(summary) if summary else None,
             })
@@ -88,6 +89,52 @@ def find(cfg, course: str, folder: str, event: bool = False) -> dict:
                 safe_name(entry["course"]).casefold() == safe_name(course).casefold():
             return entry
     raise ShareError(tr("No transcript for {course} on {folder}.", course=course, folder=folder))
+
+
+def data_base(cfg, entry: dict) -> Path | None:
+    """Where a lecture's files in the data place start (`<data>/<Course>/<folder>`), None for an unknown course."""
+    course = cfg.event(entry["course"]) if entry["kind"] == "event" else cfg.courses.get(entry["course"])
+    return cfg.data_for(course) / entry["folder"] if course is not None else None
+
+
+def text_so_far(cfg, entry: dict) -> list[dict]:
+    """A recording without its transcript yet: the paragraphs transcribed so far (lecture time; during the
+    recording, or by a final pass that was interrupted), [] if there are none. Raw Whisper text, not yet cleaned or
+    corrected by the glossary: for Stenny's window and Claude, never written into the Stenny folder."""
+    import json
+
+    from .pipeline import ChunkCache
+    from .textproc import to_paragraphs
+
+    base = data_base(cfg, entry)
+    if base is None:
+        return []
+    cache = ChunkCache(Path(f"{base}.chunks.jsonl"))
+    if not cache.chunks:
+        return []
+    try:
+        breaks = [p[0] for p in json.loads(Path(f"{base}.session.json").read_text(encoding="utf-8"))["pauses"]]
+    except (OSError, ValueError, KeyError, TypeError, IndexError):
+        breaks = []
+    segments = cache.text_so_far()
+    paragraphs = to_paragraphs(segments, breaks=breaks)
+    ends = iter(paragraphs[1:])  # each paragraph's `end`: its last segment's, so the newest says how far the text goes
+    current, upcoming = (paragraphs[0] if paragraphs else None), next(ends, None)
+    for seg in segments:
+        if current is None:
+            break
+        if seg.get("dropped"):
+            continue
+        while upcoming is not None and seg["start"] >= upcoming["start"]:
+            current, upcoming = upcoming, next(ends, None)
+        current["end"] = max(current.get("end", current["start"]), seg["end"])
+    return paragraphs
+
+
+def paragraphs_markdown(paragraphs: list[dict]) -> str:
+    """Paragraphs as a transcript's body has them: `**[h:mm:ss]** text`, one per block."""
+    from .textproc import fmt_hms
+    return "\n\n".join(f"**[{fmt_hms(p['start'])}]** {p['text']}" for p in paragraphs) + "\n"
 
 
 def _body(text: str) -> str:

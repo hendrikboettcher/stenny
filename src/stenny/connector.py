@@ -3,7 +3,9 @@
 Everything returned is clean text, as a classmate would get it from `stenny share`: no frontmatter, no paths on
 this computer, no microphone names, Obsidian links as plain text. Lectures are found through `share.library` and
 `vault.LectureFiles`, glossaries through `glossary.Glossary`, so the connector reads exactly what Stenny's window
-shows.
+shows. That includes a recording without its transcript yet (live, queued or finalizing): its text so far
+(`share.text_so_far`, Whisper's raw text of the chunks transcribed during the recording), marked as such, so Claude can
+answer "what did they just say?" during the lecture.
 
 The only writes are to a course's glossary: `suggest_glossary_terms` and `suggest_glossary_corrections`. Claude's
 entries are taken as they are (no evidence in the transcripts needed), as long as they have the shape of a spelling
@@ -19,9 +21,10 @@ from pathlib import Path
 
 from .config import ConfigError
 from .glossary import Glossary
-from .render import parse_frontmatter
-from .share import _body, _unlink, clean_summary, clean_transcript, library
+from .render import draft_status, parse_frontmatter
+from .share import _body, _unlink, clean_summary, clean_transcript, library, paragraphs_markdown, text_so_far
 from .slides import Slides, SlidesError
+from .textproc import fmt_hms
 from .vault import LectureFiles, safe_name
 
 PART_CHARS = 40_000   # one part of a transcript (~10k tokens); a 1 h lecture is about 35-40k characters
@@ -45,9 +48,12 @@ def _fold(text: str) -> str:
 
 
 def _courses(cfg) -> dict[str, list[dict]]:
-    """Course (or talk) name → its library entries, oldest first."""
+    """Course (or talk) name → its library entries, oldest first; the recording that runs now with its length so far
+    (`live`, app_server.with_live)."""
+    from .app_server import with_live
+
     out: dict[str, list[dict]] = {}
-    for entry in library(cfg):
+    for entry in with_live(library(cfg)):
         out.setdefault(entry["course"], []).append(entry)
     return out
 
@@ -117,10 +123,31 @@ def _title(entry: dict, entries: list[dict]) -> str:
     return f"{entry['course']}, {_label(entry, entries.index(entry))}"
 
 
-def _status_note(entry: dict) -> str:
+LIVE_LAG = 120  # s: text so far further behind the recording than this, while Stenny isn't transcribing: it catches up
+
+
+def _status_note(entry: dict, paragraphs: list[dict]) -> str:
+    """For a recording without its transcript yet: where it is, and how far its text so far goes."""
     if entry["status"] == "final":
         return ""
-    return f" [not transcribed yet. {entry.get('draft_note') or 'Its transcript comes later.'}]"
+    live = entry.get("live")
+    if entry["status"] == "live":
+        # the lecture clock (pauses included), like the timestamps; the window's length leaves pauses out
+        notes = ["Recording now" + (f", at {fmt_hms(live['clock_s'])} on the lecture clock." if live else ".")]
+    else:
+        notes = [draft_status(entry["status"], entry.get("waiting"))]  # in English, like everything Claude gets
+    if paragraphs:
+        up_to = paragraphs[-1]["end"]
+        notes.append(f"Text so far, transcribed up to {fmt_hms(up_to)}: Whisper's raw text, not yet cleaned or "
+                     "corrected by the glossary, so the final transcript may differ a little.")
+        if live and not live["transcribing"] and live["clock_s"] - up_to > LIVE_LAG:
+            notes.append("Stenny only records for now (battery or memory low) and transcribes the rest later.")
+    elif entry["status"] == "live":
+        notes.append("Nothing transcribed yet: Stenny transcribes while it records, about half a minute behind; when "
+                     "the battery or memory runs low it only records and transcribes the rest later.")
+    else:
+        notes.insert(0, "Not transcribed yet.")
+    return f" [{' '.join(notes)}]"
 
 
 # ---------------------------------------------------------------- transcripts as paragraphs
@@ -150,6 +177,15 @@ def _paragraphs(text: str) -> list[dict]:
 
 def _clean(entry: dict) -> str:
     return clean_transcript(Path(entry["transcript"]).read_text(encoding="utf-8"))
+
+
+def _read(cfg, entry: dict) -> tuple[str, str]:
+    """A lecture's text for Claude and the note on its status: a final transcript as it is (no note); a recording
+    without its transcript yet, its text so far ("" if there is none) with a note that says how far it goes."""
+    if entry["status"] == "final":
+        return _clean(entry), ""
+    paragraphs = text_so_far(cfg, entry)
+    return (paragraphs_markdown(paragraphs) if paragraphs else ""), _status_note(entry, paragraphs)
 
 
 def _parts(text: str, size: int = PART_CHARS) -> list[str]:
@@ -210,13 +246,15 @@ def list_lectures(cfg, course: str) -> str:
         details = ", ".join(x for x in [entry.get("start") and f"started {entry['start']}",
                                          entry.get("duration") and f"length {entry['duration']}",
                                          entry.get("language") and f"language {entry['language']}"] if x)
-        lines.append(f"\n## {_label(entry, i)}{_status_note(entry)}")
+        text, note = _read(cfg, entry) if entry["status"] != "final" else ("", "")
+        lines.append(f"\n## {_label(entry, i)}{note}")
         lines.append(f"Date {entry['date']}" + (f", {details}" if details else ""))
         if topics:
             lines.append(f"Topics: {', '.join(topics)}")
         if sections:
             lines.append(f"Sections: {'; '.join(sections)}")
-        lines.append("Has: transcript" + (", summary" if entry.get("summary") else ""))
+        has = "transcript" if entry["status"] == "final" else "text so far" if text.strip() else "no text yet"
+        lines.append(f"Has: {has}" + (", summary" if entry.get("summary") else ""))
     return "\n".join(lines)
 
 
@@ -233,7 +271,10 @@ def _section_titles(entry: dict) -> list[str]:
 def get_transcript(cfg, course: str, lecture: str | int, part: int = 1, at: str | None = None) -> str:
     entry = _lecture(cfg, course, lecture)
     name, entries = _course(cfg, course)
-    parts = _parts(_clean(entry), PART_CHARS)
+    text, note = _read(cfg, entry)
+    if not text.strip():
+        raise ConnectorError(f"{_title(entry, entries)} has no text yet.{note}")
+    parts = _parts(text, PART_CHARS)
     if at:
         if not re.fullmatch(r"\d+:\d{2}:\d{2}", at.strip()):
             raise ConnectorError(f"'at' must be a timestamp like 1:05:30, not '{at}'.")
@@ -243,9 +284,11 @@ def get_transcript(cfg, course: str, lecture: str | int, part: int = 1, at: str 
             times = TIMESTAMP.findall(p)
             if times and _seconds(times[0]) <= target:
                 part = i
+    if part < 0:  # -1: the last part (during a recording, the newest text)
+        part = max(1, len(parts) + 1 + part)
     if not 1 <= part <= len(parts):
         raise ConnectorError(f"{_title(entry, entries)} has {len(parts)} part(s); ask for part 1 to {len(parts)}.")
-    head = f"[{_title(entry, entries)}{_status_note(entry)} · part {part} of {len(parts)} · {_span(parts[part - 1])}"
+    head = f"[{_title(entry, entries)}{note} · part {part} of {len(parts)} · {_span(parts[part - 1])}"
     head += f" · next: get_transcript with part={part + 1}]" if part < len(parts) else "]"
     times = TIMESTAMP.findall(parts[part - 1])
     if times:
@@ -324,8 +367,13 @@ def search_lectures(cfg, query: str, course: str | None = None, max_results: int
         scope = {name: entries}
     else:
         scope = _courses(cfg)
-    paragraphs = [(entry, i, p, _fold(p["text"]))
-                  for entries in scope.values() for i, entry in enumerate(entries) for p in _paragraphs(_clean(entry))]
+    paragraphs = []
+    for entries in scope.values():
+        for i, entry in enumerate(entries):
+            text, _ = _read(cfg, entry)
+            note = "" if entry["status"] == "final" else \
+                " [text so far of a recording without its final transcript yet: Whisper's raw text]"
+            paragraphs += [({**entry, "note": note}, i, p, _fold(p["text"])) for p in _paragraphs(text)]
     hits, note = _matches(paragraphs, terms), ""
     if not hits and (similar := _similar(terms, paragraphs)):
         hits = _matches(paragraphs, [similar.get(t, t) for t in terms])
@@ -346,7 +394,7 @@ def search_lectures(cfg, query: str, course: str | None = None, max_results: int
     for _, (entry, i, p, _), pos in shown:
         where = f"{entry['course']}, {_label(entry, i)}" + (f" [{p['time']}]" if p["time"] else "")
         section = f" — section: {p['section']}" if p["section"] else ""
-        lines.append(f"\n- {where}{section}{_status_note(entry)}\n  {_snippet(p['text'], pos, len(terms[0]))}"
+        lines.append(f"\n- {where}{section}{entry["note"]}\n  {_snippet(p['text'], pos, len(terms[0]))}"
                      f"\n  cite as: {_cite(entry, i, p['time'], with_course=not course)}")
     lines.append("\nA hit's \"cite as\" line says which lecture and time it is. In your answer, name each lecture "
                  "once and then give only the time in brackets, at most once per point, with the full h:mm:ss. "

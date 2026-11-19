@@ -4,7 +4,7 @@
   "display_name": "Stenny",
   "version": "0.5.18",
   "description": "Your lecture transcripts, summaries and glossaries from Stenny, for studying with Claude.",
-  "long_description": "Stenny records your lectures on your Mac or Windows PC and transcribes them locally. With this extension Claude can read them: ask what the lecturer said about a topic, go through a lecture, or get quizzed, and Claude answers from your transcripts with timestamps like \"Lecture 3 [0:12:30]\".\n\nEverything stays on your computer: Claude gets clean text (no file paths, no microphone names), and the only change it can make is adding correct spellings of names and terms to a course glossary, so future transcripts get them right.\n\nNeeds Stenny installed on this computer (https://stenny.eu). Works in the Claude desktop app only, not on the web or on your phone.",
+  "long_description": "Stenny records your lectures on your Mac or Windows PC and transcribes them locally. With this extension Claude can read them: ask what the lecturer said about a topic, go through a lecture, or get quizzed, and Claude answers from your transcripts with timestamps like \"Lecture 3 [0:12:30]\". During a lecture Claude can read what Stenny has transcribed so far, about half a minute behind the room.\n\nEverything stays on your computer: Claude gets clean text (no file paths, no microphone names), and the only change it can make is adding correct spellings of names and terms to a course glossary, so future transcripts get them right.\n\nNeeds Stenny installed on this computer (https://stenny.eu). Works in the Claude desktop app only, not on the web or on your phone.",
   "author": {
     "name": "Hendrik Böttcher",
     "url": "https://stenny.eu"
@@ -28,7 +28,7 @@
   "tools": [
     {"name": "list_courses", "description": "Your courses, how many lectures each has, and recorded talks"},
     {"name": "list_lectures", "description": "A course's lectures with date, length, topics and section headings"},
-    {"name": "get_transcript", "description": "One lecture's transcript, in parts; can jump to a timestamp"},
+    {"name": "get_transcript", "description": "One lecture's transcript, in parts; can jump to a timestamp; during a recording, the text so far"},
     {"name": "get_summary", "description": "The AI-written summary of a lecture"},
     {"name": "search_lectures", "description": "Where something was said: lecture, date, timestamp and a snippet"},
     {"name": "get_glossary", "description": "A course's glossary: correct spellings of names and terms"},

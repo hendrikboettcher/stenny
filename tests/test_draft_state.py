@@ -115,7 +115,7 @@ def test_the_window_and_claude_get_the_same_sentence(cfg, monkeypatch):
     [entry] = share.library(cfg)
     computer = "PC" if sys.platform == "win32" else "Mac"
     assert entry["status"] == "queued" and f"once the {computer} is plugged in" in entry["draft_note"]
-    assert _status_note(entry) == f" [not transcribed yet. {entry['draft_note']}]"
+    assert _status_note(entry, []) == f" [Not transcribed yet. {entry['draft_note']}]"  # an English window
 
 
 def test_the_window_can_start_one_waiting_final_pass_now_also_on_battery(cfg, monkeypatch):

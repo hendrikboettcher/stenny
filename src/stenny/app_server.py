@@ -26,10 +26,11 @@ class AppError(Exception):
     """A message for the person using the app (shown as it is)."""
 
 
-def _with_live(entries: list[dict]) -> list[dict]:
+def with_live(entries: list[dict]) -> list[dict]:
     """The running recording's entry, while it records: its length from the session itself, as the menu bar's timer
     shows it (pauses left out; the placeholder's `duration` is only written now and then), and `live`, what the
-    window needs between two looks: whether the length is counting up, whether the text so far is being
+    window needs between two looks (and Claude, connector.py: `clock_s`, the lecture clock with pauses, which the
+    timestamps use): whether the length is counting up, whether the text so far is being
     transcribed, and a warning (low battery or memory, a full disk) while one applies."""
     if not any(e["status"] == "live" for e in entries):
         return entries
@@ -44,7 +45,8 @@ def _with_live(entries: list[dict]) -> list[dict]:
         if e["status"] == "live" and _same_file(Path(e["transcript"]), running):
             length = max(0.0, float(st.get("elapsed_s") or 0) - float(st.get("paused_s") or 0))
             e["duration"] = fmt_hms(length)
-            e["live"] = {"length_s": round(length, 1), "counting": st["state"] == "recording" and not st.get("input_lost"),
+            e["live"] = {"length_s": round(length, 1), "clock_s": round(float(st.get("elapsed_s") or 0), 1),
+                         "counting": st["state"] == "recording" and not st.get("input_lost"),
                          "draft": bool(st.get("draft")), "transcribing": bool(st.get("transcribing")),
                          "warning": st.get("warning") or ""}
     return entries
@@ -59,7 +61,7 @@ def _same_file(a: Path, b: Path) -> bool:
 
 def _entry(cfg, params: dict) -> dict:
     try:
-        return _with_live([share.find(cfg, params["course"], params["folder"], event=bool(params.get("event")))])[0]
+        return with_live([share.find(cfg, params["course"], params["folder"], event=bool(params.get("event")))])[0]
     except KeyError as e:
         raise AppError(tr("Missing '{name}'.", name=e.args[0])) from None
     except share.ShareError as e:
@@ -69,14 +71,14 @@ def _entry(cfg, params: dict) -> dict:
 def library(cfg, params: dict) -> dict:
     """Every lecture and talk (oldest first within a course) and the courses in the config. A lecture whose final
     pass runs has `final_pass`: how far it is (progress.read), or None before it reports anything; the recording
-    that runs now has `live` (_with_live). A "finalizing" lecture whose pass died shows as waiting again
+    that runs now has `live` (with_live). A "finalizing" lecture whose pass died shows as waiting again
     (cli.unstick_finalizing), with its button to start it."""
     entries = share.library(cfg)
     if any(e["status"] == "finalizing" for e in entries):
         from .cli import unstick_finalizing
         if unstick_finalizing(cfg):
             entries = share.library(cfg)
-    entries = _with_live(entries)
+    entries = with_live(entries)
     for entry in entries:
         if entry["status"] == "finalizing":
             entry["final_pass"] = final_pass(cfg, entry)
@@ -84,15 +86,9 @@ def library(cfg, params: dict) -> dict:
             "courses": [{"name": c.name, "hidden": c.hidden} for c in cfg.courses.values()]}
 
 
-def _data_base(cfg, entry: dict) -> Path | None:
-    """Where a lecture's files in the data place start (`<data>/<Course>/<folder>`), None for an unknown course."""
-    course = cfg.event(entry["course"]) if entry["kind"] == "event" else cfg.courses.get(entry["course"])
-    return cfg.data_for(course) / entry["folder"] if course is not None else None
-
-
 def final_pass(cfg, entry: dict) -> dict | None:
     from .progress import progress_path, read
-    base = _data_base(cfg, entry)
+    base = share.data_base(cfg, entry)
     return read(progress_path(base.parent, base.name)) if base else None
 
 
@@ -112,22 +108,10 @@ def summary_markdown(text: str) -> str:
 
 def progress(cfg, entry: dict) -> str | None:
     """A recording without its transcript yet: the text transcribed so far (during the recording, or by a final
-    pass that was interrupted) as Markdown, None if there is none. Raw Whisper text, shown only in the window."""
-    from .pipeline import ChunkCache
-    from .textproc import fmt_hms, to_paragraphs
-
-    base = _data_base(cfg, entry)
-    if base is None:
-        return None
-    cache = ChunkCache(Path(f"{base}.chunks.jsonl"))
-    if not cache.chunks:
-        return None
-    try:
-        breaks = [p[0] for p in json.loads(Path(f"{base}.session.json").read_text(encoding="utf-8"))["pauses"]]
-    except (OSError, ValueError, KeyError):
-        breaks = []
-    paragraphs = to_paragraphs(cache.text_so_far(), breaks=breaks)
-    return "\n\n".join(f"**[{fmt_hms(p['start'])}]** {p['text']}" for p in paragraphs) + "\n"
+    pass that was interrupted) as Markdown, None if there is none. Raw Whisper text (share.text_so_far), shown in the
+    window and read by Claude (connector.py), never written into the Stenny folder."""
+    paragraphs = share.text_so_far(cfg, entry)
+    return share.paragraphs_markdown(paragraphs) if paragraphs else None
 
 
 def lecture(cfg, params: dict) -> dict:

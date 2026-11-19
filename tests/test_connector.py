@@ -60,8 +60,7 @@ def cfg(tmp_path, monkeypatch):
                            [{"at": 0, "title": "Continuity"}])
     make_pdf(second / "Calculus 2026-10-27 (slides).pdf",
              [["Continuity", "The Intermediate Value Theorem by Bolzano"], ["Uniform continuity on compact sets"]])
-    write_lecture(lectures, lecture(date="2026-11-03", number=3, status="live"),
-                  [{"start": 5.0, "text": "A draft about derivatives."}], [])
+    write_lecture(lectures, lecture(date="2026-11-03", number=3, status="live"), [], [])  # a placeholder, no text
     (lectures / "_Glossaries").mkdir()
     (lectures / "_Glossaries" / "Calculus (glossary).md").write_text(GLOSSARY, encoding="utf-8")
     write_lecture(lectures / "Talks",
@@ -72,7 +71,20 @@ def cfg(tmp_path, monkeypatch):
                     'language = "en"\naliases = ["Calc"]\n\n[courses."Linear Algebra"]\nlanguage = "en"\n',
                     encoding="utf-8")
     monkeypatch.setenv("STENNY_CONFIG", str(toml))
-    return config_mod.load()
+    cfg = config_mod.load()
+    cfg.data_for = lambda course: tmp_path / "data" / course.name
+    so_far(cfg, "2026-11-03", [(0.0, [{"start": 5.0, "end": 9.0, "text": "A draft about derivatives."}])])
+    return cfg
+
+
+def so_far(cfg, folder: str, chunks: list[tuple[float, list[dict]]], course: str = "Calculus") -> None:
+    """What a recording has transcribed so far: its chunks (lecture time, segments) in the data place."""
+    from stenny.pipeline import ChunkCache
+    data = cfg.data_for(cfg.courses[course])
+    data.mkdir(parents=True, exist_ok=True)
+    cache = ChunkCache(data / f"{folder}.chunks.jsonl")
+    for i, (t, segments) in enumerate(chunks):
+        cache.put(i * 16000 * 30, (i + 1) * 16000 * 30, "en", segments, t)
 
 
 PRIVATE = ["Lectures Data", "opus", "some-model", "iPhone", "MacBook", "[[", "---\n", "Every segment"]
@@ -92,7 +104,8 @@ def test_list_courses_and_lectures(cfg):
     assert "## Lecture 1 (2026-10-20)" in text and "Topics: Limits" in text
     assert "Sections: [0:00:04] Intro; [0:11:40] Bounded sequences" in text
     assert "Has: transcript, summary\n" in text and "slide" not in text.casefold()  # slides aren't part of Stenny
-    assert "## Lecture 3 (2026-11-03) [not transcribed yet" in text
+    assert "## Lecture 3 (2026-11-03) [Recording now. Text so far, transcribed up to 0:00:09" in text
+    assert text.endswith("Has: text so far")
     assert_clean(text, cfg)
 
 
@@ -129,6 +142,51 @@ def test_long_transcripts_come_in_parts(cfg, monkeypatch):
         connector.get_transcript(cfg, "Calculus", "1", part=n + 1)
     with pytest.raises(ConnectorError, match="timestamp"):
         connector.get_transcript(cfg, "Calculus", "1", at="noon")
+
+
+def test_a_recording_gives_its_text_so_far_marked_as_raw(cfg, monkeypatch):
+    so_far(cfg, "2026-11-03", [(0.0, [{"start": 5.0, "end": 9.0, "text": "A draft about derivatives."}]),
+                               (1800.0, [{"start": 2.0, "end": 6.5, "text": "The chain rule, just now."}])])
+    text = connector.get_transcript(cfg, "Calculus", "latest")
+    assert text.startswith("[Calculus, Lecture 3 (2026-11-03) [Recording now. Text so far, transcribed up to 0:30:06: "
+                           "Whisper's raw text, not yet cleaned or corrected by the glossary")
+    assert "**[0:00:05]** A draft about derivatives." in text and "**[0:30:02]** The chain rule, just now." in text
+    assert_clean(text, cfg)
+    monkeypatch.setattr(connector, "PART_CHARS", 40)  # two parts: -1 is the newest
+    newest = connector.get_transcript(cfg, "Calculus", "latest", part=-1)
+    assert "part 2 of 2" in newest and "The chain rule, just now." in newest and "derivatives" not in newest
+
+
+def test_a_recording_says_how_long_it_runs_and_when_it_only_records(cfg, monkeypatch):
+    from stenny import app_live
+    path = next((cfg.folder / "Calculus" / "2026-11-03").glob("*.md"))
+    # 42 min on the lecture clock, 10 of them paused: the timestamps count the pause, so Claude gets the clock
+    status = {"state": "recording", "transcript": str(path), "elapsed_s": 2520.0, "paused_s": 600.0,
+              "draft": True, "transcribing": True}
+    monkeypatch.setattr(app_live.control, "send", lambda cmd, timeout=3: status)
+    text = connector.get_transcript(cfg, "Calculus", "3")
+    assert "[Recording now, at 0:42:00 on the lecture clock. Text so far, transcribed up to 0:00:09" in text
+    assert "only records" not in text
+    status["transcribing"] = False  # battery or memory low: the text so far stays behind
+    assert "Stenny only records for now (battery or memory low)" in connector.get_transcript(cfg, "Calculus", "3")
+
+
+def test_a_recording_with_nothing_transcribed_yet_says_why(cfg):
+    (cfg.data_for(cfg.courses["Calculus"]) / "2026-11-03.chunks.jsonl").unlink()
+    with pytest.raises(ConnectorError, match="no text yet. \\[Recording now. Nothing transcribed yet: Stenny "
+                                             "transcribes while it records"):
+        connector.get_transcript(cfg, "Calculus", "3")
+    assert "No matches" in connector.search_lectures(cfg, "derivatives")
+
+
+def test_a_finished_recording_waiting_for_power_says_so_in_english(cfg, tmp_path):
+    from stenny.render import set_draft_state
+    path = next((cfg.folder / "Calculus" / "2026-11-03").glob("*.md"))
+    path.write_text(set_draft_state(path.read_text(encoding="utf-8"), "queued", "battery"), encoding="utf-8")
+    text = connector.get_transcript(cfg, "Calculus", "3")
+    assert "[The recording is finished; its transcript is made once the " in text and "is plugged in. Text so far" in text
+    (cfg.data_for(cfg.courses["Calculus"]) / "2026-11-03.chunks.jsonl").unlink()
+    assert "## Lecture 3 (2026-11-03) [Not transcribed yet. The recording is finished" in connector.list_lectures(cfg, "Calculus")
 
 
 def test_summary(cfg):
@@ -170,7 +228,8 @@ def test_search_matching(cfg):
     assert text.index("Calculus, Lecture 1") < text.index("Some Talk")
     one_course = connector.search_lectures(cfg, "limits", course="Calculus")
     assert "Some Talk" not in one_course
-    assert "[not transcribed yet" in connector.search_lectures(cfg, "derivatives")
+    live = connector.search_lectures(cfg, "derivatives")  # the text so far of the recording that runs now
+    assert "Calculus, Lecture 3 [0:00:05]" in live and "[text so far of a recording" in live
 
 
 def test_search_falls_back_to_the_transcribed_spelling(cfg):

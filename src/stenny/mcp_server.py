@@ -25,6 +25,11 @@ subject came up; then read around a hit with get_transcript(course, lecture, at=
 lecture use get_summary first and the transcript for details: the transcript is the source, summaries are \
 AI-written. Long lectures come in parts.
 
+A lecture that is being recorded right now can be read too: its text so far, about half a minute behind the \
+room. For "what did they just say?" read get_transcript(course, "latest", part=-1), its newest part. That text is \
+Whisper's raw output, marked as such in the tool's reply: rougher than a final transcript, terms not yet \
+corrected by the glossary, and the final transcript replaces it after the lecture.
+
 Cite so the student can find a passage without the answer getting cluttered: name the lecture once, at the \
 top ("From Lecture 3:") or where the answer moves to another lecture or course, and then give only the time \
 in brackets, like [1:58:41]. Cite only where it helps to find the passage, at most once per point, and not \
@@ -93,14 +98,15 @@ def build() -> MCPServer:
     @server.tool(annotations=READ, structured_output=False)
     def list_lectures(course: str) -> str:
         """Every lecture of a course: number, date, length, topics, section headings with timestamps, and
-        whether a summary exists. `course`: its name (or a talk's title) as list_courses shows it."""
+        whether a summary exists; a lecture being recorded says how far its text so far goes. `course`: its name (or a talk's title) as list_courses shows it."""
         return _run(connector.list_lectures, course)
 
     @server.tool(annotations=READ, structured_output=False)
     def get_transcript(course: str, lecture: str, part: int = 1, at: str | None = None) -> str:
-        """The transcript of one lecture, in parts of about 10k tokens (a 3 h lecture has 3-4 parts).
-        `lecture`: its number ("3"), date ("2026-10-20", or "2026-10-20 (2)" for a second one that day) or
-        "latest". `part`: which part. `at`: a timestamp like "1:05:30" to get the part that contains it."""
+        """The transcript of one lecture, in parts of about 10k tokens (a 3 h lecture has 3-4 parts); for a
+        lecture being recorded, its text so far. `lecture`: its number ("3"), date ("2026-10-20", or
+        "2026-10-20 (2)" for a second one that day) or "latest". `part`: which part, -1 for the last (the newest
+        text while recording). `at`: a timestamp like "1:05:30" to get the part that contains it."""
         return _run(connector.get_transcript, course, lecture, part=part, at=at)
 
     @server.tool(annotations=READ, structured_output=False)

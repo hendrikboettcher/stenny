@@ -52,7 +52,7 @@ src/stenny/
   share.py        the library (every lecture and talk, for Stenny's window) and clean copies to share
   word.py         Word copies (.docx) without textutil, for Windows: share.py's blocks as a few XML parts in a zip
   connector.py    what Claude may read through the connector, as clean text (no paths, no microphones): courses,
-                  lectures, transcripts in parts, summaries, search, glossary; two writes, both to the glossary's automatic
+                  lectures, transcripts in parts (a recording's text so far too, share.text_so_far), summaries, search, glossary; two writes, both to the glossary's automatic
                   sections (`suggest_glossary_terms`, `suggest_glossary_corrections`: taken as given if guard.check_term /
                   check_correction accept their shape; the student's own entries win)
   mcp_server.py   `stenny mcp`: connector.py as a local MCP server (stdio, official `mcp` SDK) + study instructions

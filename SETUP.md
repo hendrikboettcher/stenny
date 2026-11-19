@@ -236,7 +236,7 @@ Tell the user in one sentence. They can remove it any time by asking in this cha
 
 ## 13. Let Claude read the transcripts
 
-This is what Stenny is for: Claude answers from what was said in class. The **Stenny connector** gives Claude your lectures: any chat can search them, read a transcript, and cite it as "Lecture 3 [0:12:30]". It needs the **Claude desktop app** on this Mac (claude.ai/download, if it's missing); Claude on the web and on the phone can't reach it.
+This is what Stenny is for: Claude answers from what was said in class. The **Stenny connector** gives Claude your lectures: any chat can search them, read a transcript, and cite it as "Lecture 3 [0:12:30]", even the lecture being recorded right now (its text so far, about half a minute behind). It needs the **Claude desktop app** on this Mac (claude.ai/download, if it's missing); Claude on the web and on the phone can't reach it.
 
 Check that the connector can start: `stenny mcp --desktop-config` prints a short JSON entry. Then open the extension in Claude:
 
