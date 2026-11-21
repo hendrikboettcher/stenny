@@ -167,7 +167,7 @@
   "settings.shortcut.needsModifier.windows": "Nimm noch Strg oder Alt dazu – sonst stört der Kurzbefehl beim Tippen.",
   "settings.shortcut.notYet": "Gespeichert, aber noch nicht aktiv: {problem}",
   "settings.reminders": "Erinnerungen an Vorlesungen",
-  "settings.reminders.hint": "Stenny fragt „Diese Vorlesung aufnehmen?“, 10 Minuten bevor eine Vorlesung aus deinem Kalender beginnt. Von selbst startet nie eine Aufnahme.",
+  "settings.reminders.hint": "Stenny fragt „Diese Vorlesung aufnehmen?“, wenn eine Vorlesung aus deinem Kalender beginnt, und nimmt erst auf, wenn du zustimmst.",
   "settings.calendar.lead": "Stenny sucht in deinem Kalender nach deinen Vorlesungen und fragt „Diese Vorlesung aufnehmen?“, sobald eine beginnt.",
   "settings.calendar.access": "Kalender auf diesem Mac",
   "settings.calendar.access.allowed": "Zugriff erlaubt – Stenny kann deinen Kalender lesen.",

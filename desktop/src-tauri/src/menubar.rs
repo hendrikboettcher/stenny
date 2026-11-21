@@ -1109,9 +1109,11 @@ fn remember_login_item(app: &AppHandle) {
 }
 
 /// The calendar's events on now (or within 10 minutes), from the Mac's own calendars (the agent) and from the linked
-/// ones (the engine): the first that belongs to a course becomes the menu's suggestion, announced once by a
-/// notification with "Start Recording" unless a recording runs or the reminders are switched off. A lecture that is
-/// in both (the Mac's Google account and its link) counts once.
+/// ones (the engine): the first that belongs to a course becomes the menu's suggestion (from 10 minutes before, so
+/// it can be started early), and once it starts (`asks_now`) it is announced once by a notification with "Start
+/// Recording" unless a recording runs or the reminders are switched off. Both sources report every 30 seconds, so
+/// the question comes within half a minute of the start. A lecture that is in both (the Mac's Google account and its
+/// link) counts once.
 fn calendar(app: &AppHandle) {
     let bar = app.state::<MenuBar>();
     let (events, unknown) = {
@@ -1139,12 +1141,12 @@ fn calendar(app: &AppHandle) {
         let mut st = bar.0.lock().unwrap();
         let first = events.iter().find_map(|e| {
             let course = st.course_for_title.get(str_of(e, "title")).cloned().flatten()?;
-            Some((Suggestion { course, range: str_of(e, "range").to_string() }, event_key(e)))
+            Some((Suggestion { course, range: str_of(e, "range").to_string() }, event_key(e), start_of(e)))
         });
-        st.suggestion = first.as_ref().map(|(s, _)| s.clone());
+        st.suggestion = first.as_ref().map(|(s, _, _)| s.clone());
         let busy = !matches!(str_of(&st.status, "state"), "idle" | "");
-        if let Some((sg, key)) = first {
-            if !busy && !st.no_reminders && remember_announced(&mut st.prefs.announced, &key, now()) {
+        if let Some((sg, key, start)) = first {
+            if !busy && !st.no_reminders && asks_now(start, now()) && remember_announced(&mut st.prefs.announced, &key, now()) {
                 announce = Some((key, sg));
                 remembered = Some(st.prefs.clone());
             }
@@ -1164,6 +1166,12 @@ fn calendar(app: &AppHandle) {
     }
     let _ = announce;
     redraw(app, false);
+}
+
+/// "Record this lecture?" comes when the lecture starts, not when the menu first offers it (10 minutes before): from
+/// half a minute before its start, as the calendar is looked at every 30 seconds.
+fn asks_now(start: f64, now: f64) -> bool {
+    start <= now + 30.0
 }
 
 /// Notes `key` (`event_key`) as announced; false if it already was. Lectures that started more than two days ago
@@ -1457,6 +1465,15 @@ mod tests {
         // what prefs.json from before this change has (no "announced") still loads
         let old: Prefs = serde_json::from_str(r#"{"microphone": null, "login_item": true}"#).unwrap();
         assert!(old.announced.is_empty());
+    }
+
+    #[test]
+    fn a_lecture_is_asked_about_when_it_starts() {
+        let start = 1_800_000_000.0;
+        assert!(!asks_now(start, start - 600.0)); // 10 minutes before: only the menu offers it
+        assert!(!asks_now(start, start - 60.0));
+        assert!(asks_now(start, start - 20.0)); // the calendar's look just before the start
+        assert!(asks_now(start, start + 900.0)); // Stenny opened during the lecture: still asked (once)
     }
 
     #[test]

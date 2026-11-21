@@ -167,7 +167,7 @@
   "settings.shortcut.needsModifier.windows": "Hold Ctrl or Alt too, so the shortcut doesn't get in the way of typing.",
   "settings.shortcut.notYet": "Saved, but it doesn't work yet: {problem}",
   "settings.reminders": "Lecture reminders",
-  "settings.reminders.hint": "Stenny asks “Record this lecture?” 10 minutes before a lecture in your calendar starts. It never starts by itself.",
+  "settings.reminders.hint": "Stenny asks “Record this lecture?” when a lecture in your calendar starts, and records only once you say yes.",
   "settings.calendar.lead": "Stenny looks in your calendar for your lectures and asks “Record this lecture?” when one starts.",
   "settings.calendar.access": "Calendar on this Mac",
   "settings.calendar.access.allowed": "Stenny can read your calendar.",

@@ -45,8 +45,8 @@ language = "system"
 # Claude and the calendar are set up. Stenny sets this to false once they are (or when you choose "Don't show this
 # again").
 # setup_checklist = true
-# "Record this lecture?" 10 minutes before a lecture in your calendar starts (Settings ▸ Calendar). false: no
-# notification; the lecture is still offered at the top of Stenny's menu. Calendar links pasted in Settings are not
+# "Record this lecture?" when a lecture in your calendar starts (Settings ▸ Calendar); Stenny's menu offers it from
+# 10 minutes before. false: no notification; the lecture is still offered at the top of Stenny's menu. Calendar links pasted in Settings are not
 # kept here but in the Keychain (Windows: Credential Manager).
 # reminders = true
 
