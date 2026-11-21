@@ -256,7 +256,7 @@ Tell the user: **Stenny works now.** Two short parts are left.
 
 ## 14. Calendar
 
-Say in a sentence or two: Stenny offers lectures from the calendar, from 10 minutes before they start, and never starts by itself. On a Mac it reads the calendars the Mac knows. If the timetable is somewhere else (Google Calendar or Outlook in the browser, the university's timetable), or on Windows, the user pastes that calendar's iCal link in Stenny ▸ *Settings… ▸ Calendar ▸ Add a calendar link…*; the sheet there says where to find it. The link is a secret: never ask for it in the chat, they paste it into Stenny themselves. Without a calendar, recording from the menu still works. Don't teach how to use a calendar.
+Say in a sentence or two: Stenny asks "Record this lecture?" when a lecture from the calendar starts (its menu offers it from 10 minutes before), and records only once they say yes. On a Mac it reads the calendars the Mac knows. If the timetable is somewhere else (Google Calendar or Outlook in the browser, the university's timetable), or on Windows, the user pastes that calendar's iCal link in Stenny ▸ *Settings… ▸ Calendar ▸ Add a calendar link…*; the sheet there says where to find it. The link is a secret: never ask for it in the chat, they paste it into Stenny themselves. Without a calendar, recording from the menu still works. Don't teach how to use a calendar.
 
 *Settings… ▸ Calendar* also shows whether Stenny may read the Mac's calendar and send notifications, with a button to System Settings if not, and how many lectures match the courses.
 
