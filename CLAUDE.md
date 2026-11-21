@@ -106,7 +106,8 @@ desktop/          the new app (in development, replaces app/): Tauri 2 + Svelte 
                   → src-tauri/engine, a Tauri resource), scripts/sign-mac.sh signs its native libraries on a Mac.
                   Check for Updates…: Tauri's updater (src-tauri/src/updater.rs; latest.json from app/release.sh +
                   CI, scripts/latest-json.py; the updater key in ~/.tauri/stenny-updater.key and CI's secrets)
-                  Windows installer: tauri.windows.conf.json (per-user NSIS + MSI), scripts/ffmpeg-windows.sh
+                  Windows installer: tauri.windows.conf.json (per-user NSIS + MSI), scripts/ffmpeg-windows.sh; signed in
+                  CI by SignPath Foundation once set up (signpath/, desktop/README.md "Code signing")
 desktop/stenny-rec/  `stenny-rec.exe`, the microphone recorder on Windows (Rust, WASAPI): the Swift stenny-rec's
                   command line, file (16 kHz mono s16le, appended) and exit codes; stops on `stop` on stdin (Windows
                   has no SIGTERM), `--list-json` for the engine's device list; scripts/stenny-rec.sh bundles it

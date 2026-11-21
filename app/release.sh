@@ -93,6 +93,8 @@ It updates the engine and the app together and keeps your lectures. Please don't
 
 **Aktualisieren oder installieren:** in Stenny *Nach Updates suchen …* ▸ *Jetzt aktualisieren*, oder führ die Zeile, mit der du Stenny installiert hast, noch mal aus (Mac: im Terminal, Windows: in PowerShell, siehe oben). Deine Vorlesungen bleiben, wie sie sind.
 
+[Code signing policy](https://stenny.eu/code-signing/) · [Privacy](https://stenny.eu/privacy/#app)
+
 NOTES
 )"
     # The LGPL asks that ffmpeg's source stays available next to the binary

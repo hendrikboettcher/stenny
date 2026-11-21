@@ -24,7 +24,7 @@ curl -fsSL https://github.com/hendrikboettcher/stenny/releases/latest/download/i
 irm https://github.com/hendrikboettcher/stenny/releases/latest/download/install.ps1 | iex
 ```
 
-It asks nothing, needs no password and takes about 5 minutes, mostly downloading the speech model (1.6 GB). Run it again to update. What it sets up, and how to remove it: [Installation](https://stenny.eu/docs/installation/). The scripts are [install.sh](scripts/install.sh) and [install.ps1](scripts/install.ps1).
+It asks nothing, needs no password and takes about 5 minutes, mostly downloading the speech model (1.6 GB). Run it again to update. What it sets up, and how to remove it: [Installation](https://stenny.eu/docs/installation/). The scripts are [install.sh](scripts/install.sh) and [install.ps1](scripts/install.ps1). Windows releases: [Code signing policy](https://stenny.eu/code-signing/).
 
 ## Development
 
