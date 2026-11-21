@@ -846,6 +846,9 @@
                   <div class="hint">{t("settings.ai.checking")}</div>
                 {:else if conn.installed}
                   <div class="hint state"><span class="dot" class:off={!conn.enabled}></span>{conn.via === "config" ? t("settings.claude.added") : conn.enabled ? t("settings.claude.installed") : t("settings.claude.disabled")}</div>
+                {:else if conn.used}
+                  <!-- Claude has read through it, though Stenny can't see Claude's own list (the Store app keeps it to itself) -->
+                  <div class="hint state"><span class="dot"></span>{t("settings.claude.used")}</div>
                 {:else if !conn.desktop}
                   <div class="hint">{t("settings.claude.noDesktop")}</div>
                 {:else if !conn.file}
@@ -855,11 +858,11 @@
                   <ClaudeConnect file={conn.file} store={conn.store} />
                 {/if}
               </div>
-              {#if conn && !conn.installed}
+              {#if conn && !conn.installed && !conn.used}
                 {#if !conn.desktop}
                   <button class="pill" onclick={() => openLink(URLS.desktop)}>{t("settings.claude.getDesktop")}</button>
                 {/if}
-              {:else if conn?.installed}
+              {:else if conn?.installed || conn?.used}
                 <button class="pill" disabled={connBusy !== null}
                         onclick={() => { connRemove = conn?.via === "config" ? "config" : "desktop"; connRemoveError = null; }}>{t("settings.claude.remove")}</button>
               {/if}

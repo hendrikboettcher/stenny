@@ -437,3 +437,24 @@ def test_the_extension_is_found_in_the_app_packages_folder_too(claude_windows, m
     assert claude_setup.installed_extension() == {"id": ext.name, "version": "0.5.14", "enabled": True}
     monkeypatch.setattr(claude_setup, "find_claude", lambda: None)
     assert claude_setup.connector_status(None)["installed"] is True
+
+
+def test_claude_from_the_store_used_the_connector(claude_windows, monkeypatch):
+    """The Store app runs `stenny mcp` inside its package: the note it writes lands in the package's own copy of
+    AppData, which the app only finds by looking there."""
+    data = claude_windows.local / "Stenny"
+    data.mkdir(parents=True)
+    monkeypatch.setattr(claude_setup.paths, "DATA_DIR", data)
+    package = claude_windows.local / "Packages/Claude_pzs8sxrjxfjjc"
+    (package / "LocalCache/Roaming/Claude").mkdir(parents=True)
+    assert claude_setup.connector_used() is None
+
+    private = package / "LocalCache/Local/Stenny" / claude_setup.CONNECTOR_USED
+    private.parent.mkdir(parents=True)
+    private.write_text('{"at": "2026-11-22T10:00:00"}', encoding="utf-8")
+    assert claude_setup.connector_used() == "2026-11-22T10:00:00"
+    # the newest of both counts
+    (data / claude_setup.CONNECTOR_USED).write_text('{"at": "2026-11-22T09:00:00"}', encoding="utf-8")
+    assert claude_setup.connector_used() == "2026-11-22T10:00:00"
+    (data / claude_setup.CONNECTOR_USED).write_text('{"at": "2026-11-22T11:00:00"}', encoding="utf-8")
+    assert claude_setup.connector_used() == "2026-11-22T11:00:00"

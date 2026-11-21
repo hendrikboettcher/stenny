@@ -410,12 +410,35 @@ def mark_connector_used() -> None:
         pass
 
 
+def _connector_used_files() -> list[Path]:
+    """Where `stenny mcp` may have written CONNECTOR_USED. Its own data place, and on Windows also each Claude app
+    package's private copy of it: Claude from the Microsoft Store runs the connector inside its package, and Windows
+    puts a file such a program creates in AppData into the package's own folder (…\Packages\Claude_<id>\LocalCache
+    \Local\…), which only programs of the package see there. So the file Claude's connector wrote isn't where the
+    app reads it."""
+    files = [paths.DATA_DIR / CONNECTOR_USED]
+    if sys.platform == "win32":
+        roaming = Path(os.environ.get("APPDATA") or Path.home() / "AppData/Roaming")
+        for base, folder in ((_local_appdata(), "Local"), (roaming, "Roaming")):
+            try:
+                inside = paths.DATA_DIR.resolve().relative_to(base.resolve())
+            except (OSError, ValueError):
+                continue
+            files += [package / "LocalCache" / folder / inside / CONNECTOR_USED for package in _claude_packages()]
+    return files
+
+
 def connector_used() -> str | None:
     """When Claude last used the connector (ISO time), None if it never did."""
-    try:
-        return json.loads((paths.DATA_DIR / CONNECTOR_USED).read_text(encoding="utf-8")).get("at")
-    except (OSError, ValueError, AttributeError):
-        return None
+    times = []
+    for file in _connector_used_files():
+        try:
+            at = json.loads(file.read_text(encoding="utf-8")).get("at")
+        except (OSError, ValueError, AttributeError):
+            continue
+        if isinstance(at, str) and at:
+            times.append(at)
+    return max(times, default=None)
 
 
 def connector_status(cfg) -> dict:
