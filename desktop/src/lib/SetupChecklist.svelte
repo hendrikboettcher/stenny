@@ -329,7 +329,7 @@
           <div class="name">{t("setup.claude.name")}</div>
           <div class="why">{t("setup.claude.why")}</div>
           {#if steps.claude}
-            <div class="state">{c.via === "config" ? t("setup.claude.done.config") : c.installed ? t("setup.claude.done.desktop") : t("setup.claude.done.code")}</div>
+            <div class="state">{c.via === "config" ? t("setup.claude.done.config") : c.installed ? t("setup.claude.done.desktop") : c.code.added ? t("setup.claude.done.code") : t("setup.claude.done.used")}</div>
             {#if c.via === "config"}<p class="note">{t("setup.claude.restart")}</p>{/if}
             {#if c.installed && !c.enabled}<p class="note">{t("settings.claude.disabled")}</p>{/if}
           {:else}
