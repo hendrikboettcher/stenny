@@ -852,7 +852,7 @@
                   <div class="hint">{t("settings.claude.noFile")}</div>
                 {:else}
                   <div class="hint">{t("settings.claude.notInstalled")}</div>
-                  <ClaudeConnect />
+                  <ClaudeConnect file={conn.file} store={conn.store} />
                 {/if}
               </div>
               {#if conn && !conn.installed}

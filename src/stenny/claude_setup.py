@@ -10,7 +10,8 @@
   start of Claude only brings its window up and drops the file. Only a cold start reads it. So Stenny starts Claude
   with the file when Claude isn't running, and otherwise asks the user to quit Claude first and waits
   (`install_connector` answers "waiting" until Claude is gone; desktop/src/lib/ClaudeConnect.svelte). The Store app
-  has no launcher to hand a file to: there the user pastes the path into Claude's Install extension dialog. Stenny
+  has no launcher to hand a file to: there the app copies the path and shows how to paste it into Claude's Install
+  extension dialog (`connector_status`'s "store"). Stenny
   0.5.7 wrote itself into Claude's claude_desktop_config.json on Windows instead, which Claude rewrites when it
   quits: such an entry is still recognised, and can be taken out. Adding it to Claude Code (`claude mcp add`) and
   removing it from Claude Code again.
@@ -183,6 +184,11 @@ def claude_desktop_exe() -> Path | None:
     local = _local_appdata()
     return next((p for p in (local / "AnthropicClaude/claude.exe", local / "Programs/Claude/Claude.exe")
                  if p.is_file()), None)
+
+
+def claude_desktop_store() -> bool:
+    """Windows: whether the Claude desktop app is only the Store app (an app package, no launcher of its own)."""
+    return sys.platform == "win32" and claude_desktop_exe() is None and bool(_claude_packages())
 
 
 def claude_desktop_installed() -> bool:
@@ -425,6 +431,9 @@ def connector_status(cfg) -> dict:
         "enabled": bool(ext and ext["enabled"]) or configured,
         "version": ext and ext["version"],
         "file": str(file) if file else None,
+        # Windows: Claude from the Microsoft Store, which can't be started with the file (install_connector's
+        # "manual"): the app shows how to paste the path into Claude's Install extension dialog right away
+        "store": claude_desktop_store(),
         "code": {"available": find_claude() is not None, "added": _claude_code_has_it()},
         # Claude has read through it: connected, whatever Stenny can or can't see of Claude's own settings
         "used": connector_used(),

@@ -347,7 +347,7 @@
             {:else if !c.file}
               <p class="note">{t("settings.claude.noFile")}</p>
             {:else}
-              <ClaudeConnect />
+              <ClaudeConnect file={c.file} store={c.store} />
             {/if}
             <button class="link more" onclick={() => settings("claude")}>{t("setup.more")}</button>
           {/if}

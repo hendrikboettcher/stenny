@@ -1,27 +1,35 @@
 <script lang="ts">
-  // Connect: how Stenny gets into the Claude desktop app, the same on Mac and Windows, for the setup card and
-  // Settings ▸ Claude. One button hands Stenny.mcpb to Claude, which shows its own Install window
-  // (claude_setup.install_connector); the parent sees Stenny in Claude at its next check and stops showing this.
+  // Connect: how Stenny gets into the Claude desktop app, on Mac and Windows, for the setup card and Settings ▸ Claude.
+  // Every state says what happens and what to do next. Connect hands Stenny.mcpb to Claude, which shows its own Install
+  // window (claude_setup.install_connector); the parent sees Stenny in Claude at its next check and stops showing this.
   // Windows: Claude takes the file only when it starts, so while Claude runs the engine answers "waiting" and this asks
-  // the user to close Claude, then Stenny opens it. Claude from the Microsoft Store can't be handed a file at all.
-  // Whatever doesn't end with Stenny in Claude (the Store app, an error, nothing after a while) shows one line,
-  // "Didn't work?", with Try again and Tell us: one click sends a report (report_connector), so we learn about it.
+  // the user to quit Claude, then Stenny opens it. Claude from the Microsoft Store (`store`, or the engine's "manual")
+  // can't be handed a file at all: there this shows at once how to paste the path into Claude's Install extension
+  // dialog, with Copy path. On Windows that way is also offered whenever Claude's Install
+  // window doesn't come up. Whatever doesn't end with Stenny in Claude (an error, nothing after a while) shows
+  // "Didn't work?" with Try again and Tell us: one click sends a report (report_connector), so we learn about it.
   import { onDestroy } from "svelte";
-  import { engine } from "$lib/engine";
-  import { t } from "$lib/i18n.svelte";
+  import { copyText, engine } from "$lib/engine";
+  import { t, onWindows } from "$lib/i18n.svelte";
+
+  let { file, store = false }: { file: string; store?: boolean } = $props();
 
   type Reply = { opened?: boolean; waiting?: boolean; manual?: boolean };
   const WAIT_MS = 1500;
-  const GIVE_UP_MS = 10 * 60_000;  // waiting for Claude to close
+  const GIVE_UP_MS = 10 * 60_000;  // waiting for Claude to quit
   const NOTHING_MS = 90_000;       // Claude's Install window should have done its work by then
 
-  let phase = $state<"idle" | "waiting" | "opened" | "failed">("idle");
+  let phase = $state<"idle" | "waiting" | "opened" | "manual" | "failed">("idle");
   let reason = "";
   let busy = $state(false);
+  let copied = $state(false);
   let report = $state<"idle" | "sending" | "sent">("idle");
-  let reportError = $state<string | null>(null);
+  let error = $state<string | null>(null);
   let timer: ReturnType<typeof setTimeout> | undefined;
   let until = 0;
+
+  // the Store app: the paste-the-path steps right away, no Connect button that can only fail
+  const shown = $derived(phase === "idle" && store ? "manual" : phase);
 
   function fail(why: string) {
     clearTimeout(timer);
@@ -37,15 +45,16 @@
           phase = "waiting";
           timer = setTimeout(ask, WAIT_MS);
         } else {
-          fail("Claude didn't close");
+          fail("Claude didn't quit");
         }
       } else if (r.manual) {
-        fail("store");
+        phase = "manual";
       } else {
         phase = "opened";
         timer = setTimeout(() => fail("timeout"), NOTHING_MS);
       }
     } catch (e) {
+      error = String(e);
       fail(String(e));
     }
   }
@@ -54,7 +63,7 @@
     clearTimeout(timer);
     busy = true;
     report = "idle";
-    reportError = null;
+    error = null;
     until = Date.now() + GIVE_UP_MS;
     await ask();
     busy = false;
@@ -65,48 +74,104 @@
     phase = "idle";
   }
 
+  async function copy() {
+    error = null;
+    try {
+      await copyText(file);
+      copied = true;
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  async function openClaude() {
+    error = null;
+    try {
+      await engine("open_claude");
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
   async function tellUs() {
     report = "sending";
-    reportError = null;
+    error = null;
     try {
-      await engine("report_connector", { reason });
+      await engine("report_connector", { reason: reason || (shown === "manual" ? "store" : "") });
       report = "sent";
     } catch (e) {
       report = "idle";
-      reportError = String(e);
+      error = String(e);
     }
   }
 
   onDestroy(() => clearTimeout(timer));
 </script>
 
-{#if phase === "waiting"}
+{#snippet tell()}
+  {#if report === "sent"}
+    <span class="line">{t("claude.connect.thanks")}</span>
+  {:else}
+    <button class="pill" disabled={report === "sending"} onclick={tellUs}>
+      {report === "sending" ? t("common.oneMoment") : t("claude.connect.tell")}
+    </button>
+  {/if}
+{/snippet}
+
+{#snippet pick()}
+  <!-- Windows: the way that needs no Install window from Claude -->
+  {#if onWindows}
+    <p class="pick">
+      {t("claude.connect.pick")}
+      <button class="link" onclick={copy}>{copied ? t("claude.connect.copied") : t("claude.connect.copy")}</button>
+    </p>
+  {/if}
+{/snippet}
+
+{#if shown === "waiting"}
+  <p class="how">{t("claude.connect.quit")}</p>
   <div class="do">
-    <span class="line" aria-live="polite">{t("claude.connect.close")}</span>
+    <span class="line" aria-live="polite">{t("claude.connect.waiting")}</span>
     <button class="pill" onclick={cancel}>{t("common.cancel")}</button>
   </div>
-{:else if phase === "failed"}
+{:else if shown === "manual"}
+  <p class="how">{t("claude.connect.store")}</p>
   <div class="do">
-    <span class="line">{report === "sent" ? t("claude.connect.thanks") : t("claude.connect.failed")}</span>
-    <button class="pill primary" disabled={busy} onclick={connect}>{t("claude.connect.again")}</button>
-    {#if report !== "sent"}
-      <button class="pill" disabled={report === "sending"} onclick={tellUs}>
-        {report === "sending" ? t("common.oneMoment") : t("claude.connect.tell")}
-      </button>
-    {/if}
+    <button class="pill primary" onclick={copy}>{copied ? t("claude.connect.copied") : t("claude.connect.copy")}</button>
+    <button class="pill" onclick={openClaude}>{t("settings.claude.openClaude")}</button>
   </div>
-  {#if reportError}<p class="error selectable">{reportError}</p>{/if}
+  <div class="do">
+    <span class="line muted">{t("claude.connect.failed")}</span>
+    {@render tell()}
+  </div>
+{:else if shown === "failed"}
+  <div class="do">
+    <span class="line">{t("claude.connect.failed")}</span>
+    <button class="pill primary" disabled={busy} onclick={connect}>{t("claude.connect.again")}</button>
+    {@render tell()}
+  </div>
+  {@render pick()}
 {:else}
+  <p class="how" aria-live="polite">{shown === "opened" ? t("claude.connect.opened") : t("claude.connect.how")}</p>
   <div class="do">
     <button class="pill primary" disabled={busy} onclick={connect}>
       {busy ? t("common.oneMoment") : t("claude.connect.button")}
     </button>
-    {#if phase === "opened"}<span class="line" aria-live="polite">{t("claude.connect.opened")}</span>{/if}
   </div>
+  {#if shown === "opened"}{@render pick()}{/if}
 {/if}
+{#if error}<p class="error selectable">{error}</p>{/if}
 
 <style>
+  .how { margin: 8px 0 0; color: var(--ink-2); }
   .do { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 10px; }
   .line { color: var(--ink-2); }
+  .muted { color: var(--muted); }
+  .pick { margin: 10px 0 0; color: var(--muted); font-size: 12.5px; }
+  .link {
+    border: 0; background: none; padding: 0; color: var(--accent); font-size: inherit; text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, var(--accent) 35%, transparent); text-underline-offset: 3px;
+  }
+  .link:hover { text-decoration-color: currentColor; }
   .error { margin: 8px 0 0; color: var(--danger, #b3261e); font-size: 12.5px; }
 </style>
