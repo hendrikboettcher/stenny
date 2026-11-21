@@ -351,6 +351,12 @@ def test_install_on_the_store_app_asks_for_the_path(claude_windows, monkeypatch,
     monkeypatch.setattr(claude_setup, "connector_file", lambda: file)
     monkeypatch.setattr(claude_setup, "_windows_process_paths", lambda image: [])
     assert claude_setup.install_connector(None) == {"manual": True}
+    # the app knows before Connect is clicked (connector_status' "store"): it shows how to paste the path right away
+    assert claude_setup.claude_desktop_store()
+    exe = claude_windows.local / "AnthropicClaude/claude.exe"   # the installer's Claude too: that one takes the file
+    exe.parent.mkdir(parents=True)
+    exe.write_bytes(b"")
+    assert not claude_setup.claude_desktop_store()
 
 
 def test_which_claude_exe_is_the_desktop_app(claude_windows):

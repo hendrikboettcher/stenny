@@ -64,6 +64,7 @@ export interface ConnectorStatus {
   enabled: boolean;
   version: string | null;
   file: string | null;
+  store: boolean;  // Windows: Claude from the Microsoft Store, which can't be handed the file (paste its path)
   code: { available: boolean; added: boolean };
   used: string | null;  // when Claude last read something through the connector (ISO time): it's connected
 }
