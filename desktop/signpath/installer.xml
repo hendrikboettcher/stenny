@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SignPath artifact configuration "installer" (desktop/README.md, "Code signing"): the setup program, made from the
+     signed programs. CI's installer job sends it as a GitHub artifact (a zip) under this fixed name and gives it back
+     its real one (Stenny_<version>_x64-setup.exe). A copy of what is set in SignPath's project; SignPath uses its own. -->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="version" required="true"/>
+  </parameters>
+  <zip-file>
+    <pe-file path="Stenny-setup.exe" product-name="Stenny" product-version="${version}">
+      <authenticode-sign/>
+    </pe-file>
+  </zip-file>
+</artifact-configuration>

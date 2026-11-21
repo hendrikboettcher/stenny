@@ -224,6 +224,12 @@ jobs:
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write  # a release tag: the Windows setup program goes onto the release (scripts/install.ps1 needs it)
+      actions: read    # SignPath downloads the programs to sign from this run's artifacts
+    # Windows code signing through SignPath Foundation (desktop/README.md, "Code signing"): only for a release tag, and
+    # only once SignPath is set up (the repository variable SIGNPATH_ORGANIZATION_ID, the secret SIGNPATH_API_TOKEN).
+    # Until then the Windows setup program is built and released unsigned, as before.
+    env:
+      SIGN: ${{ matrix.os == 'windows-latest' && startsWith(github.ref, 'refs/tags/v') && vars.SIGNPATH_ORGANIZATION_ID != '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -279,6 +285,7 @@ jobs:
       # its .sig goes into latest.json below). The Mac's update is made by app/release.sh from the app signed with
       # "Stenny Dev", which CI doesn't have.
       - name: Build the installers
+        if: env.SIGN != 'true'
         shell: bash
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -290,6 +297,105 @@ jobs:
           else
             npm run tauri build
           fi
+      # A signed release (Windows): Stenny's own programs are built and signed first, then bundled into the setup
+      # program, which is signed in turn. Each signing request waits for its approval in SignPath. The updater's
+      # signature (latest.json) is made last, over the signed setup program, since code signing changes the file.
+      # Programs from other projects (Python in the engine, ffmpeg) go in as their projects publish them.
+      - name: Build the programs (signed release)
+        if: env.SIGN == 'true'
+        shell: bash
+        run: |
+          npm run tauri build -- --no-bundle
+          triple=$(rustc -vV | sed -n 's/^host: //p')
+          app=src-tauri/target.noindex/release/Stenny.exe
+          [[ -f "$app" ]] || app=src-tauri/target.noindex/release/stenny-desktop.exe
+          mkdir -p "$RUNNER_TEMP/programs"
+          cp "$app" "$RUNNER_TEMP/programs/Stenny.exe"
+          cp "src-tauri/binaries/stenny-rec-$triple.exe" "$RUNNER_TEMP/programs/stenny-rec.exe"
+          echo "TRIPLE=$triple" >> "$GITHUB_ENV"
+          echo "VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")" >> "$GITHUB_ENV"
+      - id: programs
+        if: env.SIGN == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: stenny-programs-unsigned
+          path: ${{ runner.temp }}/programs/
+          retention-days: 1
+      - name: Sign the programs (SignPath, approved by hand)
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: stenny
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: programs
+          github-artifact-id: ${{ steps.programs.outputs.artifact-id }}
+          parameters: |
+            version: "${{ env.VERSION }}"
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 7200
+          output-artifact-directory: ${{ runner.temp }}/programs-signed
+      - name: The setup program, from the signed programs
+        if: env.SIGN == 'true'
+        shell: bash
+        run: |
+          signed="$RUNNER_TEMP/programs-signed"
+          release=src-tauri/target.noindex/release
+          for f in Stenny.exe stenny-desktop.exe; do
+            if [[ -f "$release/$f" ]]; then cp "$signed/Stenny.exe" "$release/$f"; fi
+          done
+          cp "$signed/stenny-rec.exe" "src-tauri/binaries/stenny-rec-$TRIPLE.exe"
+          if [[ -f "$release/stenny-rec.exe" ]]; then cp "$signed/stenny-rec.exe" "$release/stenny-rec.exe"; fi
+          # no updater signature yet (createUpdaterArtifacts): it is made below, over the signed setup program
+          npm run tauri bundle
+          mkdir -p "$RUNNER_TEMP/installer"
+          cp "$release"/bundle/nsis/*-setup.exe "$RUNNER_TEMP/installer/Stenny-setup.exe"
+      - id: installer
+        if: env.SIGN == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: stenny-installer-unsigned
+          path: ${{ runner.temp }}/installer/
+          retention-days: 1
+      - name: Sign the setup program (SignPath, approved by hand)
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: stenny
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: installer
+          github-artifact-id: ${{ steps.installer.outputs.artifact-id }}
+          parameters: |
+            version: "${{ env.VERSION }}"
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 7200
+          output-artifact-directory: ${{ runner.temp }}/installer-signed
+      - name: The signed setup program, and the updater's signature over it
+        if: env.SIGN == 'true'
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          setup="$(ls src-tauri/target.noindex/release/bundle/nsis/*-setup.exe)"
+          cp "$RUNNER_TEMP/installer-signed/Stenny-setup.exe" "$setup"
+          rm -f "$setup.sig"
+          npm run tauri signer sign -- --app-version "$VERSION" "$setup"
+          ls "$setup.sig"
+      - name: Signed?
+        if: env.SIGN == 'true'
+        shell: pwsh
+        run: |
+          $files = @((Get-Item src-tauri/target.noindex/release/bundle/nsis/*-setup.exe).FullName,
+                     "src-tauri/binaries/stenny-rec-$env:TRIPLE.exe")
+          foreach ($f in $files) {
+            $s = Get-AuthenticodeSignature $f
+            Write-Host "${f}: $($s.Status), $($s.SignerCertificate.Subject)"
+            if ($s.Status -ne 'Valid') { exit 1 }
+          }
       - name: Sizes
         shell: bash
         run: |
@@ -304,8 +410,9 @@ jobs:
             desktop/src-tauri/target.noindex/release/bundle/dmg/*.dmg
             desktop/src-tauri/target.noindex/release/bundle/msi/*.msi
             desktop/src-tauri/target.noindex/release/bundle/nsis/*.exe
-      # app/release.sh creates the release right after pushing the tag, so wait for it a little. Unsigned, like the
-      # artifact; install.ps1 downloads it with PowerShell, so Windows doesn't block it. The Mac app is in Stenny.zip.
+      # app/release.sh creates the release right after pushing the tag, so wait for it a little. Signed once SignPath is
+      # set up (above), unsigned until then; install.ps1 downloads it with PowerShell, so Windows doesn't block it
+      # either way. The Mac app is in Stenny.zip.
       # Then Windows goes into the release's latest.json (release.sh wrote it with the Mac's update), so Windows'
       # Check for Updates… finds it; until then it falls back to the install line (updater.rs).
       - name: Attach the Windows setup program to the release

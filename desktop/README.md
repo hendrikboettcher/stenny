@@ -182,9 +182,41 @@ LGPL ffmpeg/ffprobe into src-tauri/binaries and their licence notice into src-ta
 installer job does all three (Git Bash). The engine finds the bundled ffmpeg next to Stenny.exe (src/stenny/paths.py,
 `bundled()`).
 
-**Not signed:** there is no Windows code-signing certificate, so Windows SmartScreen warns about the setup program
+**Not signed yet:** until SignPath signs a release (below), Windows SmartScreen warns about the setup program
 ("Windows protected your PC" ▸ *More info* ▸ *Run anyway*; SETUP.md says so). `bundle.windows.signCommand` /
-`certificateThumbprint` stay unset until there is one.
+`certificateThumbprint` stay unset: signing happens in CI, not in `tauri build`.
+
+### Code signing
+
+Windows releases are to be signed for free by [SignPath Foundation](https://signpath.org) (applied for; its
+conditions: https://signpath.org/terms). Windows then names "SignPath Foundation" as the publisher. What their terms
+ask of Stenny:
+
+- **The code signing policy** on stenny.eu (`/code-signing/`, `/de/codesignatur/`; stenny-website,
+  `docs-src/build_privacy.py`), linked as "Code signing policy" from the home page, the docs, the install page and
+  each release's notes (app/release.sh). It names what is signed, the roles (committers/reviewers and the approver)
+  and links the privacy page, whose app section lists every connection Stenny makes. **Keep that list true** when
+  the app starts talking to anything new. Once a release is signed, `SIGNPATH = True` there switches the page to
+  SignPath's own sentence.
+- **Multi-factor authentication** for GitHub and SignPath, for everyone in a role.
+- **Only Stenny's own programs are signed:** `Stenny.exe`, `stenny-rec.exe` and the setup program. Python (inside the
+  engine) and ffmpeg go in as their projects publish them.
+- **Product name "Stenny" and one version** in every signed file: tauri-build writes them into Stenny.exe and the
+  setup program, and `stenny-rec/build.rs` writes them into stenny-rec.exe (from tauri.conf.json's `version`).
+- **Every signing is approved by hand** in SignPath, and its files must come from CI's build of the tag (SignPath
+  checks this with GitHub).
+
+**In CI** (ci.yml, installer job, Windows, release tags only): with SignPath set up, `tauri build --no-bundle`
+builds the programs; they go to SignPath as one artifact (artifact configuration `programs`) and come back signed;
+`tauri bundle` makes the setup program from them; that goes to SignPath (`installer`); and only then is the updater's
+signature made over the signed setup program (`tauri signer sign --app-version`), since Authenticode changes the
+file. Each request waits up to two hours for its approval. Without SignPath (main, pull requests, or before it's set
+up) the job builds the unsigned setup program in one `tauri build`, as before.
+
+**Setting it up, once accepted:** in SignPath, a project `stenny` with the GitHub repository as its trusted build
+system, a signing policy `release-signing`, and two artifact configurations, `programs` and `installer`, as in
+`desktop/signpath/*.xml`. In GitHub, the repository variable `SIGNPATH_ORGANIZATION_ID` and the secret
+`SIGNPATH_API_TOKEN` (a CI user's token, allowed to submit to that policy). The variable turns signing on.
 
 ## Calendar
 
