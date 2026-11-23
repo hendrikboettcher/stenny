@@ -31,7 +31,10 @@
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDM1ODYxMDcwNEIwMTc4RTYKUldUbWVBRkxjQkNHTlo3QkhhT3hkajlTSWNWNnMySXZkUzVDQ0RVd1VxVWVYRWpZOS8yZ1g5bkkK",
-      "endpoints": ["https://github.com/hendrikboettcher/stenny/releases/latest/download/latest.json"],
+      "endpoints": [
+        "https://stenny.eu/update/{{target}}/{{arch}}/{{current_version}}",
+        "https://github.com/hendrikboettcher/stenny/releases/latest/download/latest.json"
+      ],
       "requireSignedVersion": true,
       "windows": {
         "installMode": "passive"

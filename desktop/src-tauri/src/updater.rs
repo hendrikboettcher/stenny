@@ -2,6 +2,11 @@
 //! (tauri.conf.json, `plugins.updater`), its download checked against Stenny's updater key, then installed, and
 //! Stenny opens again by itself. App and engine are one now (the engine is inside the app), so this updates both.
 //!
+//! - **Asked through stenny.eu first** (#130): `stenny.eu/update/<os>/<arch>/<version>` counts the check (per day,
+//!   version and system, nothing else, no ID) and sends GitHub's `latest.json` on. GitHub's address stays the
+//!   second endpoint, so updates never depend on stenny.eu: when it's down or answers with an error, the plugin
+//!   asks GitHub itself (`CONNECT_TIMEOUT` keeps an unreachable stenny.eu from holding the check up).
+//!
 //! - **Never in the middle of a recording or a final pass** (the engine's `update_blocked`): they run from the
 //!   files an update replaces. Asked before the download and again after it; if one started meanwhile, the update
 //!   waits until it's done.
@@ -30,6 +35,10 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 #[cfg(not(target_os = "macos"))]
 use tauri_plugin_dialog::MessageDialogButtons;
 use tauri_plugin_updater::{Update, UpdaterExt};
+
+/// How long connecting to an update address may take before the next one is asked (stenny.eu, then GitHub). Only
+/// the connection: a slow download of the update itself is never cut off.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// An update is being downloaded or waits to be installed: a second Check for Updates… only says so.
 static UPDATING: AtomicBool = AtomicBool::new(false);
@@ -155,6 +164,7 @@ fn check(app: &AppHandle) -> Result<Option<Update>, String> {
         .updater_builder()
         // Windows: the plugin ends Stenny right after starting the setup program; the engine must not outlive it
         .on_before_exit(move || engine.stop())
+        .configure_client(|client| client.connect_timeout(CONNECT_TIMEOUT))
         .build()
         .map_err(|e| e.to_string())?;
     tauri::async_runtime::block_on(updater.check()).map_err(|e| e.to_string())
@@ -283,6 +293,26 @@ mod key_tests {
         let key = minisign_verify::PublicKey::decode(&decode(updater["pubkey"].as_str().unwrap())).unwrap();
         let sig = minisign_verify::Signature::decode(&decode(include_str!("../updater-key-check.txt.sig"))).unwrap();
         key.verify(include_bytes!("../updater-key-check.txt"), &sig, true).expect("tauri.conf.json's pubkey");
+    }
+
+    /// stenny.eu is asked first (it counts the check, #130), GitHub last: updates must keep working without
+    /// stenny.eu, and the downloads always come from GitHub's own latest.json.
+    #[test]
+    fn github_stays_the_last_update_address() {
+        let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let endpoints: Vec<&str> = conf["plugins"]["updater"]["endpoints"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| e.as_str().unwrap())
+            .collect();
+        assert_eq!(
+            endpoints,
+            [
+                "https://stenny.eu/update/{{target}}/{{arch}}/{{current_version}}",
+                "https://github.com/hendrikboettcher/stenny/releases/latest/download/latest.json",
+            ]
+        );
     }
 }
 
