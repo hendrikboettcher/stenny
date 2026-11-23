@@ -109,7 +109,21 @@ def test_runs_the_apps_engine_as_the_app_does(home):
     replies = talk(env, INIT, INITIALIZED, TOOLS)
     tools = {t["name"] for t in next(r for r in replies if r.get("id") == 2)["result"]["tools"]}
     assert "list_courses" in tools and "stenny_setup_problem" not in tools
-    assert "1 none -m stenny mcp" in log.read_text(encoding="utf-8").splitlines()
+    # started once, at once: no Python start of its own before it (Claude's Cowork and Code sessions don't wait)
+    assert log.read_text(encoding="utf-8").splitlines() == ["1 none -m stenny mcp"]
+
+
+@posix
+def test_initialize_behind_a_2026_request_through_the_extension(home):
+    """What Cowork and Code sessions send while the connector starts: a 2026-07-28 request, then `initialize`
+    behind it. The `initialize` starts the connection."""
+    from test_connector import probe_then_initialize
+
+    home, env = home
+    mac_app_engine(home, home / "log")
+    replies = probe_then_initialize([NODE, str(SCRIPT)], env)
+    assert "error" in replies[0]
+    assert replies[1]["result"]["serverInfo"]["name"] == "Stenny", replies[1]
 
 
 def test_without_stenny_claude_is_told_what_to_do(home):
