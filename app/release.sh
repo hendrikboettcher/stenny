@@ -58,7 +58,7 @@ mkdir -p "$WORK/$TOP/app/build.noindex"
 /usr/bin/ditto "$BUILT" "$WORK/$TOP/app/build.noindex/Stenny.app"
 codesign --verify --deep --strict "$WORK/$TOP/app/build.noindex/Stenny.app"
 
-# The connector for Claude Desktop, at the top of the folder: setup opens it (SETUP.md step 13)
+# The connector for Claude Desktop, at the top of the folder: the app's Connect button opens it
 connector/build.sh
 cp dist/Stenny.mcpb "$WORK/$TOP/Stenny.mcpb"
 
