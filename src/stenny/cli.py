@@ -18,7 +18,6 @@ from .paths import tool
 from .vault import TALKS_DIR
 from .version import version
 
-EXAMPLE = config_mod.EXAMPLE
 ICLOUD_INBOX = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/Lectures"
 
 
@@ -67,12 +66,10 @@ def cmd_init(args) -> None:
     if args.vault:  # the options before `folder`
         args.folder = str(Path(args.vault) / (args.lectures_dir or "Lectures"))
     folder = Path(args.folder).expanduser() if args.folder else paths.default_folder()
-    text = EXAMPLE.read_text(encoding="utf-8")
-    text = text.replace('folder = "~/Documents/Stenny"', f"folder = {json.dumps(paths.tilde(folder), ensure_ascii=False)}")
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(text, encoding="utf-8")
+    from .migrate import default_config
+    default_config(dest, folder)  # no courses: the example's are only examples
     folder.mkdir(parents=True, exist_ok=True)
-    print(f"Wrote {dest} (Stenny folder: {folder}). Edit it to set your courses.")
+    print(f"Wrote {dest} (Stenny folder: {folder}). Add your courses: stenny course add \"<name>\" -l <language>")
 
 
 def cmd_where(args) -> None:

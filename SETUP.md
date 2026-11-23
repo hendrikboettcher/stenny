@@ -162,7 +162,7 @@ Then, **one course at a time**, ask with options:
 - **Language** of the lecture. Guess from the course name and offer, for example: "English (Recommended)", "German", "Mixed: German and English", "Other". Explain *mixed* once: for lecturers who switch languages within a lecture.
 - **Short name** for matching calendar events: suggest the abbreviation students actually use (e.g. `micro` for Microeconomics) and "No short name".
 
-Show the final list and ask "Looks right (Recommended)" / "Change something". Then edit `~/Library/Application Support/Stenny/config.toml` to **delete the two example courses** (`Calculus`, `International Economics`) at the end, and add each course:
+Show the final list and ask "Looks right (Recommended)" / "Change something". Then add each course (a new config has none):
 
 ```bash
 stenny course add "Microeconomics" --language en --alias micro
@@ -396,7 +396,7 @@ As in step 5. The recommended folder is `Documents\Stenny` (`stenny init` picks 
 
 ## W7. Courses
 
-As in step 8: ask the user to type their course names. (If they already pasted a calendar link in Stenny ▸ Settings ▸ Calendar, `%LOCALAPPDATA%\Stenny\calendar-titles.json` has this term's event titles to suggest from.) The config is `%APPDATA%\Stenny\config.toml` (`stenny where` shows it): delete the two example courses at its end, then `stenny course add …` for each course. **Check:** `stenny courses`.
+As in step 8: ask the user to type their course names. (If they already pasted a calendar link in Stenny ▸ Settings ▸ Calendar, `%LOCALAPPDATA%\Stenny\calendar-titles.json` has this term's event titles to suggest from.) Then `stenny course add …` for each course (a new config has none). **Check:** `stenny courses`.
 
 ## W8. The AI step
 

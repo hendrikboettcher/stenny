@@ -532,11 +532,13 @@ def migrate(dry_run: bool = False, log=print) -> int:
 EMPTY_COURSES = re.compile(r"(?ms)^\[courses\.[^\n]*\n.*\Z")
 
 
-def default_config(path: Path) -> Path:
-    """A new config with the default Stenny folder (~/Documents/Stenny) and no courses yet: what the app starts
-    with when there's no config at all. `stenny init` writes the same, with example courses."""
+def default_config(path: Path, folder: Path | None = None) -> Path:
+    """A new config from config.example.toml with the Stenny folder (default ~/Documents/Stenny) and no courses
+    yet (the example's courses are only examples): what the app starts with when there's no config at all, and
+    what `stenny init` writes."""
+    folder = folder or paths.default_folder()
     text = EXAMPLE.read_text(encoding="utf-8")
-    text = text.replace('folder = "~/Documents/Stenny"', f"folder = {json.dumps(paths.tilde(paths.default_folder()), ensure_ascii=False)}")
+    text = text.replace('folder = "~/Documents/Stenny"', f"folder = {json.dumps(paths.tilde(folder), ensure_ascii=False)}")
     text = EMPTY_COURSES.sub("", text).rstrip("\n") + "\n"
     path.parent.mkdir(parents=True, exist_ok=True)
     courses._write(path, text)

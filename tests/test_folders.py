@@ -148,6 +148,16 @@ def test_init_suggests_documents_stenny(places, monkeypatch, capsys):
     cfg = config_mod.load()
     assert cfg.path == places.config_path and cfg.folder == places.home / "Documents/Stenny" and cfg.folder.is_dir()
     assert places.config_path.read_text(encoding="utf-8").startswith("# Stenny configuration")
+    assert cfg.courses == {}  # the example's courses stay in the example (the installers run `stenny init`)
+
+
+def test_init_with_another_folder(places, tmp_path):
+    from argparse import Namespace
+
+    from stenny import cli
+    cli.cmd_init(Namespace(folder=str(tmp_path / "Vault/Lectures"), vault=None, lectures_dir=None))
+    cfg = config_mod.load()
+    assert cfg.folder == tmp_path / "Vault/Lectures" and cfg.folder.is_dir() and cfg.courses == {}
 
 
 def test_the_app_starts_a_config_without_example_courses(places):
