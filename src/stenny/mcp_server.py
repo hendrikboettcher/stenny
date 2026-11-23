@@ -6,8 +6,17 @@ so a plain chat needs no project. The tools themselves are in connector.py.
 """
 
 
+import os
+import subprocess
+import sys
+import tomllib
+from pathlib import Path
+
+import anyio
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
+from mcp.server.runner import serve_loop
+from mcp.server.stdio import stdio_server
 from mcp.types import ToolAnnotations
 
 from . import connector
@@ -153,5 +162,42 @@ def build() -> MCPServer:
     return server
 
 
+async def _serve_stdio(server: MCPServer) -> None:
+    """The server on stdin/stdout, in the handshake era only (`initialize` first, MCP up to 2025), never the
+    2026-07-28 one. MCPServer.run() lets the first request choose the era, once per connection: Claude Desktop's
+    Cowork and Code sessions first try a 2026-07-28 request, and when the answer is slow (Stenny starting on
+    Windows) they give up and send `initialize` behind it on the same connection; the era chosen by the probe then
+    refused that `initialize`, and the connector never started there. Handshake only, the probe gets an error at
+    once and the `initialize` behind it works, as in every chat."""
+    low = server._lowlevel_server  # MCPServer has no public way to serve one era only; tests/test_mcp.py checks it
+    async with stdio_server() as (read, write), low.lifespan(low) as state:
+        await serve_loop(low, read, write, lifespan_state=state, init_options=low.create_initialization_options())
+
+
+_COPY = "STENNY_CONNECTOR_COPY"  # set for the copy below, so that it serves the connector itself
+
+
+def developer_copy() -> list[str] | None:
+    """`[connector] stenny` in config.toml, only for developers: another Stenny serves the connector instead, e.g. a
+    development checkout. None when it's not set, not there, or this is that copy already. Here and not in the
+    extension's starter (connector/server/index.js), which would need a Python start of its own to find the config
+    before Claude gets an answer."""
+    if os.environ.get(_COPY):
+        return None
+    try:
+        data = tomllib.loads(config_mod.config_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    value = data.get("connector", {}).get("stenny") if isinstance(data.get("connector"), dict) else None
+    if not isinstance(value, str) or not value.strip():
+        return None
+    program = Path(value.strip()).expanduser()
+    return [str(program), "mcp"] if program.is_file() else None
+
+
 def main() -> None:
-    build().run()  # stdio
+    copy = developer_copy()
+    if copy:  # it gets this process's stdin and stdout
+        sys.exit(subprocess.run(copy, env={**os.environ, _COPY: "1"},
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).returncode)
+    anyio.run(_serve_stdio, build())

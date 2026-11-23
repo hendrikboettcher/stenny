@@ -341,3 +341,66 @@ def test_mcp_server_serves_the_tools(cfg, monkeypatch):
     # Claude really read through it: the setup checklist ticks "Connect Claude", wherever Claude keeps the extension
     from stenny import claude_setup
     assert claude_setup.connector_used()
+
+
+ENVELOPE = {"io.modelcontextprotocol/protocolVersion": "2026-07-28",
+            "io.modelcontextprotocol/clientInfo": {"name": "probe", "version": "0"},
+            "io.modelcontextprotocol/clientCapabilities": {}}
+PROBE = {"jsonrpc": "2.0", "id": 0, "method": "server/discover", "params": {"_meta": ENVELOPE}}
+INIT = {"jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "test", "version": "0"}}}
+
+
+def probe_then_initialize(command: list[str], env: dict) -> dict:
+    """What Claude's Cowork and Code sessions send when Stenny starts slowly: a 2026-07-28 request, and before its
+    answer `initialize` behind it on the same connection. The answers by id."""
+    import json
+    import subprocess
+
+    child = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                             text=True, encoding="utf-8", env=env)
+    try:
+        child.stdin.write(json.dumps(PROBE) + "\n" + json.dumps(INIT) + "\n")
+        child.stdin.flush()
+        replies = {}
+        while len(replies) < 2:
+            line = child.stdout.readline()
+            assert line, f"the connector ended with only {replies}"
+            reply = json.loads(line)
+            replies[reply.get("id")] = reply
+    finally:
+        child.stdin.close()
+        child.wait(timeout=60)
+    return replies
+
+
+def test_initialize_works_behind_a_2026_request(tmp_path):
+    """The connector speaks the handshake era only: the 2026-07-28 probe is refused at once, and the `initialize`
+    behind it starts the connection (it used to be refused: "connection is serving the 2026-07-28 protocol")."""
+    import os
+    import sys
+
+    env = {**os.environ, "STENNY_HOME": str(tmp_path), "PYTHONUTF8": "1"}
+    env.pop("STENNY_CONFIG", None)
+    replies = probe_then_initialize([sys.executable, "-m", "stenny", "mcp"], env)
+    assert "error" in replies[0]
+    assert replies[1]["result"]["serverInfo"]["name"] == "Stenny", replies[1]
+
+
+def test_a_developer_copy_serves_the_connector(tmp_path, monkeypatch):
+    from stenny import mcp_server
+
+    toml = tmp_path / "config.toml"
+    monkeypatch.setenv("STENNY_CONFIG", str(toml))
+    monkeypatch.delenv(mcp_server._COPY, raising=False)
+    assert mcp_server.developer_copy() is None                      # no config
+    toml.write_text('folder = "x"\n', encoding="utf-8")
+    assert mcp_server.developer_copy() is None                      # not set
+    copy = tmp_path / "checkout" / "stenny"
+    toml.write_text(f'folder = "x"\n\n[connector]\nstenny = "{copy.as_posix()}"\n', encoding="utf-8")
+    assert mcp_server.developer_copy() is None                      # not there
+    copy.parent.mkdir()
+    copy.write_text("", encoding="utf-8")
+    assert mcp_server.developer_copy() == [str(copy), "mcp"]
+    monkeypatch.setenv(mcp_server._COPY, "1")
+    assert mcp_server.developer_copy() is None                      # this is the copy: it serves itself

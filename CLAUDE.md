@@ -55,7 +55,9 @@ src/stenny/
                   lectures, transcripts in parts (a recording's text so far too, share.text_so_far), summaries, search, glossary; two writes, both to the glossary's automatic
                   sections (`suggest_glossary_terms`, `suggest_glossary_corrections`: taken as given if guard.check_term /
                   check_correction accept their shape; the student's own entries win)
-  mcp_server.py   `stenny mcp`: connector.py as a local MCP server (stdio, official `mcp` SDK) + study instructions
+  mcp_server.py   `stenny mcp`: connector.py as a local MCP server (stdio, official `mcp` SDK) + study instructions;
+                  handshake era only (`initialize` first), never the 2026-07-28 one: Cowork/Code sessions probe with
+                  2026-07-28 and send `initialize` behind it when the answer is slow
   app_server.py   `stenny app-server`: the engine behind the new app (desktop/), JSON lines over stdio (library,
                   lecture, make_copy, finish_now); plain functions of (cfg, params), so a phone page can serve them too
   i18n.py         the engine's messages to the app in its language (English/German, `tr()`, keyed by the English

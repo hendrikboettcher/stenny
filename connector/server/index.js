@@ -3,11 +3,15 @@
 // app. This file only finds that Stenny; it runs on the Node.js built into Claude Desktop (macOS and Windows).
 //
 // Which Stenny, first that works:
-//   1. `[connector] stenny = "…"` in Stenny's config: only for developers (a development checkout); users never set it
-//   2. the engine inside the Stenny app (#92): its own Python, run as `python -m stenny`, the same engine the app uses
+//   1. the engine inside the Stenny app (#92): its own Python, run as `python -m stenny`, the same engine the app uses
 //      (Stenny.app/Contents/Resources/engine on a Mac, engine\ next to Stenny.exe on Windows)
-//   3. a `stenny` command: what older setups installed with `uv tool install` (~/.local/bin), or one on the PATH
+//   2. a `stenny` command: what older setups installed with `uv tool install` (~/.local/bin), or one on the PATH
 // `node index.js --candidates` prints them (for tests and troubleshooting) without starting any.
+// (`[connector] stenny` in Stenny's config, for developers, is followed by `stenny mcp` itself: src/stenny/mcp_server.py.)
+//
+// Quick, before all: Claude is already writing to stdin while this runs, and Cowork and Code sessions give up on an
+// answer that's slow. So the app's engine starts at once, with Stenny's one Python start; only a `stenny` command,
+// which may be older than the connector, is asked first.
 "use strict";
 
 const { spawn, spawnSync } = require("child_process");
@@ -79,38 +83,15 @@ function installed() {
   return [...new Set(out)].filter((p) => fs.existsSync(p)).map((p) => command(p));
 }
 
-// Stenny's config, for `[connector] stenny`. Where it is, only Stenny knows (`stenny where --json`, see
-// src/stenny/paths.py); an older Stenny without `where` has no such setting to read.
-function configured(c) {
-  let file = process.env.STENNY_CONFIG;
-  if (!file) {
-    const done = runSync(c, ["where", "--json"]);
-    if (done.status !== 0) return null;
-    try { file = JSON.parse(done.stdout).config; } catch { return null; }
-  }
-  let text;
-  try { text = fs.readFileSync(file, "utf8"); } catch { return null; }
-  let inSection = false;
-  for (const line of text.split(/\r?\n/)) {
-    const t = line.trim();
-    if (t.startsWith("[")) inSection = t === "[connector]";
-    const m = inSection && t.match(/^stenny\s*=\s*"([^"]+)"/);
-    if (m) return command(m[1].startsWith("~") ? path.join(os.homedir(), m[1].slice(1)) : m[1]);
-  }
-  return null;
-}
-
 function candidates() {
-  const found = [...appEngines(), ...installed()];
-  const chosen = found.length ? configured(found[0]) : null;
-  const all = chosen && fs.existsSync(chosen.program) ? [chosen, ...found] : found;
   const seen = new Set();
-  return all.filter((c) => !seen.has(c.program) && seen.add(c.program));
+  return [...appEngines(), ...installed()].filter((c) => !seen.has(c.program) && seen.add(c.program));
 }
 
 function hasConnector(c) {
-  // older Stennys have no `mcp` command; asking for the config entry is quick and changes nothing
-  return runSync(c, ["mcp", "--desktop-config"]).status === 0;
+  // every engine inside the app has the connector; older `stenny` commands have no `mcp` command (asking for the
+  // config entry changes nothing, but it's a Python start of its own)
+  return c.app || runSync(c, ["mcp", "--desktop-config"]).status === 0;
 }
 
 // Without a usable Stenny, Claude Desktop would only say "Unable to connect". Instead, answer as a tiny MCP
