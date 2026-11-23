@@ -183,7 +183,8 @@ installer job does all three (Git Bash). The engine finds the bundled ffmpeg nex
 `bundled()`).
 
 **Not signed yet:** until SignPath signs a release (below), Windows SmartScreen warns about the setup program
-("Windows protected your PC" ▸ *More info* ▸ *Run anyway*; SETUP.md says so). `bundle.windows.signCommand` /
+("Windows protected your PC" ▸ *More info* ▸ *Run anyway*; stenny.eu's Troubleshooting page says so, and
+`scripts/install.ps1` avoids it by downloading with PowerShell). `bundle.windows.signCommand` /
 `certificateThumbprint` stay unset: signing happens in CI, not in `tauri build`.
 
 ### Code signing

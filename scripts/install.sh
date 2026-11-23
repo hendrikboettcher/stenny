@@ -11,7 +11,7 @@
 # 5. opens Stenny, then downloads Whisper (1.6 GB) with progress. The app's setup list does the rest
 #    (courses, Claude, calendar).
 # Needs no password. Downloading with curl, not a browser, is what lets macOS open an app signed with the author's
-# own certificate (SETUP.md step 0). Speaks German when the Mac's first language is German.
+# own certificate. Speaks German when the Mac's first language is German.
 #
 # For testing: STENNY_ZIP=<file or URL> installs that Stenny.zip instead of the newest release.
 

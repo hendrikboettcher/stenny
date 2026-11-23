@@ -33,7 +33,9 @@ uv run pytest      # tests, no model download needed
 app/build.sh       # build and install the Mac app
 ```
 
-[CLAUDE.md](CLAUDE.md) has the architecture and the rules the code follows.
+[CLAUDE.md](CLAUDE.md) has the architecture and the rules the code follows. The app writes `~/.local/bin/stenny` (Windows
+`stenny.cmd`) for its own engine but never over another `stenny`, such as one from `uv tool install -e .`; if the app and
+the terminal show different versions, `head -3 ~/.local/bin/stenny` shows which one you have.
 
 ## License
 
