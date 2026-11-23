@@ -149,6 +149,11 @@ one starts while it downloads, it waits until it's done.
   newer version; if there is one, the footer's Check for Updates… becomes *Update to 0.5.x…* (accent colour, the
   `update-available` event and the `update_available` command). Nothing pops up or downloads by itself, and it
   doesn't look while recording or making a final transcript (then an hour later).
+- **Counted on stenny.eu (#130):** the first update address is `stenny.eu/update/{{target}}/{{arch}}/{{current_version}}`
+  (stenny-website's `api/update-check.js`). It adds 1 to that day's count for the version and system (no ID, no IP
+  address kept) and redirects to GitHub's `latest.json`. GitHub's address stays second in `endpoints`, so an
+  unreachable or failing stenny.eu never stops an update (`CONNECT_TIMEOUT` in updater.rs; a test keeps GitHub last).
+  The counts are update checks, not people: each Stenny checks at start and twice a day.
 
 - **macOS, in place:** the plugin would swap the whole Stenny.app, which leaves the Dock's tile pointing at a bundle
   that's gone (two Stenny icons). So updater.rs unpacks Stenny.app.tar.gz next to the app, checks it with
