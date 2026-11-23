@@ -79,7 +79,12 @@ def test_the_command_line_writes_the_file(tmp_path):
 def test_the_app_reads_the_newest_releases_latest_json():
     conf = json.loads((SCRIPT.parents[1] / "src-tauri/tauri.conf.json").read_text(encoding="utf-8"))
     updater = conf["plugins"]["updater"]
-    assert updater["endpoints"] == ["https://github.com/hendrikboettcher/stenny/releases/latest/download/latest.json"]
+    # stenny.eu first, which counts the check and redirects to GitHub (#130); GitHub itself last, so updates never
+    # depend on stenny.eu
+    assert updater["endpoints"] == [
+        "https://stenny.eu/update/{{target}}/{{arch}}/{{current_version}}",
+        "https://github.com/hendrikboettcher/stenny/releases/latest/download/latest.json",
+    ]
     assert updater["pubkey"]
     # the update archives are made only for releases (release.sh, CI's installer job), never by every build
     assert not conf["bundle"].get("createUpdaterArtifacts")
