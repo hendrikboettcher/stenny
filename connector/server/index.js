@@ -63,7 +63,8 @@ function windowsAppDirs() {
 function appEngines() {
   const engines = windows
     ? windowsAppDirs().map((d) => path.join(d, "engine"))
-    : [path.join(os.homedir(), "Applications"), "/Applications"].map((apps) =>
+    // STENNY_APPLICATIONS stands in for /Applications (tests: never this computer's Stenny), as ProgramFiles does on Windows
+    : [path.join(os.homedir(), "Applications"), process.env.STENNY_APPLICATIONS || "/Applications"].map((apps) =>
         path.join(apps, "Stenny.app", "Contents", "Resources", "engine"));
   return engines
     .filter((e) => fs.existsSync(path.join(e, ENGINE_INFO)))
