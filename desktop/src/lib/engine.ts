@@ -1,7 +1,8 @@
 // The app's only door to Stenny's engine (`stenny app-server`, see src-tauri/src/engine.rs).
 import { invoke } from "@tauri-apps/api/core";
 
-export type Status = "final" | "draft" | "live" | "queued" | "finalizing";
+// "ready": added from a file, waiting for Transcribe (src/stenny/ready.py)
+export type Status = "final" | "draft" | "live" | "queued" | "finalizing" | "ready";
 
 export interface Entry {
   kind: "lecture" | "event";
@@ -15,10 +16,22 @@ export interface Entry {
   language: string | null;
   status: Status;
   draft_note: string | null; // a live draft: where its final transcript is
-  transcript: string;
+  waiting?: string | null;  // why it waits (a draft: "battery"; a recording from a file: "recording", "power", "night", "memory")
+  transcript: string | null; // null only for a recording from a file that isn't transcribed yet (`ready`)
   summary: string | null;
   live?: Live;              // only the recording that is running now (app_server._with_live)
   final_pass?: FinalPass | null; // "finalizing": how far it is (null before it reports anything)
+  ready?: Ready;            // a recording added from a file that has no transcript yet
+}
+
+// A recording added from a file (the file button next to Record, or dropped on a course): the original file, which
+// Stenny only reads, and why its last pass failed, if it did
+export interface Ready {
+  id: string;
+  file: string;
+  name: string;
+  error: string | null;
+  night_start: string;      // when the queue's night starts ("01:00"), for "Starts at night, from 01:00."
 }
 
 // The running recording, as the menu bar sees it: its length (pauses left out) and whether it is counting up now,
@@ -178,6 +191,21 @@ export const recordingCommand = (cmd: "toggle" | "stop" | "cancel") =>
 // A PDF from an HTML copy (stenny-agent on a Mac, WebView2 on Windows: make_pdf in src-tauri/src/lib.rs); in a browser the HTML stays
 export const makePdf = (html: string) => (inApp ? invoke<string>("make_pdf", { html }) : Promise.resolve(html));
 export const finishNow = (e: Entry) => engine<{ started: boolean }>("finish_now", where(e));
+
+// Recordings from a file (src/stenny/ready.py): added at their date, transcribed only once Transcribe is clicked.
+// In a browser during development there is no file dialog: the path is typed in.
+export const pickRecordings = async (): Promise<string[]> => {
+  if (inApp) return invoke<string[]>("pick_recordings");
+  const path = window.prompt("Path of a recording");
+  return path ? [path] : [];
+};
+export const addRecording = (course: string, event: boolean, path: string, language?: string) =>
+  engine<Entry>("add_recording", event ? { event: course, path, language } : { course, path });
+const which = (e: Entry) => ({ course: e.course, event: e.kind === "event", id: e.ready?.id });
+export const setReady = (e: Entry, change: { date?: string; language?: string }) =>
+  engine<Entry>("set_ready", { ...which(e), ...change });
+export const transcribeReady = (e: Entry, now = false) => engine<Entry>("transcribe_ready", { ...which(e), now });
+export const removeReady = (e: Entry) => engine<{ removed: boolean }>("remove_ready", which(e));
 export const openTranscript = (path: string) => (inApp ? invoke("open_transcript", { path }) : console.log("open", path));
 export const reveal = (path: string) => (inApp ? invoke("reveal", { path }) : console.log("reveal", path));
 // the system's share menu for these files: on macOS below `anchor` (the Share button), on Windows the Share panel

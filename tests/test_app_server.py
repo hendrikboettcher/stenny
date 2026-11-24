@@ -21,7 +21,8 @@ def cfg(tmp_path):
     (folder / "Calculus 2026-10-20 (summary).md").write_text(
         summary_md(lec, "## Overview\nAbout [[_Topics/Limits|limits]]. [0:00:04]", "Claude Code (haiku)"), encoding="utf-8")
     return SimpleNamespace(folder=tmp_path / "Lectures", events_root=tmp_path / "Lectures" / "Talks",
-                           courses={"Calculus": SimpleNamespace(name="Calculus", hidden=False)})
+                           courses={"Calculus": SimpleNamespace(name="Calculus", hidden=False)},
+                           recordings_dir=tmp_path / "Recordings", data_for=lambda c: tmp_path / "Recordings" / c.name)
 
 
 def test_library_lists_lectures_and_courses(cfg):

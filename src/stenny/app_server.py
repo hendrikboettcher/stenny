@@ -14,7 +14,7 @@ import sys
 import threading
 from pathlib import Path
 
-from . import app_live, i18n, settings, share
+from . import app_live, i18n, ready, settings, share
 from . import config as config_mod
 from .config import ConfigError
 from .i18n import tr
@@ -82,6 +82,9 @@ def library(cfg, params: dict) -> dict:
     for entry in entries:
         if entry["status"] == "finalizing":
             entry["final_pass"] = final_pass(cfg, entry)
+    # recordings added from a file, not transcribed yet: among the lectures by date, with `ready` (ready.py)
+    if waiting := ready.entries(cfg):
+        entries = ready.numbered(cfg, entries + waiting)
     return {"entries": entries,
             "courses": [{"name": c.name, "hidden": c.hidden} for c in cfg.courses.values()]}
 
@@ -158,6 +161,34 @@ def finish_now(cfg, params: dict) -> dict:
         mark_job_draft(cfg, job, "queued")
         raise
     return {"started": True}
+
+
+def _ready(fn, cfg, params: dict) -> dict:
+    try:
+        return fn(cfg, params)
+    except ready.ReadyError as e:
+        raise AppError(str(e)) from None
+
+
+def add_recording(cfg, params: dict) -> dict:
+    """A recording from a file (`path`) into a course (`course`) or a talk (`event`: its title, `language`): its
+    library entry, ready to transcribe and not transcribed before transcribe_ready (ready.py)."""
+    return _ready(ready.add, cfg, params)
+
+
+def set_ready(cfg, params: dict) -> dict:
+    """A ready recording's date (`date`) or language (`language`); `course`/`event` and `id` say which."""
+    return _ready(ready.change, cfg, params)
+
+
+def transcribe_ready(cfg, params: dict) -> dict:
+    """Transcribe: it starts now in its own process, or waits for the recording, power or the night (ready.py)."""
+    return _ready(ready.transcribe, cfg, params)
+
+
+def remove_ready(cfg, params: dict) -> dict:
+    """A ready recording out of Stenny again; the file itself stays where it is."""
+    return _ready(ready.remove, cfg, params)
 
 
 def _managed(fn, *args, **kw):
@@ -404,6 +435,8 @@ def ping(cfg, params: dict) -> dict:
 
 
 METHODS = {"ping": ping, "library": library, "lecture": lecture, "make_copy": make_copy, "finish_now": finish_now,
+           "add_recording": add_recording, "set_ready": set_ready, "transcribe_ready": transcribe_ready,
+           "remove_ready": remove_ready,
            "rename_lecture": rename_lecture, "delete_lecture": delete_lecture, "rename_course": rename_course, "delete_course": delete_course,
            "add_course": add_course, "remove_course": remove_course, "preferences": preferences,
            "set_preference": set_preference, "set_course_language": set_course_language,

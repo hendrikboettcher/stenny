@@ -100,13 +100,15 @@ def in_window(start: str, end: str, now: datetime | None = None) -> bool:
 
 
 def enqueue(file: Path, course: str, lang: str | None, use_llm: bool, live: Path | None = None,
-            slides: Path | None = None, kind: str = "lecture") -> Path:
+            slides: Path | None = None, kind: str = "lecture", ready: dict | None = None) -> Path:
     """`live`: session.json of a live recording (the final pass then keeps its folder and pause times).
-    `slides`: a PDF to store in the lecture folder."""
+    `slides`: a PDF to store in the lecture folder. `ready`: a recording added in Stenny's window (ready.py):
+    {"entry": its ready file, "folder": the lecture folder it was given, "when": its date and time, as the
+    student confirmed them}."""
     QUEUE_DIR.mkdir(parents=True, exist_ok=True)
     job = {"file": str(file.resolve()), "course": course, "kind": kind, "lang": lang, "llm": use_llm,
            "live": str(live) if live else None, "slides": str(slides.resolve()) if slides else None,
-           "added": datetime.now().isoformat(timespec="seconds")}
+           "added": datetime.now().isoformat(timespec="seconds"), **({"ready": ready} if ready else {})}
     path = QUEUE_DIR / f"{time.strftime('%Y%m%d-%H%M%S')}-{file.stem}.json"
     path.write_text(json.dumps(job, indent=1), encoding="utf-8")
     return path
@@ -154,6 +156,16 @@ class QueueLock:
         if not self.f.closed:
             _unlock(self.f)
             self.f.close()
+
+
+def recording_running() -> bool:
+    """A recording is on now (starting, recording or paused): the recording comes first, so a final pass from the
+    queue waits until it's done."""
+    from .live import control
+    try:
+        return control.send("status", timeout=3).get("state") in ("starting", "recording", "paused")
+    except (control.NoSession, OSError, ValueError):
+        return False
 
 
 def queue_busy() -> bool:

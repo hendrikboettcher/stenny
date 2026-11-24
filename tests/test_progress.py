@@ -119,7 +119,7 @@ def test_final_pass_reports_each_step_and_turns_final_at_the_end(setup, monkeypa
 
     real_archive = pipeline.audio_io.archive
 
-    def archive(src, dest):
+    def archive(src, dest, when=None):
         seen["saving"] = read(path)
         return real_archive(src, dest)
 
@@ -152,7 +152,7 @@ def test_a_failure_after_the_transcript_leaves_it_final(setup, monkeypatch):
     cfg, wav = setup
     course = Course("Calculus", language="fr", languages=["fr"])
 
-    def broken(src, dest):
+    def broken(src, dest, when=None):
         raise OSError("disk full")
     monkeypatch.setattr(pipeline.audio_io, "archive", broken)
     with pytest.raises(OSError):
