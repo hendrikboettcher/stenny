@@ -22,7 +22,17 @@ def input_args(path: Path) -> list[str]:
     return [*RAW_INPUT, "-i", str(path)] if path.suffix == ".pcm" else ["-i", str(path)]
 
 
+def pcm_seconds(path: Path) -> float:
+    """How long a live recording (.pcm) is, from its size: no need to read it."""
+    try:
+        return path.stat().st_size // 2 / SAMPLE_RATE
+    except OSError:
+        return 0.0
+
+
 def load(path: Path) -> np.ndarray:
+    if path.suffix == ".pcm":  # already what Whisper takes: read as it is, no ffmpeg (a 3-hour lecture is 330 MB)
+        return np.fromfile(path, dtype="<i2", count=path.stat().st_size // 2).astype(np.float32) / 32768.0
     cmd = [tool("ffmpeg"), "-nostdin", "-loglevel", "error", *input_args(path), "-f", "s16le", "-ac", "1",
            "-ar", str(SAMPLE_RATE), "-"]
     p = subprocess.run(cmd, capture_output=True)

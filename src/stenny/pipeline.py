@@ -537,6 +537,13 @@ def log_llm(info: dict) -> None:
         log(f"LLM: {usage.input_tokens} in / {usage.output_tokens} out tokens, {cost}")
 
 
+def lecture_length(recorded: float, spans, pauses) -> float:
+    """The lecture's length in seconds: `recorded` seconds of audio plus the paused stretches, and a gap at the
+    end (filled from the backup microphone) too."""
+    duration = (spans[-1][1] + recorded - spans[-1][0] / SAMPLE_RATE) if spans else recorded
+    return max([max(0.0, duration)] + [p[1] for p in pauses])
+
+
 def process(path: Path, cfg: Config, course: Course, engine, *, lang: str | None = None,
             when: datetime | None = None, use_llm: bool = True, summary: bool | None = None,
             live: LiveInfo | None = None, slides_src: Path | None = None, stop=None) -> dict:
@@ -547,28 +554,34 @@ def process(path: Path, cfg: Config, course: Course, engine, *, lang: str | None
     vault = cfg.vault_for(course)
     glossary = ensure_glossary(vault, course)
 
-    log(f"Loading {path.name}")
-    audio = audio_io.load(path)
-    recorded = len(audio) / SAMPLE_RATE
     spans = live.spans if live else None
     pauses = live.pauses if live else []
-    # lecture length: recorded audio plus the paused stretches
-    duration = (spans[-1][1] + recorded - spans[-1][0] / SAMPLE_RATE) if spans else recorded
-    duration = max([duration] + [p[1] for p in pauses])  # a gap at the end (filled from the backup microphone)
-    when = when or (live.started_at if live else audio_io.recorded_at(path))
-    microphone = live.microphone if live else audio_io.recording_device(path)
-    log(f"Length {fmt_ts(duration)}" + (f" ({fmt_ts(recorded)} recorded)" if pauses else "")
-        + f", recorded {when:%Y-%m-%d %H:%M}" + (f" with {microphone}" if microphone else ""))
 
-    date = f"{when:%Y-%m-%d}"
-    source = live.source if live else path.name
-    folder = vault.course_dir(course.name) / live.folder if live else vault.lecture_dir(course.name, date, source)
-    prompt, slides, slides_copy = whisper_prompt(vault, folder, glossary, course.name, slides_src)
-
-    # how far this pass is, for Stenny's window (progress.py); gone when it ends, however it ends
-    progress = Progress(progress_path(cfg.data_for(course), folder.name), duration)
+    # how far this pass is, for Stenny's window (progress.py); gone when it ends, however it ends. A live
+    # recording's folder is known before its audio is loaded, which takes a while for a long lecture read at
+    # background priority, so its bar shows from the start (the lecture says "finalizing" by then)
+    estimate = lecture_length(audio_io.pcm_seconds(path), spans, pauses) if live and path.suffix == ".pcm" else 0.0
+    progress = Progress(progress_path(cfg.data_for(course), live.folder) if live else None, estimate)
     try:
         progress.step("transcribing")
+        log(f"Loading {path.name}")
+        audio = audio_io.load(path)
+        recorded = len(audio) / SAMPLE_RATE
+        duration = lecture_length(recorded, spans, pauses)
+        when = when or (live.started_at if live else audio_io.recorded_at(path))
+        microphone = live.microphone if live else audio_io.recording_device(path)
+        log(f"Length {fmt_ts(duration)}" + (f" ({fmt_ts(recorded)} recorded)" if pauses else "")
+            + f", recorded {when:%Y-%m-%d %H:%M}" + (f" with {microphone}" if microphone else ""))
+
+        date = f"{when:%Y-%m-%d}"
+        source = live.source if live else path.name
+        folder = vault.course_dir(course.name) / live.folder if live else vault.lecture_dir(course.name, date, source)
+        prompt, slides, slides_copy = whisper_prompt(vault, folder, glossary, course.name, slides_src)
+        if live:
+            progress.duration = duration
+        else:  # an added file's folder is known only now
+            progress = Progress(progress_path(cfg.data_for(course), folder.name), duration)
+            progress.step("transcribing")
         gaps = [(p[0], p[1]) for p in pauses if p[2] == "no input"]  # only zeros there, or nothing at all
         cache = ChunkCache(live.chunks) if live and live.chunks else None
         segments, languages, lang_note = transcribe(audio, course, engine, prompt, lang, spans, skip=gaps, stop=stop,

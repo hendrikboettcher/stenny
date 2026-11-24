@@ -188,6 +188,42 @@ def test_a_resumed_pass_starts_its_bar_where_it_was(setup):
     assert not path.exists()
 
 
+def test_a_live_pass_shows_its_bar_while_the_recording_loads(setup, tmp_path, monkeypatch):
+    """A 3-hour recording read at background priority takes a while to load; the lecture says "finalizing" by then,
+    so its bar is there from the start, at 0 and with the lecture's length (pauses included)."""
+    import numpy as np
+    cfg, _ = setup
+    cfg.keep_audio = False
+    course = Course("Calculus", language="fr", languages=["fr"])
+    pcm = tmp_path / "2026-10-15.live.pcm"
+    samples = (np.random.default_rng(2).normal(0, 0.1, 40 * pipeline.SAMPLE_RATE) * 32767).astype(np.int16)
+    pcm.write_bytes(samples.tobytes())
+    live = pipeline.LiveInfo(started_at=datetime(2026, 10, 15, 9, 15), folder="2026-10-15",
+                             spans=[(0, 0.0), (20 * pipeline.SAMPLE_RATE, 30.0)], pauses=[(20.0, 30.0, "paused")])
+    path = progress_path(cfg.data_for(course), "2026-10-15")
+    seen = []
+    real_load = pipeline.audio_io.load
+
+    def load(p):
+        seen.append(read(path))
+        return real_load(p)
+    monkeypatch.setattr(pipeline.audio_io, "load", load)
+    info = pipeline.process(pcm, cfg, course, FakeEngine({"fr": 1.0}), use_llm=False, live=live)
+    assert seen[0] == {"step": "transcribing", "fraction": 0.0, "at": 0.0, "of": 50.0, "left_s": None}
+    assert info["duration_s"] == 50.0 and not path.exists()
+
+
+def test_a_raw_recording_loads_as_ffmpeg_would(tmp_path):
+    import numpy as np
+    from stenny import audio
+    samples = (np.random.default_rng(4).normal(0, 0.2, 3 * pipeline.SAMPLE_RATE) * 32767).astype(np.int16)
+    pcm = tmp_path / "x.live.pcm"
+    pcm.write_bytes(samples.tobytes() + b"\x01")  # cut mid-sample: that half is dropped
+    assert audio.pcm_seconds(pcm) == 3.0
+    got = audio.load(pcm)
+    assert got.dtype == np.float32 and np.array_equal(got, samples.astype(np.float32) / 32768.0)
+
+
 def test_an_interrupted_pass_leaves_no_progress(setup):
     cfg, wav = setup
     course = Course("Calculus", language="fr", languages=["fr"])
