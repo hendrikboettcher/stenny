@@ -1,4 +1,4 @@
-"""Tiny PDF writer for tests: one text line per row, Helvetica, Latin-1 text (accents work)."""
+"""Tiny PDF writer for tests: one text line per row, Helvetica, Windows-1252 text (accents and dashes work)."""
 
 from pathlib import Path
 
@@ -10,7 +10,7 @@ def make_pdf(path: Path, pages: list[list[str]]) -> Path:
     for lines in pages:
         esc = [line.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)") for line in lines]
         stream = "BT /F1 18 Tf 50 750 Td 24 TL " + " ".join(f"({t}) Tj T*" for t in esc) + " ET"
-        data = stream.encode("latin-1")
+        data = stream.encode("cp1252")  # WinAnsiEncoding: Latin-1 and the dashes, quotes and € of Windows-1252
         objects.append(f"<< /Length {len(data)} >>\nstream\n{data.decode('latin-1')}\nendstream")
         objects.append(f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
                        f"/Resources << /Font << /F1 3 0 R >> >> /Contents {len(objects)} 0 R >>")

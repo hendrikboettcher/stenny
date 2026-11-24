@@ -126,6 +126,17 @@ def _title(entry: dict, entries: list[dict]) -> str:
 LIVE_LAG = 120  # s: text so far further behind the recording than this, while Stenny isn't transcribing: it catches up
 
 
+def _imported_note(entry: dict) -> str:
+    """An imported transcript (#138) says so, wherever Claude reads it: who made it, and whether it can be cited by
+    time."""
+    imported = entry.get("imported")
+    if not imported:
+        return ""
+    made = ("Stenny on another computer" if imported.get("by") == "Stenny" else imported.get("by") or "another app")
+    note = f" [Imported transcript, made with {made}; Stenny didn't hear this recording."
+    return note + (" It has no timestamps: cite it by quoting, not by time.]" if not imported.get("timestamps") else "]")
+
+
 def _status_note(entry: dict, paragraphs: list[dict]) -> str:
     """For a recording without its transcript yet: where it is, and how far its text so far goes."""
     if entry["status"] == "final":
@@ -247,7 +258,7 @@ def list_lectures(cfg, course: str) -> str:
                                          entry.get("duration") and f"length {entry['duration']}",
                                          entry.get("language") and f"language {entry['language']}"] if x)
         text, note = _read(cfg, entry) if entry["status"] != "final" else ("", "")
-        lines.append(f"\n## {_label(entry, i)}{note}")
+        lines.append(f"\n## {_label(entry, i)}{note}{_imported_note(entry)}")
         lines.append(f"Date {entry['date']}" + (f", {details}" if details else ""))
         if topics:
             lines.append(f"Topics: {', '.join(topics)}")
@@ -288,7 +299,7 @@ def get_transcript(cfg, course: str, lecture: str | int, part: int = 1, at: str 
         part = max(1, len(parts) + 1 + part)
     if not 1 <= part <= len(parts):
         raise ConnectorError(f"{_title(entry, entries)} has {len(parts)} part(s); ask for part 1 to {len(parts)}.")
-    head = f"[{_title(entry, entries)}{note} · part {part} of {len(parts)} · {_span(parts[part - 1])}"
+    head = f"[{_title(entry, entries)}{note}{_imported_note(entry)} · part {part} of {len(parts)} · {_span(parts[part - 1])}"
     head += f" · next: get_transcript with part={part + 1}]" if part < len(parts) else "]"
     times = TIMESTAMP.findall(parts[part - 1])
     if times:

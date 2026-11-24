@@ -94,11 +94,11 @@ def test_a_file_becomes_a_lecture_at_its_date_and_nothing_is_transcribed(cfg, tm
     assert again["ready"]["id"] == entry["ready"]["id"] and len(calculus(cfg)) == 3
 
 
-def test_what_isnt_audio_is_refused(cfg, tmp_path):
-    note = tmp_path / "notes.txt"
-    note.write_text("not a recording", encoding="utf-8")
+def test_what_isnt_audio_or_a_transcript_is_refused(cfg, tmp_path):
+    note = tmp_path / "notes.zip"
+    note.write_bytes(b"PK\x03\x04 not a recording")
     reply = app_server.handle(cfg, {"id": 1, "method": "add_recording", "params": {"course": "Calculus", "path": str(note)}})
-    assert "notes.txt" in reply["error"] and "isn't a recording" in reply["error"]
+    assert "notes.zip" in reply["error"] and "isn't a recording or a transcript" in reply["error"]
     assert len(calculus(cfg)) == 2
 
 

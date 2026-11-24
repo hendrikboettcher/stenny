@@ -211,6 +211,18 @@ def cmd_add(args) -> None:
     for f in args.files:
         if not f.exists():
             sys.exit(f"File not found: {f}")
+    from . import ready, transcripts
+    texts = [f for f in args.files if transcripts.is_transcript(f)]
+    for f in texts:  # a transcript someone sent: added as it is, nothing to transcribe (#138)
+        print(f"Adding a transcript, not transcribing: {f.name}")
+        try:
+            info = ready.import_file(cfg, course, f, date=parse_when(args.date).strftime("%Y-%m-%d") if args.date else None)
+        except ready.ReadyError as e:
+            sys.exit(str(e))
+        print(f"Added → {info['folder']}")
+    args.files = [f for f in args.files if f not in texts]
+    if not args.files:
+        return
     check_slides(args.slides)
     if args.slides and len(args.files) > 1:
         sys.exit("--slides belongs to one lecture: add one file at a time.")
@@ -993,7 +1005,8 @@ def main() -> None:
     ap.add_argument("--version", action="version", version=f"stenny {version()}")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    p = sub.add_parser("add", help="transcribe audio file(s) into the Stenny folder")
+    p = sub.add_parser("add", help="transcribe audio file(s) into the Stenny folder, or add a transcript someone sent "
+                                   "(.md, .txt, .vtt, .srt, .docx, .html, .pdf) as it is")
     p.add_argument("files", nargs="+", type=Path)
     t = p.add_mutually_exclusive_group(required=True)
     t.add_argument("--course", "-c", help="course name or alias from the config")

@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 
 from . import audio as audio_io
-from . import course_files
+from . import course_files, render
 from . import language
 from . import slides as slides_mod
 from .config import Config, Course
@@ -661,6 +661,45 @@ def process(path: Path, cfg: Config, course: Course, engine, *, lang: str | None
         progress.clear()
 
 
+def add_transcript(cfg: Config, course: Course, transcript, original: Path, imported_from: str, *,
+                   date: str, start: str | None = None, folder_name: str | None = None) -> dict:
+    """A transcript someone sent (transcripts.Transcript), added to a course as it is: no AI step, no glossary,
+    nothing for Whisper. Its original file was copied to Stenny's data place before (`original`, kept as the lecture's
+    own like the raw output of a recording); here the transcript goes into the Stenny folder at its date, with
+    segments.json (one segment per paragraph, `imported`) so the window, the connector and sharing treat it like any
+    lecture, and the course files are rebuilt."""
+    vault = cfg.vault_for(course)
+    folder = vault.course_dir(course.name) / folder_name if folder_name else vault.lecture_dir(course.name, date)
+    if folder_name and folder.is_dir() and any(not p.name.startswith(".") for p in folder.iterdir()):
+        folder = vault.lecture_dir(course.name, date)  # taken since (a recording that day): the next one
+    files = vault.files(course.name, folder)
+    languages = [course.fixed_language] if course.fixed_language and not course.is_event else []
+    lec = Lecture(course=course.name, date=date, start_time=start or "", duration=transcript.seconds or 0,
+                  languages=languages, language_note="", model="", source="imported", tags=course.tags,
+                  number=0 if course.is_event else vault.lecture_number(course.name, folder), kind=course.kind,
+                  name=transcript.title)
+    lec.names = files.names()
+    meta_dir = cfg.data_for(course)
+    meta_dir.mkdir(parents=True, exist_ok=True)
+    kept = meta_dir / f"{folder.name}.original{original.suffix.lower()}"
+    if original != kept:
+        original.replace(kept)  # the lecture's original, next to where a recording's raw output goes
+    vault.write(files.target("transcript"),
+                render.imported_md(lec, transcript.paragraphs, transcript.sections, imported_from, transcript.by))
+    if transcript.summary:
+        vault.write(files.target("summary"), render.summary_md(lec, transcript.summary, "Stenny, imported with the transcript"))
+    starts = [p["start"] for p in transcript.paragraphs]
+    segments = [{"start": p["start"], "end": next((s for s in starts[i + 1:] if s is not None), p["start"]),
+                 "text": p["text"], "imported": True} for i, p in enumerate(transcript.paragraphs)]
+    info = {"folder": str(folder), "source": str(kept), "imported": True, "imported_from": imported_from,
+            "transcribed_by": transcript.by, "words": transcript.words}
+    write_meta(meta_dir / f"{folder.name}.segments.json", info, lec, segments)
+    if not course.is_event:
+        course_files.rebuild(vault, course.name, log)
+    log(f"Added a transcript ({imported_from}, {transcript.words} words) → {folder}")
+    return info
+
+
 def write_meta(path: Path, info: dict, lec: Lecture, segments: list[dict]) -> None:
     """segments.json: every segment plus what `refresh` needs to rebuild the transcript without the audio."""
     meta = {**info, "lecture": asdict(lec)}
@@ -708,6 +747,9 @@ def refresh(cfg: Config, course: Course, folder_name: str, *, use_llm: bool = Tr
         raise LectureError(f"{meta_path} is missing. A live lecture needs its final pass first (`stenny queue run`).")
     data = json.loads(meta_path.read_text(encoding="utf-8"))
     meta, segments = data["meta"], data["segments"]
+    if meta.get("imported"):
+        raise LectureError(f"{course.name} {folder_name} is a transcript someone sent, added as it is: there is no "
+                           "AI step to run again.")
     lec = lecture_from_files(folder, meta, cfg.data_for(course) / f"{folder.name}.session.json", course)
     glossary = ensure_glossary(vault, course)
     files = vault.files(course.name, folder)

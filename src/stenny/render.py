@@ -236,6 +236,37 @@ def transcript_md(lec: Lecture, paragraphs: list[dict], sections: list[dict]) ->
     return "\n".join(out)
 
 
+def imported_note(imported_from: str, by: str | None, timestamps: bool) -> str:
+    """What an imported transcript says about itself, at its top (and so to Claude through the connector)."""
+    made = ("made with Stenny on another computer" if by == "Stenny" else f"made with {by}" if by
+            else "made with another app")
+    return (f"> Transcript imported from `{imported_from}` ({made}). Stenny didn't hear this recording, so it can't be "
+            "checked against the audio." + ("" if timestamps else " It has no timestamps."))
+
+
+def imported_md(lec: Lecture, paragraphs: list[dict], sections: list[dict], imported_from: str,
+                by: str | None) -> str:
+    """A transcript someone sent, added as it is (transcripts.py): its paragraphs word for word, with or without a
+    start time, Stenny's headings when it came from Stenny, and Stenny's frontmatter, title and note around it."""
+    timestamps = any(p["start"] is not None for p in paragraphs)
+    fm = frontmatter({
+        **lec.who, "lecture": lec.number or None, "title": lec.name, "date": lec.date, "start": lec.start_time or None,
+        "duration": fmt_hms(lec.duration) if lec.duration else None,
+        "language": lec.languages[0] if len(lec.languages) == 1 else None,
+        "tags": [lec.base_tag, *lec.tags], "status": "final", "source": "imported", "imported_from": imported_from,
+        "transcribed_by": by, "timestamps": None if timestamps else False,
+    })
+    out = [fm, f"# {lec.title}", "", imported_note(imported_from, by, timestamps), ""]
+    starts = {s["at"]: s for s in sections}
+    for i, p in enumerate(paragraphs):
+        stamp = f"[{fmt_hms(p['start'])}]" if p["start"] is not None else None
+        if i in starts:
+            title = starts[i]["title"]
+            out += ["## " + " ".join(x for x in (stamp, title) if x), ""] if stamp or title else []
+        out += [(f"**{stamp}** " if stamp else "") + p["text"], ""]
+    return "\n".join(out)
+
+
 def raw_md(lec: Lecture, segments: list[dict]) -> str:
     show_lang = len(lec.languages) > 1
     fm = frontmatter({**lec.who, "lecture": lec.number or None, "date": lec.date,
