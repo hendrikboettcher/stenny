@@ -19,13 +19,14 @@ windows = pytest.mark.skipif(sys.platform != "win32", reason="Windows' install f
 
 @pytest.fixture
 def home(tmp_path):
-    """A home folder with nothing of Stenny in it, and a PATH with only Node on it (no `stenny` of this computer's)."""
+    """A home folder with nothing of Stenny in it, and a PATH with only Node on it (no `stenny` of this computer's,
+    nor the Stenny.app in its /Applications)."""
     home = tmp_path / "home"
     home.mkdir()
     env = {k: v for k, v in os.environ.items() if not k.startswith(("STENNY", "PYTHON"))}
     env.update(HOME=str(home), USERPROFILE=str(home), PATH=str(Path(NODE).parent),
                LOCALAPPDATA=str(home / "AppData/Local"), ProgramFiles=str(tmp_path / "Program Files"),
-               STENNY_HOME=str(tmp_path / "Stenny"))
+               STENNY_APPLICATIONS=str(tmp_path / "Applications"), STENNY_HOME=str(tmp_path / "Stenny"))
     if sys.platform == "win32":  # Windows needs its own folder for `reg` and friends
         env["PATH"] += os.pathsep + os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32")
     return home, env
