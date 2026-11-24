@@ -155,6 +155,8 @@
   "ready.in.other": "in {language}",
   "ready.changeDate": "Change the date",
   "ready.changeLanguage": "Change the language",
+  "date.previousMonth": "Previous month",
+  "date.nextMonth": "Next month",
   "ready.transcribe": "Transcribe",
   "ready.now": "Transcribe Now",
   "ready.remove": "Remove from Stenny…",

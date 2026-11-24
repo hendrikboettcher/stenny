@@ -11,6 +11,8 @@
   import Settings from "$lib/Settings.svelte";
   import SetupChecklist from "$lib/SetupChecklist.svelte";
   import FinalPass from "$lib/FinalPass.svelte";
+  import DatePicker from "$lib/DatePicker.svelte";
+  import { keepInside } from "$lib/place";
   import { renderMarkdown } from "$lib/markdown";
   import { holdPage, showPage } from "$lib/fade";
   import {
@@ -443,7 +445,8 @@
   // the ready card: its date and language can be changed until it's being transcribed
   const READY_LANGUAGES = ["en", "de", "fr", "mixed", "auto"];
   let langOpen = $state(false);
-  let dateInput = $state<HTMLInputElement | null>(null);
+  let dateOpen = $state(false); // Stenny's own calendar (lib/DatePicker.svelte), not the system's
+  let dateButton = $state<HTMLButtonElement | null>(null);
   const languageIn = (code: string | null) =>
     !code ? "" : READY_LANGUAGES.includes(code) ? t(`ready.in.${code}` as Key)
       : t("ready.in.other", { language: languageName(code) ?? code });
@@ -462,13 +465,14 @@
     if (e.waiting === "memory") return { text: t("ready.wait.memory") };
     return e.status === "queued" ? { text: t("ready.wait.queue") } : null;
   }
-  function pickDate() {
+  function toggleDate(ev: MouseEvent) {
+    ev.stopPropagation(); // the window's click closes it again otherwise
     langOpen = false;
-    try {
-      dateInput?.showPicker();
-    } catch {
-      dateInput?.focus();
-    }
+    dateOpen = !dateOpen;
+  }
+  function closeDate() {
+    dateOpen = false;
+    dateButton?.focus(); // back where it was opened from, for the keyboard
   }
   async function changeReady(e: Entry, change: { date?: string; language?: string }) {
     notice = null;
@@ -844,8 +848,8 @@
   }
 </script>
 
-<svelte:window onclick={() => { shareOpen = false; menu = null; langOpen = false; }}
-               onkeydown={(e) => { if (e.key === "Escape") { shareOpen = false; menu = null; langOpen = false; } }}
+<svelte:window onclick={() => { shareOpen = false; menu = null; langOpen = false; dateOpen = false; }}
+               onkeydown={(e) => { if (e.key === "Escape") { shareOpen = false; menu = null; langOpen = false; dateOpen = false; } }}
                onblur={() => (menu = null)} />
 
 {#if settingsOpen}
@@ -1127,12 +1131,12 @@
             <div class="sentence">
               {#if e.status !== "ready"}<span class="status {e.status}">{statusLabel(e.status)}</span>{/if}
               {t("ready.held")}
-              {#if editable}<span class="pick-wrap"><button class="pick" title={t("ready.changeDate")} onclick={pickDate}>{longDate(e)}</button><input
-                  class="date-input" type="date" tabindex="-1" aria-label={t("ready.changeDate")} bind:this={dateInput} value={e.date}
-                  onchange={(ev) => { if (ev.currentTarget.value) changeReady(e, { date: ev.currentTarget.value }); }} /></span>
+              {#if editable}<span class="pick-wrap"><button class="pick" title={t("ready.changeDate")} aria-expanded={dateOpen}
+                  bind:this={dateButton} onclick={toggleDate}>{longDate(e)}</button>{#if dateOpen}<DatePicker value={e.date}
+                  onclose={closeDate} onpick={(date) => { closeDate(); changeReady(e, { date }); }} />{/if}</span>
                 <span class="pick-wrap"><button class="pick" title={t("ready.changeLanguage")}
-                  onclick={(ev) => { ev.stopPropagation(); langOpen = !langOpen; }}>{languageIn(e.language)}</button>{#if langOpen}<div
-                  class="menu" role="menu">
+                  onclick={(ev) => { ev.stopPropagation(); dateOpen = false; langOpen = !langOpen; }}>{languageIn(e.language)}</button>{#if langOpen}<div
+                  class="menu" role="menu" use:keepInside>
                   {#each e.kind === "event" ? TALK_LANGUAGES : READY_LANGUAGES as code}
                     <button role="menuitem" class:on={code === e.language}
                             onclick={() => { langOpen = false; if (code !== e.language) changeReady(e, { language: code }); }}>
@@ -1589,8 +1593,6 @@
     text-underline-offset: 3px;
   }
   .pick:hover { background: var(--accent-soft); }
-  /* the system's date picker opens from here (showPicker), under the date */
-  .date-input { position: absolute; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; pointer-events: none; }
   .pick-wrap .menu { min-width: 180px; }
   .pick-wrap .menu button.on { color: var(--accent); font-weight: 500; }
   .ready-hint { margin-top: 4px !important; font-size: 13px !important; color: var(--muted); }
