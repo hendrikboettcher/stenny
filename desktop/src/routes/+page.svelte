@@ -5,6 +5,7 @@
   import { fade, slide } from "svelte/transition";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
+  import { getCurrentWebview } from "@tauri-apps/api/webview";
   import Figure from "$lib/Figure.svelte";
   import Dialog from "$lib/Dialog.svelte";
   import Settings from "$lib/Settings.svelte";
@@ -16,6 +17,7 @@
     library, lecture, makeCopy, makePdf, finishNow, openTranscript, reveal, shareFiles, lecturerAgreed,
     renameLecture, deleteLecture, renameCourse, addCourse, removeCourse, deleteCourse, copyText,
     recordingStatus, startRecording, recordingCommand,
+    pickRecordings, addRecording, setReady, transcribeReady, removeReady,
     type Entry, type Library, type LiveStatus,
   } from "$lib/engine";
   import { t, tn, locale, languageName, trashName, revealLabel, type Key } from "$lib/i18n.svelte";
@@ -91,7 +93,7 @@
     | { kind: "add" } | { kind: "rename-group"; group: Group } | { kind: "remove-course"; group: Group }
     | { kind: "delete-group"; group: Group }
     | { kind: "rename-lecture"; entry: Entry } | { kind: "delete-lecture"; entry: Entry }
-    | { kind: "talk" };
+    | { kind: "talk" } | { kind: "talk-file" } | { kind: "remove-ready"; entry: Entry };
   let menu = $state<Menu | null>(null);
   let ask = $state<Ask | null>(null);
   let askBusy = $state(false);
@@ -390,6 +392,106 @@
     }
   }
 
+  // ---- Recordings from a file (src/stenny/ready.py): the file button next to Record, or files dropped on a course
+  // in the sidebar or on the list and lecture. Each file becomes a lecture at its date, "ready to transcribe";
+  // nothing is transcribed before its card's Transcribe. What can't be added is said in the activity bar.
+  async function addFiles(g: Group, paths: string[], language?: string) {
+    if (!paths.length) return;
+    barError = null;
+    let last: Entry | null = null;
+    const errors: string[] = [];
+    for (const path of paths) {
+      try {
+        last = await addRecording(g.course, g.event, path, language);
+      } catch (e) {
+        errors.push(String(e));
+      }
+    }
+    if (errors.length) showBarError(errors.join(" · "));
+    const added = last?.ready?.id;
+    if (added) await reload({ show: (all) => all.find((e) => e.ready?.id === added) });
+  }
+
+  const fileLabel = (g: Group) => (g.event ? t("lib.addFile.talk") : t("lib.addFile"));
+  // a course: the system's file dialog; a talk: its title and language first, as for recording one
+  async function addFromFile() {
+    if (!group) return;
+    if (group.event) return open({ kind: "talk-file" });
+    const g = group;
+    let paths: string[] = [];
+    try {
+      paths = await pickRecordings();
+    } catch (e) {
+      showBarError(e);
+    }
+    await addFiles(g, paths);
+  }
+
+  // Dragging files over the window: the course under the pointer lights up (a course or talk in the sidebar, or the
+  // list and lecture for the course shown), and dropping adds them there. Tauri hands over the files' paths
+  // (getCurrentWebview().onDragDropEvent), on macOS and Windows alike; the page itself never sees them.
+  type Drop = { group: Group; where: "sidebar" | "content" };
+  let drop = $state<Drop | null>(null);
+  function dropAt(x: number, y: number): Drop | null {
+    if (settingsOpen || ask) return null;
+    const el = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-drop]");
+    if (!el) return null;
+    if (el.dataset.drop === "content") return group ? { group, where: "content" } : null;
+    return { group: { course: el.dataset.course ?? "", event: el.dataset.event === "1" }, where: "sidebar" };
+  }
+
+  // the ready card: its date and language can be changed until it's being transcribed
+  const READY_LANGUAGES = ["en", "de", "fr", "mixed", "auto"];
+  let langOpen = $state(false);
+  let dateInput = $state<HTMLInputElement | null>(null);
+  const languageIn = (code: string | null) =>
+    !code ? "" : READY_LANGUAGES.includes(code) ? t(`ready.in.${code}` as Key)
+      : t("ready.in.other", { language: languageName(code) ?? code });
+  const longDate = (e: Entry) => {
+    const d = new Date(`${e.date}T12:00:00`);
+    if (isNaN(+d)) return e.date;
+    const thisYear = d.getFullYear() === new Date().getFullYear();
+    return d.toLocaleDateString(locale(), { weekday: "long", day: "numeric", month: "short", year: thisYear ? undefined : "numeric" });
+  };
+  function readyHint(e: Entry): { text: string; error?: boolean } | null {
+    if (e.ready?.error) return { text: e.ready.error, error: true };
+    if (e.status === "finalizing") return null;
+    if (e.waiting === "recording") return { text: t("ready.wait.recording") };
+    if (e.waiting === "power") return { text: t("ready.wait.power") };
+    if (e.waiting === "night") return { text: t("ready.wait.night", { time: e.ready?.night_start ?? "" }) };
+    if (e.waiting === "memory") return { text: t("ready.wait.memory") };
+    return e.status === "queued" ? { text: t("ready.wait.queue") } : null;
+  }
+  function pickDate() {
+    langOpen = false;
+    try {
+      dateInput?.showPicker();
+    } catch {
+      dateInput?.focus();
+    }
+  }
+  async function changeReady(e: Entry, change: { date?: string; language?: string }) {
+    notice = null;
+    try {
+      const next = await setReady(e, change);
+      await reload({ show: (all) => all.find((x) => x.ready?.id === next.ready?.id) });
+    } catch (err) {
+      notice = { text: String(err), error: true };
+    }
+  }
+  async function transcribe(e: Entry, now = false) {
+    busy = "transcribe";
+    notice = null;
+    try {
+      await transcribeReady(e, now);
+      await reload();
+    } catch (err) {
+      notice = { text: String(err), error: true };
+    } finally {
+      busy = null;
+    }
+  }
+
   // Pause/Resume and Stop, as the menu's items (Stop makes the final transcript)
   async function control(cmd: "toggle" | "stop") {
     barBusy = true;
@@ -436,6 +538,7 @@
     shownDraft = entry && isDraft(entry) ? id(entry) : "";
     if (!stillDraft) untrack(() => { summary = undefined; progress = null; notice = null; shareOpen = false; slow = false; });
     if (!key || !entry) return;
+    if (entry.ready) { untrack(() => { summary = null; progress = null; }); return; } // nothing transcribed yet
     let current = true;
     const load = () => lecture(entry)
       .then((r) => { if (current) { summary = r.summary; progress = r.progress; } })
@@ -503,6 +606,18 @@
       listen("library-shown", () => reload({ cameBack: true })).then((u) => unlisten.push(u));
       invoke<string | null>("update_available").then((v) => (updateVersion = v)).catch(() => {});
       listen<string | null>("update-available", (e) => (updateVersion = e.payload)).then((u) => unlisten.push(u));
+      // files dragged over the window (positions in physical pixels, the page's are logical)
+      getCurrentWebview().onDragDropEvent(({ payload: p }) => {
+        if (p.type === "leave") return void (drop = null);
+        const ratio = window.devicePixelRatio || 1;
+        const at = dropAt(p.position.x / ratio, p.position.y / ratio);
+        if (p.type === "drop") {
+          drop = null;
+          if (at) addFiles(at.group, p.paths);
+        } else {
+          drop = at;
+        }
+      }).then((u) => unlisten.push(u));
     }
     return () => {
       closed = true;
@@ -530,7 +645,7 @@
   const headingOf = (e: Entry) => (e.kind === "event" ? e.course : rowTitle(e));
 
   function startRename(e: Entry) {
-    if (isBusy(e) || editing) return;
+    if (isBusy(e) || e.ready || editing) return;
     titleField = headingOf(e);
     editing = id(e);
   }
@@ -594,6 +709,20 @@
         await deleteCourse(a.group.course, a.group.event);
         if (same(group, a.group)) group = null;
         await reload();
+      } else if (a.kind === "remove-ready") {
+        const at = entries.findIndex((e) => id(e) === id(a.entry));
+        await removeReady(a.entry);
+        await reload();
+        const next = entries[Math.min(at, entries.length - 1)];
+        selectedId = next ? id(next) : null;
+      } else if (a.kind === "talk-file") {
+        if (!field.trim()) throw t("talk.needsTitle");
+        try { localStorage.setItem("talkLanguage", talkLanguage); } catch {}
+        const paths = await pickRecordings();
+        if (!paths.length) return; // cancelled: the question stays
+        ask = null;
+        await addFiles({ course: field.trim(), event: true }, paths, talkLanguage);
+        return;
       } else if (a.kind === "talk") {
         if (!field.trim()) throw t("talk.needsTitle");
         try { localStorage.setItem("talkLanguage", talkLanguage); } catch {}
@@ -664,9 +793,12 @@
     return inWords(h * 3600 + m * 60 + sec);
   };
   const rowDetail = (e: Entry) =>
-    [number(e), e.number > 0 || e.title ? prettyDate(e) : e.start, length(e)].filter(Boolean).join(" · ");
+    e.status === "ready" ? [e.kind === "event" ? null : prettyDate(e), t("ready.row")].filter(Boolean).join(" · ")
+      : [number(e), e.number > 0 || e.title ? prettyDate(e) : e.start, length(e)].filter(Boolean).join(" · ");
+  // a recording from a file: the file and its length (its date and language are in the card's sentence)
   const details = (e: Entry) =>
-    [number(e), prettyDate(e) + (e.start ? `, ${e.start}` : ""), length(e), languageName(e.language)].filter(Boolean).join(" · ");
+    e.ready ? [e.ready.name, length(e)].filter(Boolean).join(" · ")
+      : [number(e), prettyDate(e) + (e.start ? `, ${e.start}` : ""), length(e), languageName(e.language)].filter(Boolean).join(" · ");
   const statusLabel = (status: string) =>
     t((["live", "queued", "finalizing"].includes(status) ? `lib.status.${status}` : "lib.status.draft") as Key);
 
@@ -712,8 +844,8 @@
   }
 </script>
 
-<svelte:window onclick={() => { shareOpen = false; menu = null; }}
-               onkeydown={(e) => { if (e.key === "Escape") { shareOpen = false; menu = null; } }}
+<svelte:window onclick={() => { shareOpen = false; menu = null; langOpen = false; }}
+               onkeydown={(e) => { if (e.key === "Escape") { shareOpen = false; menu = null; langOpen = false; } }}
                onblur={() => (menu = null)} />
 
 {#if settingsOpen}
@@ -737,7 +869,9 @@
 
     <nav>
       {#snippet row(g: Group)}
-        <div class="group-row" class:active={same(g, group)} oncontextmenu={(ev) => showMenu(ev, { group: g })}>
+        {@const dropping = drop?.where === "sidebar" && same(drop.group, g)}
+        <div class="group-row" class:active={same(g, group)} class:dropping oncontextmenu={(ev) => showMenu(ev, { group: g })}
+             data-drop="group" data-course={g.course} data-event={g.event ? "1" : "0"}>
           <button class="group" onclick={() => pick(g)} title={g.course}>{g.course}{#if same(g, recordingGroup)}<span
               class="rec-dot" class:paused={live.state === "paused"} role="img"
               aria-label={live.state === "paused" ? t("activity.paused") : t("activity.recording")}></span>{/if}</button>
@@ -745,6 +879,7 @@
                   onclick={(ev) => showMenu(ev, { group: g })}>
             <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.25" /><circle cx="8" cy="8" r="1.25" /><circle cx="12.5" cy="8" r="1.25" /></svg>
           </button>
+          {#if dropping}<p class="drop-hint">{t("drop.here", { course: g.course })}</p>{/if}
         </div>
       {/snippet}
       <div class="kicker with-add">
@@ -763,11 +898,17 @@
       {#if data}
         <div class="kicker with-add talks">
           <span>{t("common.talksEvents")}</span>
-          {#if canRecord}
-            <button class="add" aria-label={t("lib.recordTalk")} title={t("lib.recordTalk")} onclick={recordTalk}>
-              <svg viewBox="0 0 16 16" aria-hidden="true"><circle class="ring" cx="8" cy="8" r="5.25" /><circle class="core" cx="8" cy="8" r="2.25" /></svg>
+          <span class="adds">
+            <!-- a talk from a file (ready.py): its title and language first, then the file; also while one records -->
+            <button class="add file" aria-label={t("lib.addFile.talk")} title={t("lib.addFile.talk")} onclick={() => open({ kind: "talk-file" })}>
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.8h5.2L12.5 5v9.2H4z M9 1.8V5.2h3.5" /><path class="note" d="M7.3 11.7V8.1l2.9-.7v3.5" /><circle cx="6.5" cy="11.8" r=".95" /><circle cx="9.4" cy="11" r=".95" /></svg>
             </button>
-          {/if}
+            {#if canRecord}
+              <button class="add" aria-label={t("lib.recordTalk")} title={t("lib.recordTalk")} onclick={recordTalk}>
+                <svg viewBox="0 0 16 16" aria-hidden="true"><circle class="ring" cx="8" cy="8" r="5.25" /><circle class="core" cx="8" cy="8" r="2.25" /></svg>
+              </button>
+            {/if}
+          </span>
         </div>
         {#each groups.talks as g (g.course + g.event)}{@render row(g)}{/each}
         {#if !groups.talks.length && canRecord}
@@ -904,23 +1045,35 @@
       </div>
     </div>
   {/if}
-  <div class="panes">
+  <div class="panes" data-drop="content">
+  {#if drop?.where === "content"}
+    <div class="drop-overlay" transition:fade={{ duration: still() ? 0 : 120 }}>
+      <p>{t("drop.here", { course: drop.group.course })}</p>
+      <p class="sub">{t("drop.many")}</p>
+    </div>
+  {/if}
   <section class="list">
     {#if group}
-      <!-- start a recording from here, the same way as from the menu bar; only one at a time -->
-      {#if canRecord}
-        <button class="record" bind:this={recordButton} transition:fold
-                onclick={() => (group!.event ? recordTalk() : record(group!))}>
-          <span class="dot" aria-hidden="true"></span>
-          {group.event ? t("lib.recordTalk") : t("lib.recordLecture", { n: nextNumber })}
+      <!-- start a recording from here, the same way as from the menu bar; only one at a time. Next to it, a
+           recording from a file (ready.py), which stays while one records: only one recording, but files any time -->
+      <div class="list-top">
+        {#if canRecord}
+          <button class="record" bind:this={recordButton} transition:fade={{ duration: still() ? 0 : SWAP_MS }}
+                  onclick={() => (group!.event ? recordTalk() : record(group!))}>
+            <span class="dot" aria-hidden="true"></span>
+            <span class="label">{group.event ? t("lib.recordTalk") : t("lib.recordLecture", { n: nextNumber })}</span>
+          </button>
+        {/if}
+        <button class="add-file" aria-label={fileLabel(group)} title={fileLabel(group)} onclick={addFromFile}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.8h5.2L12.5 5v9.2H4z M9 1.8V5.2h3.5" /><path class="note" d="M7.3 11.7V8.1l2.9-.7v3.5" /><circle cx="6.5" cy="11.8" r=".95" /><circle cx="9.4" cy="11" r=".95" /></svg>
         </button>
-      {/if}
+      </div>
       <div class="kicker list-head">{tn("lib.recordings", entries.length)}</div>
       {#each entries as e (id(e))}
         <button class="row" class:active={id(e) === selectedId} in:fold={!!knownIds && !knownIds.has(id(e))} onclick={() => (selectedId = id(e))}
                 oncontextmenu={(ev) => { selectedId = id(e); showMenu(ev, { entry: e }); }}>
           <span class="row-title">{rowTitle(e)}</span>
-          {#if isDraft(e)}<span class="status {e.status}">{statusLabel(e.status)}</span>{/if}
+          {#if isDraft(e) && e.status !== "ready"}<span class="status {e.status}">{statusLabel(e.status)}</span>{/if}
           <span class="row-detail">{rowDetail(e)}</span>
           {#if e.status === "finalizing" && e.final_pass}<FinalPass pass={e.final_pass} compact />{/if}
         </button>
@@ -954,7 +1107,7 @@
                  onkeydown={(ev) => { if (ev.key === "Enter") finishRename(e, true); if (ev.key === "Escape") { ev.stopPropagation(); finishRename(e, false); } }}
                  onblur={() => finishRename(e, true)} />
           </div>
-        {:else if isBusy(selected)}
+        {:else if isBusy(selected) || selected.ready}
           <h1 class="selectable">{headingOf(selected)}</h1>
         {:else}
           {@const e = selected}
@@ -962,9 +1115,53 @@
               aria-label={t("lib.rename.aria", { heading: headingOf(e) })} onclick={() => startRename(e)}>{headingOf(e)}<svg
               class="pen" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.6 2.6a1.4 1.4 0 0 1 2 0l.8.8a1.4 1.4 0 0 1 0 2L6 12.8 2.8 13.2l.4-3.2z M9.4 3.8l2.8 2.8" /></svg></button></h1>
         {/if}
-        <p class="meta">{details(selected)}</p>
+        <p class="meta" class:file={!!selected.ready}>{details(selected)}</p>
 
-        {#if isDraft(selected)}
+        {#if selected.ready}
+          <!-- a recording from a file: "Held on Thursday, 6 Nov in English." (both can be changed), then Transcribe;
+               nothing is transcribed before. The bin takes it out of Stenny, never the file itself. -->
+          {@const e = selected}
+          {@const hint = readyHint(e)}
+          {@const editable = e.status !== "finalizing"}
+          <div class="draft ready">
+            <div class="sentence">
+              {#if e.status !== "ready"}<span class="status {e.status}">{statusLabel(e.status)}</span>{/if}
+              {t("ready.held")}
+              {#if editable}<span class="pick-wrap"><button class="pick" title={t("ready.changeDate")} onclick={pickDate}>{longDate(e)}</button><input
+                  class="date-input" type="date" tabindex="-1" aria-label={t("ready.changeDate")} bind:this={dateInput} value={e.date}
+                  onchange={(ev) => { if (ev.currentTarget.value) changeReady(e, { date: ev.currentTarget.value }); }} /></span>
+                <span class="pick-wrap"><button class="pick" title={t("ready.changeLanguage")}
+                  onclick={(ev) => { ev.stopPropagation(); langOpen = !langOpen; }}>{languageIn(e.language)}</button>{#if langOpen}<div
+                  class="menu" role="menu">
+                  {#each e.kind === "event" ? TALK_LANGUAGES : READY_LANGUAGES as code}
+                    <button role="menuitem" class:on={code === e.language}
+                            onclick={() => { langOpen = false; if (code !== e.language) changeReady(e, { language: code }); }}>
+                      <span>{languageName(code)}</span>
+                    </button>
+                  {/each}
+                </div>{/if}</span>.{:else}<strong>{longDate(e)}</strong> {languageIn(e.language)}.{/if}
+            </div>
+            {#if hint}<p class="ready-hint" class:error={hint.error}>{hint.text}</p>{/if}
+            {#if e.status === "finalizing" && e.final_pass}<FinalPass pass={e.final_pass} />{/if}
+            {#if editable}
+              <div class="ready-actions">
+                {#if e.status === "ready"}
+                  <button class="pill primary small" onclick={() => transcribe(e)} disabled={busy === "transcribe"}>
+                    {busy === "transcribe" ? t("common.starting") : t("ready.transcribe")}
+                  </button>
+                {:else}
+                  <button class="pill small" onclick={() => transcribe(e, true)} disabled={busy === "transcribe"}>
+                    {busy === "transcribe" ? t("common.starting") : t("ready.now")}
+                  </button>
+                {/if}
+                <button class="trash" aria-label={t("ready.remove")} title={t("ready.remove")}
+                        onclick={() => open({ kind: "remove-ready", entry: e })}>
+                  <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.8 4.3h10.4 M6.3 4.3V2.8h3.4v1.5 M4.3 4.3l.6 8.6a1 1 0 0 0 1 .9h4.2a1 1 0 0 0 1-.9l.6-8.6 M6.7 6.8v4.6 M9.3 6.8v4.6" /></svg>
+                </button>
+              </div>
+            {/if}
+          </div>
+        {:else if isDraft(selected)}
           <div class="draft">
             <p>
               <!-- while it records, the bar, its row and the sidebar's dot say so already -->
@@ -999,8 +1196,8 @@
               </div>
             {/if}
           </div>
-          <button class="pill" onclick={() => openTranscript(selected!.transcript)}>{t("lib.openTranscript")}</button>
-          <button class="pill" onclick={() => reveal(selected!.transcript)}>{revealLabel()}</button>
+          <button class="pill" onclick={() => openTranscript(selected!.transcript!)}>{t("lib.openTranscript")}</button>
+          <button class="pill" onclick={() => reveal(selected!.transcript!)}>{revealLabel()}</button>
           {@render trashButton(selected)}
         </div>
         {/if}
@@ -1017,7 +1214,9 @@
 
         <hr />
 
-        {#if summary === undefined}
+        {#if selected.ready}
+          <p class="quiet">{t("ready.later")}</p>
+        {:else if summary === undefined}
           <p class="quiet" class:hidden={!slow}>{t("common.loading")}</p>
         {:else if isDraft(selected)}
           {#if progress}
@@ -1078,6 +1277,10 @@
       {@const e = menu.entry}
       {#if isBusy(e)}
         <p class="menu-note">{e.status === "live" ? t("lib.menu.stillRecording") : t("lib.menu.beingMade")}</p>
+      {:else if e.ready}
+        <button role="menuitem" class="danger" onclick={() => open({ kind: "remove-ready", entry: e })}>
+          <span>{t("ready.remove")}</span>
+        </button>
       {:else}
         <button role="menuitem" onclick={() => open({ kind: "rename-lecture", entry: e })}>
           <span>{t("lib.menu.rename")}</span>
@@ -1130,8 +1333,14 @@
             oncancel={() => (ask = null)} onconfirm={answer}>
       <input bind:value={field} aria-label={t("renameLecture.aria")} placeholder={t("renameLecture.placeholder")} autocomplete="off" />
     </Dialog>
-  {:else if ask.kind === "talk"}
-    <Dialog title={t("talk.title")} confirm={t("talk.start")} busy={askBusy} error={askError} text={t("talk.lead")}
+  {:else if ask.kind === "remove-ready"}
+    <Dialog title={t("removeReady.title")} confirm={t("removeReady.confirm")} danger busy={askBusy} error={askError}
+            text={t("removeReady.text", { name: lectureName(ask.entry) })}
+            oncancel={() => (ask = null)} onconfirm={answer} />
+  {:else if ask.kind === "talk" || ask.kind === "talk-file"}
+    {@const fromFile = ask.kind === "talk-file"}
+    <Dialog title={fromFile ? t("talkFile.title") : t("talk.title")} confirm={fromFile ? t("talkFile.choose") : t("talk.start")}
+            busy={askBusy} error={askError} text={t("talk.lead")}
             oncancel={() => (ask = null)} onconfirm={answer}>
       <input bind:value={field} oninput={() => (askError = null)} aria-label={t("talk.placeholder")}
              placeholder={t("talk.placeholder")} autocomplete="off" />
@@ -1231,6 +1440,9 @@
   .quiet-add:hover { color: var(--accent); }
   /* Talks & events' record button: a ring with a dot, where the courses have their + */
   .talks .add svg .ring { stroke-width: 1.3; }
+  .talks .adds { display: flex; align-items: center; gap: 8px; }
+  .talks .add.file svg { stroke-width: 1.2; stroke-linejoin: round; }
+  .talks .add.file svg circle { fill: currentColor; stroke: none; }
   .talks .add svg .core { fill: currentColor; stroke: none; }
   /* the course that records: a small red dot after its name, blinking (hollow and orange while paused) */
   .rec-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--rec); margin-left: 7px; vertical-align: 1px; animation: blink 1.4s ease-in-out infinite; }
@@ -1304,14 +1516,39 @@
     .activity .sign, .label.stack > span, .bar-icon, .bar-button { transition: none; }
   }
 
-  /* Record Lecture n, at the top of a course's list */
+  /* Record Lecture n, at the top of a course's list, and the round file button next to it (it stays, right-aligned,
+     while Record is gone during a recording) */
+  .list-top { display: flex; justify-content: flex-end; gap: 8px; margin: 0 0 18px; }
   .record {
-    display: flex; align-items: center; gap: 10px; width: 100%; margin: 0 0 18px; padding: 0 14px; min-height: 40px;
+    display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; padding: 0 14px; min-height: 40px;
     text-align: left; border: 0; background: var(--surface); border-radius: var(--r-row); font-weight: 500;
     box-shadow: inset 0 0 0 1px var(--hairline); transition: background .15s ease;
   }
-  .record:hover { background: var(--sunken); }
+  .record .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .record:hover, .add-file:hover { background: var(--sunken); }
   .record .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--rec); flex: none; }
+  .add-file {
+    width: 40px; height: 40px; flex: none; padding: 0; border: 0; border-radius: 50%; background: var(--surface);
+    box-shadow: inset 0 0 0 1px var(--hairline); color: var(--ink-2); display: grid; place-items: center;
+    transition: background .15s ease;
+  }
+  .add-file svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.25; stroke-linejoin: round; stroke-linecap: round; }
+  .add-file svg circle { fill: currentColor; stroke: none; }
+
+  /* Dropping files: the list and lecture for the course shown, or a course in the sidebar, in soft blue with a
+     dashed edge and where they'll go */
+  .panes { position: relative; }
+  .drop-overlay {
+    position: absolute; inset: 0 12px 12px 0; z-index: 20; pointer-events: none; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 6px; text-align: center; padding: 24px;
+    border-radius: var(--r-card); border: 1.5px dashed var(--accent);
+    background: color-mix(in srgb, var(--accent-soft) 88%, transparent); color: var(--accent);
+  }
+  .drop-overlay p { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -.02em; }
+  .drop-overlay .sub { font-size: 13px; font-weight: 400; letter-spacing: 0; color: var(--ink-2); }
+  .group-row.dropping { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+  .group-row.dropping .group { color: var(--accent); }
+  .drop-hint { margin: 0; padding: 0 10px 6px; font-size: 12px; color: var(--accent); }
 
   /* List */
   .list { overflow-y: auto; padding: 0 12px; scrollbar-width: thin; }  /* the bottom band is its end space */
@@ -1341,6 +1578,27 @@
   article { padding: 30px 44px 48px; overflow-wrap: break-word; }
   h1 { font-size: 32px; line-height: 1.1; font-weight: 600; letter-spacing: -.035em; margin: 8px 0 8px; }
   .meta { color: var(--muted); margin: 0; font-variant-numeric: tabular-nums; }
+  .meta.file { font: 12.5px var(--mono); overflow-wrap: anywhere; }
+
+  /* a recording from a file, ready to transcribe: its date and language as soft links in the sentence */
+  .draft .sentence { font-size: 14.5px; line-height: 1.6; }
+  .pick-wrap { position: relative; display: inline-block; }
+  .pick {
+    font: inherit; color: var(--accent); font-weight: 500; border: 0; background: none; padding: 0 1px; margin: 0;
+    border-radius: 5px; text-decoration: underline dashed color-mix(in srgb, var(--accent) 50%, transparent);
+    text-underline-offset: 3px;
+  }
+  .pick:hover { background: var(--accent-soft); }
+  /* the system's date picker opens from here (showPicker), under the date */
+  .date-input { position: absolute; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; pointer-events: none; }
+  .pick-wrap .menu { min-width: 180px; }
+  .pick-wrap .menu button.on { color: var(--accent); font-weight: 500; }
+  .ready-hint { margin-top: 4px !important; font-size: 13px !important; color: var(--muted); }
+  .ready-hint.error { color: var(--rec); }
+  .ready-actions { display: flex; align-items: center; gap: 4px; margin-top: 12px; }
+  .ready-actions .pill, .ready-actions .trash { margin: 0; }
+  .ready-actions .trash { width: 26px; height: 26px; border-radius: 8px; margin-left: 4px; }
+  .ready-actions .trash svg { width: 14px; height: 14px; }
 
   .draft { margin-top: 22px; padding: 14px 16px; border-radius: 14px; background: var(--sunken); }
   .draft p { margin: 0; font-size: 14.5px; line-height: 1.5; }

@@ -374,6 +374,10 @@ def cmd_queue(args) -> None:
         if not job:
             sys.exit("This lecture has no final transcript waiting.")
         items = [job]
+    elif getattr(args, "job", None):  # Transcribe in Stenny's window (ready.py): this job, now
+        if not args.job.is_file():
+            sys.exit(f"No such job: {args.job}")
+        items, lecture = [args.job], True
     if args.action == "list":
         for p in items:
             print(p.name)
@@ -435,6 +439,8 @@ def run_queue(cfg, args, items: list[Path], lecture: bool = False) -> None:
         if cfg.require_ac_for_queue and not jobs.on_ac_power():
             return
         if cfg.night_only and not jobs.in_window(cfg.night_start, cfg.night_end):
+            return
+        if jobs.recording_running():  # the recording comes first; the next run after it takes the jobs
             return
     recover_sessions(cfg)
     jobs.apply_priority(cfg.priority if not args.scheduled else "background")
@@ -515,12 +521,17 @@ def run_job(job_path: Path, cfg, engine, stop=None) -> dict:
     course = course.with_language(job.get("lang"), cfg.event_languages)
     live = LiveInfo.load(Path(job["live"])) if job.get("live") else None
     src = Path(job["file"])
+    ready = job.get("ready")  # added in Stenny's window: its folder, date and time as the student confirmed them
+    if ready and not src.is_file():
+        raise FileNotFoundError(f"{src} isn't there any more")
     slides = Path(job["slides"]) if job.get("slides") else None
     draft = draft_path(cfg, course, live.folder) if live else None
     mark_draft(draft, "finalizing")
     try:
         info = process(src, cfg, course, engine, lang=job.get("lang"), use_llm=job.get("llm", True), live=live,
-                       slides_src=slides if slides and slides.exists() else None, stop=stop)
+                       slides_src=slides if slides and slides.exists() else None, stop=stop,
+                       when=datetime.fromisoformat(ready["when"]) if ready else None,
+                       folder_name=ready["folder"] if ready else None)
     except Interrupted:
         mark_draft(draft, "queued", "battery")
         raise
@@ -528,6 +539,8 @@ def run_job(job_path: Path, cfg, engine, stop=None) -> dict:
         mark_draft(draft, "queued")
         raise
     job_path.unlink()
+    if ready:  # a lecture like any other now; the original file stays where it is
+        Path(ready["entry"]).unlink(missing_ok=True)
     if live and src.suffix == ".pcm":
         src.unlink(missing_ok=True)  # archived as .opus by process() (or keep_audio = false)
         if live.chunks:  # in the final transcript now
@@ -759,6 +772,17 @@ def finalize(session, cfg, policy: str, use_llm: bool, engine) -> None:
             log(f"Unplugged; final pass {e}. The job waits in the queue and goes on from there: {job.name}")
             return
     session.state = "done"
+    if jobs.pending():  # e.g. a file added during the recording and confirmed: it waited for the recording
+        start_queue_run()
+
+
+def start_queue_run() -> None:
+    """The queue's scheduled run now, in its own process, instead of when the background job next fires: it checks
+    the same things (power, the night hours, memory, one pass at a time)."""
+    from .app_live import open_log
+    with open_log("queue.log") as log:
+        subprocess.Popen([sys.executable, "-m", "stenny", "queue", "run", "--scheduled"], stdin=subprocess.DEVNULL,
+                         stdout=log, stderr=log, start_new_session=True, env={**os.environ, "PYTHONIOENCODING": "utf-8"})
 
 
 def cmd_check(args) -> None:
@@ -1106,6 +1130,7 @@ def main() -> None:
     p.add_argument("--lecture", nargs=2, metavar=("COURSE", "FOLDER"),
                    help="run only this live recording's final pass, now (also on battery)")
     p.add_argument("--event", action="store_true", help="--lecture names a talk")
+    p.add_argument("--job", type=Path, help=argparse.SUPPRESS)  # one job, now: Transcribe in Stenny's window
     p.set_defaults(func=cmd_queue)
 
     scheduler = "Task Scheduler task" if sys.platform == "win32" else "launchd agent"

@@ -546,9 +546,11 @@ def lecture_length(recorded: float, spans, pauses) -> float:
 
 def process(path: Path, cfg: Config, course: Course, engine, *, lang: str | None = None,
             when: datetime | None = None, use_llm: bool = True, summary: bool | None = None,
-            live: LiveInfo | None = None, slides_src: Path | None = None, stop=None) -> dict:
+            live: LiveInfo | None = None, slides_src: Path | None = None, stop=None, folder_name: str | None = None) -> dict:
     """`slides_src`: lecture slides (PDF), copied into the folder as Slides.pdf. Without it, a Slides.pdf
     already in the folder (e.g. dropped there during a live lecture) is used.
+    `folder_name`: the lecture folder a recording added in Stenny's window was given while it waited for Transcribe
+    (ready.py), so its progress shows on its row from the start; another one if a lecture took that folder since.
     `stop`: see transcribe(); nothing is written before Whisper is done, so an interrupted job leaves no trace."""
     t0 = time.time()
     vault = cfg.vault_for(course)
@@ -561,7 +563,8 @@ def process(path: Path, cfg: Config, course: Course, engine, *, lang: str | None
     # recording's folder is known before its audio is loaded, which takes a while for a long lecture read at
     # background priority, so its bar shows from the start (the lecture says "finalizing" by then)
     estimate = lecture_length(audio_io.pcm_seconds(path), spans, pauses) if live and path.suffix == ".pcm" else 0.0
-    progress = Progress(progress_path(cfg.data_for(course), live.folder) if live else None, estimate)
+    known = live.folder if live else folder_name
+    progress = Progress(progress_path(cfg.data_for(course), known) if known else None, estimate)
     try:
         progress.step("transcribing")
         log(f"Loading {path.name}")
@@ -576,10 +579,15 @@ def process(path: Path, cfg: Config, course: Course, engine, *, lang: str | None
         date = f"{when:%Y-%m-%d}"
         source = live.source if live else path.name
         folder = vault.course_dir(course.name) / live.folder if live else vault.lecture_dir(course.name, date, source)
+        if folder_name and not live:
+            wanted = vault.course_dir(course.name) / folder_name
+            if not (wanted.is_dir() and any(not p.name.startswith(".") for p in wanted.iterdir())):
+                folder = wanted
         prompt, slides, slides_copy = whisper_prompt(vault, folder, glossary, course.name, slides_src)
-        if live:
+        if known and folder.name == known:
             progress.duration = duration
         else:  # an added file's folder is known only now
+            progress.clear()  # the folder it was given is someone else's now
             progress = Progress(progress_path(cfg.data_for(course), folder.name), duration)
             progress.step("transcribing")
         gaps = [(p[0], p[1]) for p in pauses if p[2] == "no input"]  # only zeros there, or nothing at all
@@ -630,9 +638,9 @@ def process(path: Path, cfg: Config, course: Course, engine, *, lang: str | None
             meta_dir.mkdir(parents=True, exist_ok=True)
             if cfg.keep_audio:
                 log(f"Archiving audio → {audio_dest}")
-                audio_io.archive(path, audio_dest)
+                audio_io.archive(path, audio_dest, when=when)
                 if filled:  # otherwise the backup holds nothing the main recording doesn't
-                    audio_io.archive(backup_path, audio_dest.with_name(f"{folder.name}.backup.opus"))
+                    audio_io.archive(backup_path, audio_dest.with_name(f"{folder.name}.backup.opus"), when=when)
         finally:
             finish()  # segments.json and the course files below take the lecture as final
         info = {

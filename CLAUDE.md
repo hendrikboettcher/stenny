@@ -51,6 +51,8 @@ src/stenny/
   course_files.py generated _Course Files/<Course> (overview).md (links only: each lecture's text exists once, in
                   its folder) and _Topics/<topic>.md; renumbers lectures, sets previous/next links
   share.py        the library (every lecture and talk, for Stenny's window) and clean copies to share
+  ready.py        recordings added from a file in the window: "ready to transcribe" (a .ready.json in Recordings/, never
+                  the Stenny folder), placed and numbered by date, transcribed only after Transcribe (a queue job)
   word.py         Word copies (.docx) without textutil, for Windows: share.py's blocks as a few XML parts in a zip
   connector.py    what Claude may read through the connector, as clean text (no paths, no microphones): courses,
                   lectures, transcripts in parts (a recording's text so far too, share.text_so_far), summaries, search, glossary; two writes, both to the glossary's automatic

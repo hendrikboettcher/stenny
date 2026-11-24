@@ -110,6 +110,17 @@ DE = {
     "The Word file couldn't be made: {error}": "Die Word-Datei konnte nicht erstellt werden: {error}",
     "Unknown format '{fmt}': use {formats}.": "Unbekanntes Format „{fmt}“. Möglich sind: {formats}.",
 
+    # a recording added from a file (ready.py)
+    "A talk needs a title.": "Ein Vortrag braucht einen Titel.",
+    "The file isn't there any more: {path}": "Die Datei ist nicht mehr da: {path}",
+    "“{name}” isn't a recording: Stenny can add audio and video files.":
+        "„{name}“ ist keine Aufnahme: Stenny kann Audio- und Videodateien hinzufügen.",
+    "This recording isn't waiting to be transcribed any more.": "Diese Aufnahme wartet nicht mehr aufs Transkribieren.",
+    "It's being transcribed right now.": "Sie wird gerade transkribiert.",
+    "Not a date: {date}": "Kein Datum: {date}",
+    "The transcript couldn't be made. The file is still there; try again, or use Send Feedback.":
+        "Das Transkript konnte nicht erstellt werden. Die Datei ist noch da; versuch es noch einmal oder nutze „Feedback senden“.",
+
     # renaming, deleting, the course list
     "Couldn't move to the {trash}: {error}": "Konnte nicht in den {trash} gelegt werden: {error}",
     "A transcript is being made right now. Try again when it's done.":

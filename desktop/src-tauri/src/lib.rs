@@ -67,6 +67,37 @@ fn reveal(path: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// What "Add a recording from a file…" offers in the system's file dialog: audio and video that ffmpeg reads (the
+/// engine checks each file again: anything without sound is turned down there).
+const RECORDING_TYPES: &[&str] = &[
+    "m4a", "mp3", "wav", "aac", "flac", "ogg", "oga", "opus", "aiff", "aif", "caf", "wma", "amr", "mp4", "mov", "m4v",
+    "webm", "mkv", "avi", "mpg", "mpeg", "3gp",
+];
+
+/// "Add a recording from a file…": the system's file dialog (on macOS a sheet on the window), several files at once;
+/// the files chosen, none if it was cancelled. On its own thread: the dialog waits for the user.
+#[tauri::command]
+async fn pick_recordings(window: tauri::WebviewWindow) -> Result<Vec<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        window
+            .dialog()
+            .file()
+            .set_parent(&window)
+            .set_title(tr!("pick.title"))
+            .add_filter(tr!("pick.filter"), RECORDING_TYPES)
+            .blocking_pick_files()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(picked
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|f| f.into_path().ok())
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect())
+}
+
 /// Share…: the system's share menu for the copy just made: on macOS below the Share button (its rectangle in the
 /// page), on Windows the Share panel. Elsewhere: the copy shown in its folder.
 #[tauri::command]
@@ -610,7 +641,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Arc::new(Engine::default()))
         .manage(MenuBar::default())
-        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, make_pdf, lecturer_agreed, start_talk, show_feedback, share_files, copy_text, check_updates, update_available, reload_window, microphone_pref, set_microphone_pref, login_item, apply_shortcut, pause_shortcut_label, ui_language, set_ui_language, courses_changed, start_recording, recording_command, recording_status, calendar_status, calendar_check, calendar_allow, calendar_changed, open_system_settings])
+        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, pick_recordings, make_pdf, lecturer_agreed, start_talk, show_feedback, share_files, copy_text, check_updates, update_available, reload_window, microphone_pref, set_microphone_pref, login_item, apply_shortcut, pause_shortcut_label, ui_language, set_ui_language, courses_changed, start_recording, recording_command, recording_status, calendar_status, calendar_check, calendar_allow, calendar_changed, open_system_settings])
         .setup(move |app| {
             if !library_only {
                 // A Dock app (Info.plist has no LSUIElement, so the Dock bounces it while it opens) with the menu bar

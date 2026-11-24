@@ -80,7 +80,15 @@ Pause/Resume and Stop; then "Making the final transcript" (the live process's fi
 the calendar's lecture with a Record button while nothing runs. The recording course gets a red dot in the sidebar. A
 course's list starts with "Record Lecture n", Talks & events (shown once there is a talk) with a record button: a sheet in the window asks for the talk's title and
 language, as the menu bar's Record a Talk or Event… does (it brings the library up, "record-talk"). No window of its
-own: on Windows a second window made from the event loop froze Stenny (lib.rs, `present`). The
+own: on Windows a second window made from the event loop froze Stenny (lib.rs, `present`). Next to Record, a round
+file button adds a recording from a file (#136; it stays while one records): the system's file dialog
+(`pick_recordings` in lib.rs, tauri-plugin-dialog), for a talk after its title and language (the same sheet, also
+from the file icon next to Talks & events' record button). Files dropped on a course or talk in the sidebar, or on the
+list and lecture for the one shown, go there too (`getCurrentWebview().onDragDropEvent`, which hands over the paths on
+both systems; the target lights up). Each becomes a lecture at its date (src/stenny/ready.py), "Ready to transcribe",
+with a card: "Held on <date> in <language>." (both can be changed), Transcribe and a bin that removes only Stenny's
+entry, never the file. Nothing is transcribed before Transcribe; it then waits like a final pass (a recording, power,
+the night, memory), with Transcribe Now. What isn't audio or video is said in the activity bar. The
 window never records by itself: it goes through the menu bar's own code (`start_recording`, `recording_command`,
 `recording_status` in src-tauri/src/lib.rs → menubar.rs `start_with`, `command`, `window_status`), so the lecturer's
 consent, the microphone and the language work as from the menu; the status is the menu bar's last poll, no extra work.
