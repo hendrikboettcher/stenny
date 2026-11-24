@@ -67,14 +67,15 @@ fn reveal(path: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-/// What "Add a recording from a file…" offers in the system's file dialog: audio and video that ffmpeg reads (the
-/// engine checks each file again: anything without sound is turned down there).
-const RECORDING_TYPES: &[&str] = &[
+/// What "Add a recording or transcript…" offers in the system's file dialog: audio and video that ffmpeg reads, and
+/// transcripts (Stenny's own copies and other apps', src/stenny/transcripts.py). The engine checks each file again:
+/// anything without sound or text is turned down there.
+const FILE_TYPES: &[&str] = &[
     "m4a", "mp3", "wav", "aac", "flac", "ogg", "oga", "opus", "aiff", "aif", "caf", "wma", "amr", "mp4", "mov", "m4v",
-    "webm", "mkv", "avi", "mpg", "mpeg", "3gp",
+    "webm", "mkv", "avi", "mpg", "mpeg", "3gp", "md", "markdown", "txt", "vtt", "srt", "docx", "html", "htm", "pdf",
 ];
 
-/// "Add a recording from a file…": the system's file dialog (on macOS a sheet on the window), several files at once;
+/// "Add a recording or transcript…": the system's file dialog (on macOS a sheet on the window), several files at once;
 /// the files chosen, none if it was cancelled. On its own thread: the dialog waits for the user.
 #[tauri::command]
 async fn pick_recordings(window: tauri::WebviewWindow) -> Result<Vec<String>, String> {
@@ -85,7 +86,7 @@ async fn pick_recordings(window: tauri::WebviewWindow) -> Result<Vec<String>, St
             .file()
             .set_parent(&window)
             .set_title(tr!("pick.title"))
-            .add_filter(tr!("pick.filter"), RECORDING_TYPES)
+            .add_filter(tr!("pick.filter"), FILE_TYPES)
             .blocking_pick_files()
     })
     .await

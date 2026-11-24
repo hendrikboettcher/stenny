@@ -113,8 +113,12 @@ DE = {
     # a recording added from a file (ready.py)
     "A talk needs a title.": "Ein Vortrag braucht einen Titel.",
     "The file isn't there any more: {path}": "Die Datei ist nicht mehr da: {path}",
-    "“{name}” isn't a recording: Stenny can add audio and video files.":
-        "„{name}“ ist keine Aufnahme: Stenny kann Audio- und Videodateien hinzufügen.",
+    "“{name}” isn't a recording or a transcript Stenny can read.":
+        "„{name}“ ist weder eine Aufnahme noch ein Transkript, das Stenny lesen kann.",
+    "“{name}” couldn't be read: {error}": "„{name}“ konnte nicht gelesen werden: {error}",
+    "“{name}” has no text Stenny can read, probably a scan. Nothing was added.":
+        "„{name}“ enthält keinen Text, den Stenny lesen kann – vermutlich ein Scan. Es wurde nichts hinzugefügt.",
+    "“{name}” has no transcript text in it.": "„{name}“ enthält keinen Transkript-Text.",
     "This recording isn't waiting to be transcribed any more.": "Diese Aufnahme wartet nicht mehr aufs Transkribieren.",
     "It's being transcribed right now.": "Sie wird gerade transkribiert.",
     "Not a date: {date}": "Kein Datum: {date}",

@@ -65,6 +65,9 @@ def _entries(cfg, kind: str) -> list[dict]:
                 "waiting": fm.get("waiting"),  # why a finished recording waits for its transcript ("battery")
                 "transcript": str(transcript),
                 "summary": str(summary) if summary else None,
+                # a transcript someone sent, added as it is (#138): where from, made with what, with times or not
+                "imported": {"from": fm.get("imported_from"), "by": fm.get("transcribed_by"),
+                             "timestamps": fm.get("timestamps") is not False} if fm.get("source") == "imported" else None,
             })
     return out
 

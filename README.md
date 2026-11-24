@@ -1,6 +1,6 @@
 # Stenny
 
-Stenny records your lectures on your Mac or Windows laptop and transcribes them right there, with Whisper; a recording you already have (a meeting, a lecture watched online, a file someone sent) can be added from a file or dropped on a course. The transcripts are plain Markdown files in a folder of your choice, and Stenny's connector lets Claude read them, so any chat can answer *"What did the lecturer say about k-means in lecture 4?"* and cite the minute.
+Stenny records your lectures on your Mac or Windows laptop and transcribes them right there, with Whisper; a recording you already have (a meeting, a lecture watched online, a file someone sent), or a transcript someone sent (Stenny's own copies, or .vtt, .srt, .txt, .docx, .pdf from other apps), can be added from a file or dropped on a course. The transcripts are plain Markdown files in a folder of your choice, and Stenny's connector lets Claude read them, so any chat can answer *"What did the lecturer say about k-means in lecture 4?"* and cite the minute.
 
 - **Private:** audio never leaves your computer.
 - **Free:** transcription costs nothing. An optional AI step (headings, a summary, fixes for misheard terms) runs on your Claude subscription or the Anthropic API.

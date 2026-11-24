@@ -21,7 +21,16 @@ export interface Entry {
   summary: string | null;
   live?: Live;              // only the recording that is running now (app_server._with_live)
   final_pass?: FinalPass | null; // "finalizing": how far it is (null before it reports anything)
-  ready?: Ready;            // a recording added from a file that has no transcript yet
+  ready?: Ready;            // a recording or transcript added from a file, not transcribed or added yet
+  imported?: Imported | null; // a transcript someone sent, added as it is (#138)
+}
+
+// A transcript someone sent, as it was added: the file's name, the app that made it (when the file says), and whether
+// it has timestamps
+export interface Imported {
+  from: string | null;
+  by: string | null;
+  timestamps: boolean;
 }
 
 // A recording added from a file (the file button next to Record, or dropped on a course): the original file, which
@@ -32,6 +41,13 @@ export interface Ready {
   name: string;
   error: string | null;
   night_start: string;      // when the queue's night starts ("01:00"), for "Starts at night, from 01:00."
+  // a transcript, not a recording (src/stenny/transcripts.py): Add puts it in as it is, nothing is transcribed
+  transcript?: {
+    by: string | null;      // "Stenny", "Otter", "Zoom", "Teams", "MacWhisper", "Word" or null (another app)
+    summary: boolean;       // a Stenny copy with its summary
+    timestamps: boolean;
+    preview: { start: string | null; text: string }[];
+  };
 }
 
 // The running recording, as the menu bar sees it: its length (pauses left out) and whether it is counting up now,
@@ -204,7 +220,9 @@ export const addRecording = (course: string, event: boolean, path: string, langu
 const which = (e: Entry) => ({ course: e.course, event: e.kind === "event", id: e.ready?.id });
 export const setReady = (e: Entry, change: { date?: string; language?: string }) =>
   engine<Entry>("set_ready", { ...which(e), ...change });
-export const transcribeReady = (e: Entry, now = false) => engine<Entry>("transcribe_ready", { ...which(e), now });
+// Transcribe a recording (an Entry back), or Add a transcript ({added, folder}: it's a lecture in that folder now)
+export const transcribeReady = (e: Entry, now = false) =>
+  engine<Entry & { added?: boolean }>("transcribe_ready", { ...which(e), now });
 export const removeReady = (e: Entry) => engine<{ removed: boolean }>("remove_ready", which(e));
 export const openTranscript = (path: string) => (inApp ? invoke("open_transcript", { path }) : console.log("open", path));
 export const reveal = (path: string) => (inApp ? invoke("reveal", { path }) : console.log("reveal", path));

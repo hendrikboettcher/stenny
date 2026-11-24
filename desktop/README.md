@@ -88,7 +88,10 @@ list and lecture for the one shown, go there too (`getCurrentWebview().onDragDro
 both systems; the target lights up). Each becomes a lecture at its date (src/stenny/ready.py), "Ready to transcribe",
 with a card: "Held on <date> in <language>." (both can be changed), Transcribe and a bin that removes only Stenny's
 entry, never the file. Nothing is transcribed before Transcribe; it then waits like a final pass (a recording, power,
-the night, memory), with Transcribe Now. What isn't audio or video is said in the activity bar. The
+the night, memory), with Transcribe Now. A transcript someone sent (#138; src/stenny/transcripts.py: Stenny's own
+copies, other apps' .vtt, .srt, .txt, .md, .docx, .pdf) comes in the same way, "Ready to add": the card says where it
+comes from and what comes along, shows its beginning, and Add puts it in as it is (an imported lecture then carries
+a note saying so). What's neither, and a scanned PDF, is said in the activity bar. The
 window never records by itself: it goes through the menu bar's own code (`start_recording`, `recording_command`,
 `recording_status` in src-tauri/src/lib.rs → menubar.rs `start_with`, `command`, `window_status`), so the lecturer's
 consent, the microphone and the language work as from the menu; the status is the menu bar's last poll, no extra work.

@@ -1,4 +1,10 @@
-"""Recordings added from a file in Stenny's window (#136), "ready to transcribe" until the student confirms.
+"""Recordings and transcripts added from a file in Stenny's window (#136, #138), "ready" until the student confirms.
+
+A transcript someone sent (transcripts.py: Stenny's own copies, other apps' .vtt, .srt, .txt, .md, .docx, .pdf) comes
+in the same way and becomes a lecture at its date too, "Ready to add". It's read at once (so a scan or an empty file is
+turned down right away, and the window can show where it comes from and how it begins) and Stenny's own copy of the
+file is kept in the data place; Add puts it into the Stenny folder as it is (pipeline.add_transcript), with no queue,
+Whisper or AI step. Everything below about Transcribe is about recordings.
 
 A file added to a course (the file button next to Record, or dropped on a course) becomes a lecture at once, at its
 place by recording date and numbered like the others, but nothing is transcribed before Transcribe: a file dropped
@@ -18,6 +24,7 @@ pass), otherwise the queue's next run takes it, like a recording's final pass th
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -25,7 +32,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from . import audio, jobs, resources
+from . import audio, jobs, resources, transcripts
 from .config import ConfigError, Course
 from .i18n import tr
 from .progress import progress_path, read as read_progress
@@ -104,7 +111,10 @@ def _job(d: dict) -> Path | None:
 
 
 def state(cfg, d: dict, data_dir: Path) -> str:
-    """ready (waiting for Transcribe), queued (confirmed, waiting for its turn), finalizing (being transcribed)."""
+    """ready (waiting for Transcribe), queued (confirmed, waiting for its turn), finalizing (being transcribed). A
+    transcript is ready until it's added (which takes a moment, not a queue)."""
+    if d.get("transcript"):
+        return "ready"
     job = _job(d)
     if not job or not job.exists():
         return "ready"  # never confirmed, or its pass failed (`error` says so)
@@ -158,6 +168,12 @@ def _entry(cfg, course: Course, path: Path, d: dict, waiting: str | None) -> dic
         "ready": {"id": path.name.removesuffix(SUFFIX), "file": str(src), "name": src.name, "error": error,
                   "night_start": cfg.night_start},
     }
+    if d.get("transcript"):  # nothing to transcribe: where it comes from, what comes along, how it begins
+        entry.update(language=None, waiting=None, duration=fmt_hms(float(d["seconds"])) if d.get("seconds") else None)
+        entry["ready"]["error"] = None if Path(d.get("copy") or "").is_file() else \
+            tr("The file isn't there any more: {path}", path=str(src))
+        entry["ready"]["transcript"] = {"by": d.get("by"), "summary": bool(d.get("summary")),
+                                        "timestamps": bool(d.get("timestamps")), "preview": d.get("preview") or []}
     if status == "finalizing":
         entry["final_pass"] = read_progress(progress_path(data_dir, d["folder"]))
     return entry
@@ -204,14 +220,16 @@ def add(cfg, params: dict) -> dict:
         raise ReadyError(tr("Missing '{name}'.", name=e.args[0])) from None
     if not src.is_file():
         raise ReadyError(tr("The file isn't there any more: {path}", path=str(src)))
-    info = audio.probe(src)
-    if not info or not info["audio"]:
-        raise ReadyError(tr("“{name}” isn't a recording: Stenny can add audio and video files.", name=src.name))
     data_dir = cfg.data_for(course)
     for p in _ready_files(data_dir):
         d = _read(p)
         if d and Path(d["file"]) == src.resolve():
             return _entry(cfg, course, p, d, waits_for(cfg))
+    if transcripts.is_transcript(src):
+        return _add_transcript(cfg, course, src)
+    info = audio.probe(src)
+    if not info or not info["audio"]:
+        raise ReadyError(tr("“{name}” isn't a recording or a transcript Stenny can read.", name=src.name))
     when = audio.recorded_at(src)
     language = params.get("language") or None
     if event and language not in (None, "mixed", *cfg.event_languages):
@@ -223,6 +241,51 @@ def add(cfg, params: dict) -> dict:
          "folder": _free_folder(cfg, course, f"{when:%Y-%m-%d}"), "added": datetime.now().isoformat(timespec="seconds")}
     _write(path, d)
     return _entry(cfg, course, path, d, waits_for(cfg))
+
+
+def _file_day(src: Path) -> str:
+    """The day a file was made (a transcript that doesn't say its date: often the day it arrived; it can be
+    changed in the window)."""
+    st = src.stat()
+    return f"{datetime.fromtimestamp(getattr(st, 'st_birthtime', st.st_mtime)):%Y-%m-%d}"
+
+
+def _read_transcript(src: Path) -> transcripts.Transcript:
+    try:
+        return transcripts.read(src)
+    except transcripts.TranscriptError as e:
+        raise ReadyError(str(e)) from None
+
+
+def _add_transcript(cfg, course: Course, src: Path) -> dict:
+    """A transcript, ready to add: read now (a scan is turned down at once), Stenny's own copy of the file kept."""
+    t = _read_transcript(src)
+    data_dir = cfg.data_for(course)
+    data_dir.mkdir(parents=True, exist_ok=True)
+    rid = uuid.uuid4().hex[:12]
+    copy = data_dir / f"{rid}.original{src.suffix.lower()}"
+    shutil.copy2(src, copy)
+    date = t.date or _file_day(src)
+    path = data_dir / f"{rid}{SUFFIX}"
+    d = {"file": str(src.resolve()), "course": course.name, "kind": course.kind, "transcript": True,
+         "copy": str(copy), "by": t.by, "summary": bool(t.summary), "timestamps": t.timestamps,
+         "preview": transcripts.preview(t), "date": date, "start": t.start, "seconds": t.seconds,
+         "folder": _free_folder(cfg, course, date), "added": datetime.now().isoformat(timespec="seconds")}
+    _write(path, d)
+    return _entry(cfg, course, path, d, None)
+
+
+def import_file(cfg, course: Course, src: Path, date: str | None = None) -> dict:
+    """`stenny add` with a transcript: added at once, as it is (no ready step in a terminal)."""
+    t = _read_transcript(src)
+    data_dir = cfg.data_for(course)
+    data_dir.mkdir(parents=True, exist_ok=True)
+    copy = data_dir / f".{uuid.uuid4().hex[:12]}.original{src.suffix.lower()}"
+    shutil.copy2(src, copy)
+    day = date or t.date or _file_day(src)
+    from .pipeline import add_transcript
+    return add_transcript(cfg, course, t, copy, src.name, date=day, start=t.start,
+                          folder_name=_free_folder(cfg, course, day))
 
 
 def change(cfg, params: dict) -> dict:
@@ -258,6 +321,15 @@ def transcribe(cfg, params: dict) -> dict:
     (waits_for), else the queue's next run takes it (after the recording, once plugged in, at night). Again with
     `now` while it waits: it starts now (Transcribe Now, like a recording's Make Final Transcript Now)."""
     course, path, d = _find(cfg, params)
+    if d.get("transcript"):  # Add: into the Stenny folder now, as it is
+        copy = Path(d.get("copy") or "")
+        if not copy.is_file():
+            raise ReadyError(tr("The file isn't there any more: {path}", path=d["file"]))
+        from .pipeline import add_transcript
+        info = add_transcript(cfg, course, _read_transcript(copy), copy, Path(d["file"]).name, date=d["date"],
+                              start=d.get("start"), folder_name=d["folder"])
+        path.unlink(missing_ok=True)
+        return {"added": True, "folder": Path(info["folder"]).name}
     status = state(cfg, d, cfg.data_for(course))
     if status == "queued" and params.get("now"):  # Transcribe Now: this one, now, whatever it waited for
         if jobs.queue_busy():
@@ -303,6 +375,8 @@ def remove(cfg, params: dict) -> dict:
     if (job := _job(d)) is not None:
         job.unlink(missing_ok=True)
         job.with_suffix(".failed").unlink(missing_ok=True)
+    if d.get("copy"):  # Stenny's own copy of a transcript; the file it came from stays where it is
+        Path(d["copy"]).unlink(missing_ok=True)
     path.unlink(missing_ok=True)
     return {"removed": True}
 

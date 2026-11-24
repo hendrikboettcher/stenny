@@ -483,6 +483,36 @@
       notice = { text: String(err), error: true };
     }
   }
+  // a transcript (#138): where it comes from, what comes along, and how an added one says so
+  type TranscriptInfo = NonNullable<NonNullable<Entry["ready"]>["transcript"]>;
+  const sourceLabel = (x: TranscriptInfo) =>
+    x.by === "Stenny" ? t(x.summary ? "ready.from.stennySummary" : "ready.from.stenny")
+      : x.by ? t("ready.from.app", { app: x.by }) : t("ready.from.other");
+  function transcriptHint(x: TranscriptInfo): { text: string; error?: boolean } {
+    const kept = x.by === "Stenny" ? t(x.summary ? "ready.keepsSummary" : "ready.keeps") : t("ready.asIs");
+    return { text: x.timestamps ? kept : `${kept} ${t("ready.noTimestamps")}` };
+  }
+  const importedNote = (x: NonNullable<Entry["imported"]>) => {
+    const file = x.from ?? "";
+    const note = x.by === "Stenny" ? t("imported.stenny", { file }) : x.by ? t("imported.app", { file, app: x.by })
+      : t("imported.other", { file });
+    return x.timestamps ? note : `${note} ${t("ready.noTimestamps")}`;
+  };
+  // Add: a lecture like any other at once (its folder comes back), shown where it is
+  async function addTranscript(e: Entry) {
+    busy = "transcribe";
+    notice = null;
+    try {
+      const done = await transcribeReady(e);
+      const g = groupOf(e);
+      await reload({ show: (all) => all.find((x) => same(groupOf(x), g) && x.folder === done.folder && !x.ready) });
+    } catch (err) {
+      notice = { text: String(err), error: true };
+    } finally {
+      busy = null;
+    }
+  }
+
   async function transcribe(e: Entry, now = false) {
     busy = "transcribe";
     notice = null;
@@ -797,7 +827,7 @@
     return inWords(h * 3600 + m * 60 + sec);
   };
   const rowDetail = (e: Entry) =>
-    e.status === "ready" ? [e.kind === "event" ? null : prettyDate(e), t("ready.row")].filter(Boolean).join(" · ")
+    e.status === "ready" ? [e.kind === "event" ? null : prettyDate(e), t(e.ready?.transcript ? "ready.row.transcript" : "ready.row")].filter(Boolean).join(" · ")
       : [number(e), e.number > 0 || e.title ? prettyDate(e) : e.start, length(e)].filter(Boolean).join(" · ");
   // a recording from a file: the file and its length (its date and language are in the card's sentence)
   const details = (e: Entry) =>
@@ -905,7 +935,7 @@
           <span class="adds">
             <!-- a talk from a file (ready.py): its title and language first, then the file; also while one records -->
             <button class="add file" aria-label={t("lib.addFile.talk")} title={t("lib.addFile.talk")} onclick={() => open({ kind: "talk-file" })}>
-              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.8h5.2L12.5 5v9.2H4z M9 1.8V5.2h3.5" /><path class="note" d="M7.3 11.7V8.1l2.9-.7v3.5" /><circle cx="6.5" cy="11.8" r=".95" /><circle cx="9.4" cy="11" r=".95" /></svg>
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.8h5.2L12.5 5v9.2H4z M9 1.8V5.2h3.5" /><path d="M8.25 7.7v4.1 M6.2 9.75h4.1" /></svg>
             </button>
             {#if canRecord}
               <button class="add" aria-label={t("lib.recordTalk")} title={t("lib.recordTalk")} onclick={recordTalk}>
@@ -1069,7 +1099,7 @@
           </button>
         {/if}
         <button class="add-file" aria-label={fileLabel(group)} title={fileLabel(group)} onclick={addFromFile}>
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.8h5.2L12.5 5v9.2H4z M9 1.8V5.2h3.5" /><path class="note" d="M7.3 11.7V8.1l2.9-.7v3.5" /><circle cx="6.5" cy="11.8" r=".95" /><circle cx="9.4" cy="11" r=".95" /></svg>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.8h5.2L12.5 5v9.2H4z M9 1.8V5.2h3.5" /><path d="M8.25 7.7v4.1 M6.2 9.75h4.1" /></svg>
         </button>
       </div>
       <div class="kicker list-head">{tn("lib.recordings", entries.length)}</div>
@@ -1120,18 +1150,30 @@
               class="pen" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.6 2.6a1.4 1.4 0 0 1 2 0l.8.8a1.4 1.4 0 0 1 0 2L6 12.8 2.8 13.2l.4-3.2z M9.4 3.8l2.8 2.8" /></svg></button></h1>
         {/if}
         <p class="meta" class:file={!!selected.ready}>{details(selected)}</p>
+        {#if selected.imported}<p class="imported">{importedNote(selected.imported)}</p>{/if}
 
         {#if selected.ready}
           <!-- a recording from a file: "Held on Thursday, 6 Nov in English." (both can be changed), then Transcribe;
-               nothing is transcribed before. The bin takes it out of Stenny, never the file itself. -->
+               nothing is transcribed before. A transcript (#138): where it comes from, "Held on …" (only the date:
+               nothing is transcribed), what comes along, then Add. The bin takes it out of Stenny, never the file. -->
           {@const e = selected}
-          {@const hint = readyHint(e)}
+          {@const text = e.ready?.transcript}
+          {@const hint = text && !e.ready?.error ? transcriptHint(text) : readyHint(e)}
           {@const editable = e.status !== "finalizing"}
           <div class="draft ready">
+            {#if text}
+              <p class="source">
+                <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.8h5.2L12.5 5v9.2H4z M9 1.8V5.2h3.5 M6 8.3h4.5 M6 10.6h4.5" /></svg>
+                {sourceLabel(text)}
+              </p>
+            {/if}
             <div class="sentence">
               {#if e.status !== "ready"}<span class="status {e.status}">{statusLabel(e.status)}</span>{/if}
               {t("ready.held")}
-              {#if editable}<span class="pick-wrap"><button class="pick" title={t("ready.changeDate")} aria-expanded={dateOpen}
+              {#if text}<span class="pick-wrap"><button class="pick" title={t("ready.changeDate")} aria-expanded={dateOpen}
+                  bind:this={dateButton} onclick={toggleDate}>{longDate(e)}</button>{#if dateOpen}<DatePicker value={e.date}
+                  onclose={closeDate} onpick={(date) => { closeDate(); changeReady(e, { date }); }} />{/if}</span>{longDate(e).endsWith(".") ? "" : "."}
+              {:else if editable}<span class="pick-wrap"><button class="pick" title={t("ready.changeDate")} aria-expanded={dateOpen}
                   bind:this={dateButton} onclick={toggleDate}>{longDate(e)}</button>{#if dateOpen}<DatePicker value={e.date}
                   onclose={closeDate} onpick={(date) => { closeDate(); changeReady(e, { date }); }} />{/if}</span>
                 <span class="pick-wrap"><button class="pick" title={t("ready.changeLanguage")}
@@ -1149,7 +1191,11 @@
             {#if e.status === "finalizing" && e.final_pass}<FinalPass pass={e.final_pass} />{/if}
             {#if editable}
               <div class="ready-actions">
-                {#if e.status === "ready"}
+                {#if text}
+                  <button class="pill primary small" onclick={() => addTranscript(e)} disabled={busy === "transcribe"}>
+                    {t("ready.add")}
+                  </button>
+                {:else if e.status === "ready"}
                   <button class="pill primary small" onclick={() => transcribe(e)} disabled={busy === "transcribe"}>
                     {busy === "transcribe" ? t("common.starting") : t("ready.transcribe")}
                   </button>
@@ -1218,7 +1264,14 @@
 
         <hr />
 
-        {#if selected.ready}
+        {#if selected.ready?.transcript}
+          <div class="kicker">{t("ready.beginning")}</div>
+          <div class="summary preview selectable">
+            {#each selected.ready.transcript.preview as p}
+              <p>{#if p.start}<span class="ts">{p.start}</span> {/if}{p.text}</p>
+            {/each}
+          </div>
+        {:else if selected.ready}
           <p class="quiet">{t("ready.later")}</p>
         {:else if summary === undefined}
           <p class="quiet" class:hidden={!slow}>{t("common.loading")}</p>
@@ -1339,7 +1392,7 @@
     </Dialog>
   {:else if ask.kind === "remove-ready"}
     <Dialog title={t("removeReady.title")} confirm={t("removeReady.confirm")} danger busy={askBusy} error={askError}
-            text={t("removeReady.text", { name: lectureName(ask.entry) })}
+            text={t(ask.entry.ready?.transcript ? "removeReady.text.transcript" : "removeReady.text", { name: lectureName(ask.entry) })}
             oncancel={() => (ask = null)} onconfirm={answer} />
   {:else if ask.kind === "talk" || ask.kind === "talk-file"}
     {@const fromFile = ask.kind === "talk-file"}
@@ -1599,6 +1652,13 @@
   .ready-hint.error { color: var(--rec); }
   .ready-actions { display: flex; align-items: center; gap: 4px; margin-top: 12px; }
   .ready-actions .pill, .ready-actions .trash { margin: 0; }
+  /* a transcript's card: where it comes from, above the sentence */
+  .draft .source { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; font-size: 12.5px; color: var(--muted); }
+  .draft .source svg { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; }
+  .summary.preview { color: var(--ink-2); }
+  .summary.preview .ts { margin: 0 4px 0 0; }
+  /* an imported lecture: the note it carries, quietly under its details */
+  .imported { margin: 10px 0 0; padding: 8px 12px; border-radius: var(--r-row); background: var(--sunken); color: var(--ink-2); font-size: 13px; line-height: 1.5; max-width: 46rem; }
   .ready-actions .trash { width: 26px; height: 26px; border-radius: 8px; margin-left: 4px; }
   .ready-actions .trash svg { width: 14px; height: 14px; }
 
