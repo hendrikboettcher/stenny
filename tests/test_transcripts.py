@@ -120,9 +120,10 @@ TEAMS_VTT = """WEBVTT
 """
 
 
-def test_a_vtt_from_teams(tmp_path):
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])  # a file made on Windows ends its lines with \r\n
+def test_a_vtt_from_teams(tmp_path, newline):
     path = tmp_path / "Data Mining week 6.vtt"
-    path.write_text(TEAMS_VTT, encoding="utf-8")
+    path.write_bytes(TEAMS_VTT.replace("\n", newline).encode("utf-8"))
     t = transcripts.read(path)
     assert t.by == "Teams" and t.seconds == 15 and t.date is None
     assert t.paragraphs == [

@@ -80,13 +80,16 @@ def _ts(text: str) -> float | None:
 # ---------------------------------------------------------------- the file as text
 
 def decode(data: bytes) -> str:
-    """UTF-8 (with or without BOM), UTF-16 with BOM, otherwise Windows-1252."""
+    """UTF-8 (with or without BOM), UTF-16 with BOM, otherwise Windows-1252; line ends as "\n" (a file from
+    Windows ends its lines with "\r\n")."""
     if data.startswith((b"\xff\xfe", b"\xfe\xff")):
-        return data.decode("utf-16")
-    try:
-        return data.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        return data.decode("cp1252", errors="replace")
+        text = data.decode("utf-16")
+    else:
+        try:
+            text = data.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            text = data.decode("cp1252", errors="replace")
+    return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
 def _clean(text: str) -> str:
@@ -475,9 +478,9 @@ def read(path: Path) -> Transcript:
             blocks = html_blocks(decode(data))
         else:
             text = decode(data)
-            fm = parse_frontmatter(text.replace("\r\n", "\n"))
+            fm = parse_frontmatter(text)
             if fm:
-                text = text.replace("\r\n", "\n").split("\n---\n", 1)[1]
+                text = text.split("\n---\n", 1)[1]
             blocks = text_blocks(text)
         text = text or "\n\n".join(blocks)
         t = _stenny(blocks, fm) or Transcript(paragraphs=from_blocks(blocks), by=app_of(path.name, text))
