@@ -65,6 +65,25 @@ def test_serve_answers_line_by_line_and_keeps_stdout_clean(cfg, monkeypatch):
     assert replies[None] == {"id": None, "error": "Not JSON."} and replies[2]["result"]["version"]
 
 
+def test_an_app_that_went_away_leaves_no_traceback(cfg, monkeypatch):
+    """The app quit (or a window closed) while answers were on their way: they're dropped quietly, because
+    stenny.log is what Send Feedback sends."""
+    import threading
+    monkeypatch.setattr(config_mod, "load", lambda: cfg)
+    crashes = []
+    monkeypatch.setattr(threading, "excepthook", crashes.append)
+
+    class Gone(io.StringIO):
+        writes = 0
+
+        def write(self, text):
+            Gone.writes += 1
+            raise BrokenPipeError(32, "Broken pipe")
+
+    app_server.serve(io.StringIO('{"id": 1, "method": "ping"}\n{"id": 2, "method": "ping"}\n'), Gone())
+    assert crashes == [] and Gone.writes == 1  # after the first failed answer, none is tried
+
+
 def test_a_recording_without_transcript_shows_its_text_so_far(cfg, tmp_path):
     from stenny.config import Course
     from stenny.pipeline import ChunkCache

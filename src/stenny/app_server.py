@@ -504,6 +504,19 @@ class _Tee:
         pass
 
 
+def _discard(stream) -> None:
+    """Points a stream whose reader is gone at the null device, so Python's own flush at exit doesn't print
+    "Exception ignored … BrokenPipeError" either (what Python's docs advise for SIGPIPE)."""
+    try:
+        null = os.open(os.devnull, os.O_WRONLY)
+        try:
+            os.dup2(null, stream.fileno())
+        finally:
+            os.close(null)
+    except (OSError, ValueError):  # no file descriptor (a test's StringIO) or already closed
+        pass
+
+
 def serve(stdin=None, stdout=None) -> None:
     """Reads requests until stdin closes (the app quit), each in its own thread: a slow one (the microphone
     list, a share copy) mustn't hold up the recording's status. Replies carry their request's id, so their order
@@ -524,11 +537,19 @@ def serve(stdin=None, stdout=None) -> None:
     from .migrate import on_start
     on_start()
 
+    gone = threading.Event()  # the app closed its end (it quit, or a window went away mid-request)
+
     def reply(line: str) -> None:
         answer = _answer(line)
         with lock:
-            stdout.write(json.dumps(answer, ensure_ascii=False) + "\n")
-            stdout.flush()
+            if gone.is_set():
+                return
+            try:
+                stdout.write(json.dumps(answer, ensure_ascii=False) + "\n")
+                stdout.flush()
+            except (OSError, ValueError):  # BrokenPipeError on a Mac, OSError (EINVAL) on Windows, a closed file
+                gone.set()  # nobody is waiting for this answer: no traceback in stenny.log, which Feedback sends
+                _discard(stdout)
 
     workers = []
     try:
