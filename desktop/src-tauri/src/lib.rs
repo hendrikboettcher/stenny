@@ -5,6 +5,7 @@
 //! `--library` runs the library window alone, without the menu bar icon: for trying a build next to the
 //! installed Stenny, which keeps its own icon (one Stenny in the menu bar, never two).
 
+mod app_menu;
 mod engine;
 mod i18n;
 #[cfg(target_os = "macos")]
@@ -27,8 +28,7 @@ use menubar::MenuBar;
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu, HELP_SUBMENU_ID, WINDOW_SUBMENU_ID};
-use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent, Wry};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 
 /// One request to the engine, e.g. `engine("library")`. Runs off the main thread: a request can take a moment.
 #[tauri::command]
@@ -170,7 +170,7 @@ async fn lecturer_agreed(app: AppHandle, purpose: String, course: String, event:
         .map_err(|e| e.to_string())
 }
 
-/// The library window's footer: Send Feedback… and Check for Updates… (only there, not in the menu bar).
+/// The library window's footer and the app menu's Send Feedback… (not in the menu bar's menu).
 #[tauri::command]
 fn show_feedback(app: AppHandle) {
     show_window(&app, "feedback");
@@ -447,7 +447,7 @@ pub fn language_changed(app: &AppHandle) {
             }
         }
         #[cfg(target_os = "macos")]
-        if let Ok(menu) = app_menu(&app2) {
+        if let Ok(menu) = app_menu::build(&app2) {
             let _ = app2.set_menu(menu);
         }
     });
@@ -457,54 +457,15 @@ pub fn language_changed(app: &AppHandle) {
     menubar::set_agent_language(app);
 }
 
-/// The app menu while a window of Stenny's is in front (macOS): Tauri's own default, in Stenny's language.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-fn app_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
-    #[cfg(target_os = "macos")]
-    let about = tauri::menu::AboutMetadata {
-        name: Some("Stenny".into()),
-        version: Some(app.package_info().version.to_string()),
-        ..Default::default()
-    };
-    let t = |key: &str| i18n::text(key, &[]);
-    Menu::with_items(app, &[
-        #[cfg(target_os = "macos")]
-        &Submenu::with_items(app, "Stenny", true, &[
-            &PredefinedMenuItem::about(app, Some(&t("app.about")), Some(about))?,
-            &PredefinedMenuItem::separator(app)?,
-            &MenuItem::with_id(app, "settings", t("lib.settings"), true, Some("CmdOrCtrl+,"))?,
-            &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::services(app, Some(&t("app.services")))?,
-            &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::hide(app, Some(&t("app.hide")))?,
-            &PredefinedMenuItem::hide_others(app, Some(&t("app.hideOthers")))?,
-            &PredefinedMenuItem::show_all(app, Some(&t("app.showAll")))?,
-            &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::quit(app, Some(&t("app.quit")))?,
-        ])?,
-        &Submenu::with_items(app, t("app.file"), true, &[&PredefinedMenuItem::close_window(app, Some(&t("app.closeWindow")))?])?,
-        &Submenu::with_items(app, t("app.edit"), true, &[
-            &PredefinedMenuItem::undo(app, Some(&t("app.undo")))?,
-            &PredefinedMenuItem::redo(app, Some(&t("app.redo")))?,
-            &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::cut(app, Some(&t("app.cut")))?,
-            &PredefinedMenuItem::copy(app, Some(&t("app.copy")))?,
-            &PredefinedMenuItem::paste(app, Some(&t("app.paste")))?,
-            &PredefinedMenuItem::select_all(app, Some(&t("app.selectAll")))?,
-        ])?,
-        &Submenu::with_items(app, t("app.view"), true, &[
-            &MenuItem::with_id(app, "reload", t("app.reload"), true, Some("CmdOrCtrl+R"))?,
-            &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::fullscreen(app, Some(&t("app.fullscreen")))?,
-        ])?,
-        &Submenu::with_id_and_items(app, WINDOW_SUBMENU_ID, t("app.window"), true, &[
-            &PredefinedMenuItem::minimize(app, Some(&t("app.minimize")))?,
-            &PredefinedMenuItem::maximize(app, Some(&t("app.zoom")))?,
-            &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::close_window(app, Some(&t("app.closeWindow")))?,
-        ])?,
-        &Submenu::with_id_and_items(app, HELP_SUBMENU_ID, t("app.help"), true, &[])?,
-    ])
+/// What the library page shows changed: the app menu's items that act on it follow (app_menu.rs).
+#[tauri::command]
+fn menu_state(state: app_menu::PageMenu) {
+    app_menu::page_changed(state);
+}
+
+/// The window in front, if one of Stenny's is.
+fn focused_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
+    app.webview_windows().into_values().find(|w| w.is_focused().unwrap_or(false))
 }
 
 /// ⌘, or Stenny ▸ Settings…: the library window comes up showing Settings (routes/+page.svelte listens).
@@ -617,7 +578,7 @@ pub fn run() {
     // (Ctrl+, for Settings is the page's own there)
     #[cfg(target_os = "macos")]
     {
-        builder = builder.menu(app_menu);
+        builder = builder.menu(app_menu::build);
     }
     // Stenny's messages as notifications; on a Mac they are its own (macos_notifications.rs)
     #[cfg(not(target_os = "macos"))]
@@ -625,24 +586,14 @@ pub fn run() {
         builder = builder.plugin(tauri_plugin_notification::init());
     }
     let app = builder
-        .on_menu_event(|app, event| {
-            match event.id().as_ref() {
-                "settings" => open_settings(app),
-                // the window in front (the menu is the app's, not a window's)
-                "reload" => {
-                    if let Some(window) = app.webview_windows().into_values().find(|w| w.is_focused().unwrap_or(false)) {
-                        reload(&window);
-                    }
-                }
-                _ => {}
-            }
-        })
+        // the app menu's own items; the menu bar menu's handler (menubar.rs) hears them too
+        .on_menu_event(|app, event| app_menu::on_event(app, event.id().as_ref()))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Arc::new(Engine::default()))
         .manage(MenuBar::default())
-        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, pick_recordings, make_pdf, lecturer_agreed, start_talk, show_feedback, share_files, copy_text, check_updates, update_available, reload_window, microphone_pref, set_microphone_pref, login_item, apply_shortcut, pause_shortcut_label, ui_language, set_ui_language, courses_changed, start_recording, recording_command, recording_status, calendar_status, calendar_check, calendar_allow, calendar_changed, open_system_settings])
+        .invoke_handler(tauri::generate_handler![engine, open_transcript, reveal, pick_recordings, make_pdf, lecturer_agreed, start_talk, show_feedback, share_files, copy_text, check_updates, update_available, reload_window, microphone_pref, set_microphone_pref, login_item, apply_shortcut, pause_shortcut_label, ui_language, set_ui_language, courses_changed, start_recording, recording_command, recording_status, calendar_status, calendar_check, calendar_allow, calendar_changed, open_system_settings, menu_state])
         .setup(move |app| {
             if !library_only {
                 // A Dock app (Info.plist has no LSUIElement, so the Dock bounces it while it opens) with the menu bar

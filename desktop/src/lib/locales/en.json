@@ -505,6 +505,13 @@
   "app.fullscreen": "Enter Full Screen",
   "app.minimize": "Minimize",
   "app.zoom": "Zoom",
+  "app.recording": "Recording",
+  "app.recordLecture": "Record Lecture",
+  "app.addFile": "Add a Recording or Transcript…",
+  "app.rename": "Rename",
+  "app.bringAllToFront": "Bring All to Front",
+  "app.helpDocs": "Stenny Help",
+  "app.helpProblems": "Troubleshooting",
 
   "note.didntStart": "The recording didn't start.\n\n{error}",
   "note.restarted": "Recording {course} again after a problem. Nothing recorded is lost; the transcript comes later.",

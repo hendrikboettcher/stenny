@@ -376,6 +376,9 @@ fn shape(st: &State) -> String {
 }
 
 pub(crate) fn redraw(app: &AppHandle, force: bool) {
+    // the app menu's recording items follow too (app_menu.rs); the lock only for reading, not while they change
+    let recording = str_of(&app.state::<MenuBar>().0.lock().unwrap().status, "state").to_string();
+    crate::app_menu::recording_changed(&recording);
     let Some(tray) = app.tray_by_id(TRAY) else { return };
     let bar = app.state::<MenuBar>();
     let mut st = bar.0.lock().unwrap();

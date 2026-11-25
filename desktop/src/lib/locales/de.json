@@ -505,6 +505,13 @@
   "app.fullscreen": "Vollbildmodus aktivieren",
   "app.minimize": "Im Dock ablegen",
   "app.zoom": "Zoomen",
+  "app.recording": "Aufnahme",
+  "app.recordLecture": "Vorlesung aufnehmen",
+  "app.addFile": "Aufnahme oder Transkript hinzufügen …",
+  "app.rename": "Umbenennen",
+  "app.bringAllToFront": "Alle nach vorne bringen",
+  "app.helpDocs": "Stenny-Hilfe",
+  "app.helpProblems": "Hilfe bei Problemen",
 
   "note.didntStart": "Die Aufnahme konnte nicht gestartet werden.\n\n{error}",
   "note.restarted": "Nach einem Problem nimmt Stenny {course} wieder auf. Bisher Aufgenommenes bleibt erhalten; das Transkript folgt später.",
