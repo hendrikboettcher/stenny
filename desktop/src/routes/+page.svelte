@@ -118,7 +118,8 @@
   const isDraft = (e: Entry) => e.status !== "final";
   const isBusy = (e: Entry) => e.status === "live" || e.status === "finalizing"; // can't be renamed or deleted now
   // Something left for the student to do: a recording or transcript from a file, waiting for its click (also when
-  // its last try failed). What Stenny does by itself (waiting, finishing) has its label instead, not the dot.
+  // its last try failed). Its row says "Ready" in blue, like the orange labels of what Stenny does by itself
+  // (waiting, finishing); its course in the sidebar gets a blue dot.
   const needsYou = (e: Entry) => e.status === "ready";
   const groupKey = (g: Group) => `${g.event ? "event" : "lecture"}/${g.course}`;
   let todoGroups = $derived(new Set((data?.entries ?? []).filter(needsYou).map((e) => groupKey(groupOf(e)))));
@@ -839,7 +840,7 @@
     e.ready ? [e.ready.name, length(e)].filter(Boolean).join(" · ")
       : [number(e), prettyDate(e) + (e.start ? `, ${e.start}` : ""), length(e), languageName(e.language)].filter(Boolean).join(" · ");
   const statusLabel = (status: string) =>
-    t((["live", "queued", "finalizing"].includes(status) ? `lib.status.${status}` : "lib.status.draft") as Key);
+    t((["live", "queued", "finalizing", "ready"].includes(status) ? `lib.status.${status}` : "lib.status.draft") as Key);
 
   const FORMATS = [
     { id: "pdf", title: "PDF", help: "lib.format.pdf" },
@@ -1110,12 +1111,11 @@
       </div>
       <div class="kicker list-head">{tn("lib.recordings", entries.length)}</div>
       {#each entries as e (id(e))}
-        <button class="row" class:active={id(e) === selectedId} class:needs-you={needsYou(e)} in:fold={!!knownIds && !knownIds.has(id(e))} onclick={() => (selectedId = id(e))}
+        <button class="row" class:active={id(e) === selectedId} in:fold={!!knownIds && !knownIds.has(id(e))} onclick={() => (selectedId = id(e))}
                 oncontextmenu={(ev) => { selectedId = id(e); showMenu(ev, { entry: e }); }}>
           <span class="row-title">{rowTitle(e)}</span>
-          {#if isDraft(e) && e.status !== "ready"}<span class="status {e.status}">{statusLabel(e.status)}</span>{/if}
+          {#if isDraft(e)}<span class="status {e.status}">{statusLabel(e.status)}</span>{/if}
           <span class="row-detail">{rowDetail(e)}</span>
-          {#if needsYou(e)}<span class="todo" role="img" aria-label={t("lib.todo")} title={t("lib.todo")}></span>{/if}
           {#if e.status === "finalizing" && e.final_pass}<FinalPass pass={e.final_pass} compact />{/if}
         </button>
       {:else}
@@ -1627,17 +1627,15 @@
   .row-title { font-size: 15px; font-weight: 500; letter-spacing: -.01em; }
   .row-detail { grid-column: 1 / -1; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
   .empty { color: var(--muted); padding: 0 12px; font-size: 14px; }
-  /* the to-do dot (needsYou): at the row's right, in the middle of its two lines, like Mail's unread dot */
   .todo { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
-  .row.needs-you .row-detail { grid-column: 1; }
-  .row .todo { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
-  /* in the sidebar, where the ⋯ sits; pointing at the course shows the ⋯ instead */
+  /* a course with something left to do (needsYou): a dot where the ⋯ sits; pointing at the course shows the ⋯ */
   .group-row .todo { position: absolute; right: 11.5px; top: 50%; width: 7px; height: 7px; transform: translateY(-50%); pointer-events: none; transition: opacity .15s ease; }
   .group-row:hover .todo, .group-row:focus-within .todo { opacity: 0; }
 
   .status { font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--warn); white-space: nowrap; }
   .status::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: currentColor; margin-right: 5px; vertical-align: 1px; }
   .status.live { color: var(--rec); }
+  .status.ready { color: var(--accent); }  /* waiting for the student (needsYou), not for Stenny */
   .status.live::before { animation: blink 1.4s ease-in-out infinite; }
   @media (prefers-reduced-motion: reduce) { .status.live::before { animation: none; } }
 
