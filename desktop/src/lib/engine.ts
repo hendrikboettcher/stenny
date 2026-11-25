@@ -251,6 +251,10 @@ export const renameCourse = (course: string, event: boolean, name: string) =>
 export const addCourse = (name: string, language: string, alias: string) =>
   coursesChanged(engine<{ message: string }>("add_course", { name, language, alias }));
 // to the clipboard (in a browser during development: the browser's)
+// What the library shows, for the app menu's items that act on it (src-tauri/src/app_menu.rs; macOS only, harmless
+// elsewhere): the next lecture's number if a course is shown and may record now, and what the lecture shown allows.
+export type MenuState = { record: number | null; addFile: boolean; transcript: boolean; rename: boolean };
+export const menuState = (state: MenuState) => { if (inApp) invoke("menu_state", { state }).catch(() => {}); };
 export const copyText = (text: string) => (inApp ? invoke<void>("copy_text", { text }) : navigator.clipboard.writeText(text));
 // a whole course or talk and all its recordings to the Trash (Recycle Bin on Windows)
 export const deleteCourse = (course: string, event: boolean) =>

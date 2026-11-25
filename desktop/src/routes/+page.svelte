@@ -19,7 +19,7 @@
     library, lecture, makeCopy, makePdf, finishNow, openTranscript, reveal, shareFiles, lecturerAgreed,
     renameLecture, deleteLecture, renameCourse, addCourse, removeCourse, deleteCourse, copyText,
     recordingStatus, startRecording, recordingCommand,
-    pickRecordings, addRecording, setReady, transcribeReady, removeReady,
+    pickRecordings, addRecording, setReady, transcribeReady, removeReady, menuState,
     type Entry, type Library, type LiveStatus,
   } from "$lib/engine";
   import { t, tn, locale, languageName, trashName, revealLabel, type Key } from "$lib/i18n.svelte";
@@ -619,6 +619,33 @@
     settingsOpen = true;
   }
 
+  // The app menu at the top of the screen (macOS, src-tauri/src/app_menu.rs): File ▸ Add…, Open Transcript, Show in
+  // Finder, Share…, Edit ▸ Rename and Recording ▸ Record Lecture n act on what is shown here, so they work when it
+  // allows them; not while Settings or a sheet covers it.
+  let covered = $derived(settingsOpen || !!ask);
+  const finalTranscript = (e: Entry | null) => !!e && !isDraft(e) && !!e.transcript;
+  $effect(() => {
+    menuState({
+      record: !covered && group && !group.event && canRecord ? nextNumber : null,
+      addFile: !covered && !!group,
+      transcript: !covered && finalTranscript(selected),
+      rename: !covered && !!selected && !isBusy(selected) && !selected.ready,
+    });
+  });
+
+  function menuAction(id: string) {
+    if (covered) return;
+    const e = selected;
+    if (id === "record" && group && !group.event) record(group);
+    else if (id === "add-file") addFromFile();
+    else if (id === "rename" && e) startRename(e);
+    else if (finalTranscript(e)) {
+      if (id === "open-transcript") openTranscript(e!.transcript!);
+      else if (id === "reveal") reveal(e!.transcript!);
+      else if (id === "share") shareOpen = true;
+    }
+  }
+
   // fades in once the library is read (or couldn't be), not with "Loading…" first (lib/fade.ts)
   holdPage();
   onMount(() => {
@@ -640,6 +667,8 @@
       listen("open-settings", () => openSettings()).then((u) => unlisten.push(u));
       // the menu bar's Record a Talk or Event… (src-tauri/src/lib.rs, `show_talk`)
       listen("record-talk", () => recordTalk()).then((u) => unlisten.push(u));
+      // the app menu's items for what is shown here (src-tauri/src/app_menu.rs)
+      listen<string>("menu", (e) => menuAction(e.payload)).then((u) => unlisten.push(u));
       listen<RecordingEvent>("recording", (e) => recordingChanged(e.payload)).then((u) => unlisten.push(u));
       // shown again from the Dock, Spotlight or the menu bar (src-tauri/src/lib.rs, `present`)
       listen("library-shown", () => reload({ cameBack: true })).then((u) => unlisten.push(u));
