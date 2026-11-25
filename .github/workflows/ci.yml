@@ -37,11 +37,21 @@ jobs:
       - name: ffmpeg (macOS)
         if: runner.os == 'macOS'
         run: brew install ffmpeg
-      # Chocolatey is on the runner; setup-ffmpeg asked GitHub's API for the latest release and failed whenever
-      # that didn't answer ("Cannot get latest release"), which kept main red
+      # The pinned LGPL ffmpeg the Windows installer bundles (scripts/ffmpeg-windows.sh: a GitHub release, checked
+      # against its SHA-256), on the PATH. Neither outside source held: setup-ffmpeg asked GitHub's API for the latest
+      # release and failed whenever that didn't answer, and Chocolatey's feed answered 503 now and then, after which
+      # choco still ended "successfully" without ffmpeg and the tests failed later without saying why.
       - name: ffmpeg (Windows)
         if: runner.os == 'Windows'
-        run: choco install ffmpeg --no-progress -y
+        shell: bash
+        run: |
+          bash desktop/scripts/ffmpeg-windows.sh
+          dir="$(cygpath -u "$RUNNER_TEMP")/ffmpeg"
+          mkdir -p "$dir"
+          cp desktop/src-tauri/binaries/ffmpeg-x86_64-pc-windows-msvc.exe "$dir/ffmpeg.exe"
+          cp desktop/src-tauri/binaries/ffprobe-x86_64-pc-windows-msvc.exe "$dir/ffprobe.exe"
+          cygpath -w "$dir" >> "$GITHUB_PATH"
+          "$dir/ffmpeg.exe" -hide_banner -version | sed -n 1p  # all of it read: pipefail and head -1 could fail on SIGPIPE
       - name: Install
         run: uv sync --locked --group dev
       - name: Tests
@@ -133,9 +143,18 @@ jobs:
           (echo "$init"; sleep 10) | "$py" -m stenny mcp | tee mcp.json
           grep -q '"serverInfo"' mcp.json
           rm app-server.json mcp.json
+      # as in the tests above: the pinned build, on the PATH
       - name: ffmpeg (Windows)
         if: runner.os == 'Windows'
-        run: choco install ffmpeg --no-progress -y
+        shell: bash
+        run: |
+          bash desktop/scripts/ffmpeg-windows.sh
+          dir="$(cygpath -u "$RUNNER_TEMP")/ffmpeg"
+          mkdir -p "$dir"
+          cp desktop/src-tauri/binaries/ffmpeg-x86_64-pc-windows-msvc.exe "$dir/ffmpeg.exe"
+          cp desktop/src-tauri/binaries/ffprobe-x86_64-pc-windows-msvc.exe "$dir/ffprobe.exe"
+          cygpath -w "$dir" >> "$GITHUB_PATH"
+          "$dir/ffmpeg.exe" -hide_banner -version | sed -n 1p  # all of it read: pipefail and head -1 could fail on SIGPIPE
       - name: Some speech to transcribe (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
