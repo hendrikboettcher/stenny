@@ -28,6 +28,7 @@
   "lib.status.queued": "Wartet",
   "lib.status.finalizing": "In Arbeit",
   "lib.status.draft": "Entwurf",
+  "lib.todo": "Hier ist noch etwas zu tun",
   "lib.recordLecture": "Vorlesung {n} aufnehmen",
   "lib.recordTalk": "Vortrag oder Veranstaltung aufnehmen …",
   "lib.pass.transcribing": "Transkribieren",
