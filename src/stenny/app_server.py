@@ -281,6 +281,12 @@ def remove_api_key(cfg, params: dict) -> dict:
     return _setup(claude_setup.remove_api_key, cfg)
 
 
+def install_claude_code(cfg, params: dict) -> dict:
+    """Claude Code installed with Anthropic's installer, in the background: the AI step asks ai_status meanwhile."""
+    from . import claude_setup
+    return _setup(claude_setup.install_claude_code, cfg)
+
+
 def claude_sign_in(cfg, params: dict) -> dict:
     """`claude auth login` in the background: the browser opens, no terminal window."""
     from . import claude_setup
@@ -442,7 +448,8 @@ METHODS = {"ping": ping, "library": library, "lecture": lecture, "make_copy": ma
            "add_course": add_course, "remove_course": remove_course, "preferences": preferences,
            "set_preference": set_preference, "set_course_language": set_course_language,
            "ai_status": ai_status, "set_api_key": set_api_key, "remove_api_key": remove_api_key,
-           "claude_sign_in": claude_sign_in, "connector_status": connector_status,
+           "claude_sign_in": claude_sign_in, "install_claude_code": install_claude_code,
+           "connector_status": connector_status,
            "install_connector": install_connector, "add_to_claude_code": add_to_claude_code,
            "report_connector": report_connector,
            "remove_from_claude_desktop": remove_from_claude_desktop,

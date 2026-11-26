@@ -56,7 +56,7 @@
   let closedBefore = $state(readCloses());
 
   let signingIn = $state(false);      // sign-in started (the browser opened)
-  let busy = $state<"signin" | "key" | "code" | "calendar" | null>(null);
+  let busy = $state<"signin" | "install" | "skip" | "key" | "code" | "calendar" | null>(null);
   let keyInput = $state("");
   let error = $state<string | null>(null);
 
@@ -167,6 +167,22 @@
   }
 
   const signIn = () => act("signin", async () => { await engine("claude_sign_in"); signingIn = true; });
+  // Claude Code installed by Stenny (Anthropic's installer, in the background); the card asks again every few
+  // seconds until it's there or the installer has given up
+  const installClaudeCode = () => act("install", async () => {
+    const ai = await engine<Partial<AiStatus>>("install_claude_code");
+    if (status?.ai) status = { ...status, ai: { ...status.ai, ...ai } };
+  });
+  $effect(() => {
+    if (status?.ai?.install !== "running") return;
+    const again = setTimeout(check, 3000);
+    return () => clearTimeout(again);
+  });
+  // the AI step switched off: transcripts only, and the step counts as done (Settings turns it on again)
+  const skipAi = () => act("skip", async () => {
+    await engine("set_preference", { key: "llm.backend", value: "none" });
+    await check();
+  });
   const saveKey = () => act("key", async () => {
     const ai = await engine<AiStatus>("set_api_key", { key: keyInput });
     keyInput = "";
@@ -285,18 +301,30 @@
             </div>
           {:else if ai.backend === "claude-code"}
             <p class="note">
-              {#if ai.state === "missing"}{t("setup.ai.cc.missing")}
+              {#if ai.state === "missing" && ai.install === "running"}{t("settings.ai.cc.installing")}
+              {:else if ai.state === "missing" && ai.install === "failed"}{t("settings.ai.cc.installFailed")}{#if ai.detail}<span class="selectable"> {ai.detail}</span>{/if}
+              {:else if ai.state === "missing"}{t("setup.ai.cc.missing")}
               {:else if ai.state === "signed_out"}{signingIn ? t("settings.ai.cc.signingIn") : t("setup.ai.cc.signedOut")}
               {:else}{t("settings.ai.cc.unknown")}{#if ai.detail}<span class="selectable"> {ai.detail}</span>{/if}{/if}
             </p>
             <div class="do">
-              {#if ai.state === "missing"}
-                <button class="pill primary" onclick={() => link(URLS.claudeCode)}>{t("settings.ai.cc.get")}</button>
+              {#if ai.state === "missing" && ai.install !== "running"}
+                <button class="pill primary" disabled={busy === "install"} onclick={installClaudeCode}>{t("settings.ai.cc.install")}</button>
+                {#if ai.install === "failed"}
+                  <button class="link" onclick={() => link(URLS.claudeCode)}>{t("settings.ai.cc.manual")}</button>
+                {/if}
               {:else if ai.state === "signed_out"}
                 <button class="pill primary" disabled={busy === "signin"} onclick={signIn}>{t("settings.ai.cc.signIn")}</button>
               {/if}
-              <button class="link" disabled={checking} onclick={check}>{checking ? t("settings.ai.checking") : t("settings.ai.checkAgain")}</button>
+              {#if ai.install !== "running"}
+                <button class="link" disabled={checking} onclick={check}>{checking ? t("settings.ai.checking") : t("settings.ai.checkAgain")}</button>
+              {/if}
             </div>
+            {#if ai.state === "missing" || ai.state === "signed_out"}
+              <div class="do">
+                <button class="link" disabled={busy === "skip"} onclick={skipAi}>{t("setup.ai.skip")}</button>
+              </div>
+            {/if}
           {:else}
             {@const env = ai.source === "environment"}
             <p class="note">

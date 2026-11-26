@@ -48,10 +48,11 @@ class SetupError(Exception):
 # ---- the AI step ----------------------------------------------------------------------------------------------
 
 def claude_code_status() -> dict:
-    """{"state": "missing" | "signed_out" | "ready" | "unknown", "account": …, "plan": …}."""
+    """{"state": "missing" | "signed_out" | "ready" | "unknown", "account": …, "plan": …}; while missing, "install":
+    "running" or "failed" (with the installer's last lines as "detail") once Stenny started installing it."""
     exe = find_claude()
     if not exe:
-        return {"state": "missing"}
+        return {"state": "missing", **_install_state()}
     try:
         with tempfile.TemporaryDirectory() as cwd:
             p = subprocess.run([exe, "auth", "status"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20, cwd=cwd,
@@ -164,6 +165,75 @@ def claude_sign_in(cfg) -> dict:
     threading.Thread(target=end_later, daemon=True, name="claude-sign-in").start()
     return {"opened": True}
 
+
+
+# ---- installing Claude Code ----------------------------------------------------------------------------------
+
+# Anthropic's own installers (https://code.claude.com/docs/en/setup): no administrator rights; they put `claude` in
+# ~/.local/bin (Windows %USERPROFILE%\.local\bin\claude.exe), where find_claude looks
+INSTALL_SH = "https://claude.ai/install.sh"
+INSTALL_PS1 = "https://claude.ai/install.ps1"
+INSTALL_FOR = 15 * 60   # a download of a few hundred MB on a slow connection
+_install: subprocess.Popen | None = None
+_install_log: Path | None = None
+
+
+def _installer_command() -> list[str]:
+    if sys.platform == "win32":
+        shell = Path(os.environ.get("SystemRoot") or r"C:\Windows") / "System32/WindowsPowerShell/v1.0/powershell.exe"
+        return [str(shell), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
+                f"irm {INSTALL_PS1} | iex"]
+    # pipefail: a download that fails is a failed install, not an empty script that "worked"
+    return ["/bin/bash", "-c", f"set -o pipefail; /usr/bin/curl -fsSL {INSTALL_SH} | /bin/bash"]
+
+
+def install_claude_code(cfg) -> dict:
+    """Installs Claude Code with Anthropic's own installer, out of sight (no terminal window), when the user asks
+    for it in the AI step: the setup card and Settings then ask `claude_code_status` every few seconds ("install":
+    "running"), and offer Sign in once it's there. One left hanging is ended after INSTALL_FOR. Its output goes to
+    the logs place (claude-code-install.log), its last lines into the status when it ends without Claude Code."""
+    global _install, _install_log
+    if find_claude():
+        return claude_code_status()
+    if _install and _install.poll() is None:
+        return {"state": "missing", "install": "running"}
+    paths.LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    _install_log = paths.LOGS_DIR / "claude-code-install.log"
+    env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE")}
+    if sys.platform != "win32":   # an app starts us with a short PATH; the installer needs the system's tools
+        env["PATH"] = os.pathsep.join([env.get("PATH", ""), "/usr/bin", "/bin", "/usr/sbin", "/sbin"]).strip(os.pathsep)
+    try:
+        with open(_install_log, "wb") as out:   # never inherit stdout: the app server's stdout carries its replies
+            _install = proc = subprocess.Popen(
+                _installer_command(), stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT,
+                cwd=str(Path.home()), env=env,
+                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+    except OSError as e:
+        raise SetupError(tr("Couldn't start the installer for Claude Code: {error}", error=e)) from None
+
+    def end_later():
+        try:
+            proc.wait(timeout=INSTALL_FOR)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+    threading.Thread(target=end_later, daemon=True, name="claude-code-install").start()
+    return {"state": "missing", "install": "running"}
+
+
+def _install_state() -> dict:
+    """How the install Stenny started is going, while Claude Code is still missing: running, failed, or nothing."""
+    if _install is None:
+        return {}
+    if _install.poll() is None:
+        return {"install": "running"}
+    lines = []
+    try:
+        lines = _install_log.read_text(encoding="utf-8", errors="replace").splitlines() if _install_log else []
+    except OSError:
+        pass
+    tail = " ".join(line.strip() for line in lines[-4:] if line.strip()).replace(str(Path.home()), "~")
+    return {"install": "failed", "detail": tail[-300:] or tr("The installer ended without Claude Code.")}
 
 # ---- the connector --------------------------------------------------------------------------------------------
 
