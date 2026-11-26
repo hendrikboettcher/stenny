@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -265,7 +266,7 @@ def test_installs_claude_code_with_anthropics_installer_in_the_background(instal
     assert app_server.install_claude_code(None, {}) == {"state": "missing", "install": "running"}
     [run] = installer.started
     assert run.args == ["/bin/bash", "-c", "set -o pipefail; /usr/bin/curl -fsSL https://claude.ai/install.sh | /bin/bash"]
-    assert run.kw["stdin"] is subprocess.DEVNULL and "/usr/bin" in run.kw["env"]["PATH"].split(":")
+    assert run.kw["stdin"] is subprocess.DEVNULL and "/usr/bin" in run.kw["env"]["PATH"].split(os.pathsep)
     # asked again while it runs: still running, nothing started twice
     assert claude_setup.install_claude_code(None) == {"state": "missing", "install": "running"}
     assert claude_setup.claude_code_status() == {"state": "missing", "install": "running"}
