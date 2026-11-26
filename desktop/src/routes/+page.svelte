@@ -969,15 +969,16 @@
         <div class="kicker with-add talks">
           <span>{t("common.talksEvents")}</span>
           <span class="adds">
-            <!-- a talk from a file (ready.py): its title and language first, then the file; also while one records -->
-            <button class="add file" aria-label={t("lib.addFile.talk")} title={t("lib.addFile.talk")} onclick={() => open({ kind: "talk-file" })}>
-              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.8h5.2L12.5 5v9.2H4z M9 1.8V5.2h3.5" /><path d="M8.25 7.7v4.1 M6.2 9.75h4.1" /></svg>
-            </button>
             {#if canRecord}
               <button class="add" aria-label={t("lib.recordTalk")} title={t("lib.recordTalk")} onclick={recordTalk}>
                 <svg viewBox="0 0 16 16" aria-hidden="true"><circle class="ring" cx="8" cy="8" r="5.25" /><circle class="core" cx="8" cy="8" r="2.25" /></svg>
               </button>
             {/if}
+            <!-- a talk from a file (ready.py): its title and language first, then the file; also while one records.
+                 Last, at the right edge, so it stays put when the record button goes (only one recording at a time) -->
+            <button class="add file" aria-label={t("lib.addFile.talk")} title={t("lib.addFile.talk")} onclick={() => open({ kind: "talk-file" })}>
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.8h5.2L12.5 5v9.2H4z M9 1.8V5.2h3.5" /><path d="M8.25 7.7v4.1 M6.2 9.75h4.1" /></svg>
+            </button>
           </span>
         </div>
         {#each groups.talks as g (g.course + g.event)}{@render row(g)}{/each}
