@@ -13,7 +13,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from stenny import app_live, claude_setup, cli, i18n, jobs, resources, winsys
+from stenny import app_live, app_server, claude_setup, cli, i18n, jobs, resources, winsys
 
 windows = pytest.mark.skipif(sys.platform != "win32", reason="calls Windows itself")
 NS = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
@@ -458,3 +458,80 @@ def test_claude_from_the_store_used_the_connector(claude_windows, monkeypatch):
     assert claude_setup.connector_used() == "2026-11-22T10:00:00"
     (data / claude_setup.CONNECTOR_USED).write_text('{"at": "2026-11-22T11:00:00"}', encoding="utf-8")
     assert claude_setup.connector_used() == "2026-11-22T11:00:00"
+
+
+def test_open_claude_on_its_extensions_page(claude_windows):
+    """Adding Stenny by hand starts on Claude's Extensions page (a claude:// link, the app package's way in too);
+    removing it opens Claude as before."""
+    (claude_windows.local / "Packages/Claude_pzs8sxrjxfjjc").mkdir(parents=True)
+    assert app_server.open_claude(None, {"page": "extensions"}) == {"opened": True}
+    assert claude_windows.opened == ["claude://claude.ai/settings/desktop/extensions"]
+    app_server.open_claude(None, {})
+    assert claude_windows.opened[-1] == "claude://"
+
+
+def _stenny_extension(folder, version="0.5.21"):
+    ext = folder / "Claude Extensions/local.mcpb.hendrik-bttcher.stenny"
+    ext.mkdir(parents=True)
+    (ext / "manifest.json").write_text(f'{{"name": "stenny", "version": "{version}"}}', encoding="utf-8")
+    return ext
+
+
+def test_a_newer_claude_keeps_its_data_outside_its_package(claude_windows, monkeypatch):
+    """Claude as an app package moves its data to %LOCALAPPDATA%\\Claude-Data\\<package name> (6.28899.6 does; seen
+    on a tester's PC, where Stenny was in Claude but the checklist never ticked). The old private copy stays behind."""
+    (claude_windows.local / "Packages/Claude_pzs8sxrjxfjjc/LocalCache/Roaming/Claude").mkdir(parents=True)
+    moved = claude_windows.local / "Claude-Data/claude_pzs8sxrjxfjjc"
+    (claude_windows.local / "Claude-Data/~copying.claude_pzs8sxrjxfjjc").mkdir(parents=True)  # not Claude's folder yet
+    moved.mkdir(parents=True)
+    assert claude_setup.claude_data_dir() == moved
+    assert claude_setup.installed_extension() is None
+    ext = _stenny_extension(moved)
+    assert claude_setup.installed_extension() == {"id": ext.name, "version": "0.5.21", "enabled": True}
+    monkeypatch.setattr(claude_setup, "find_claude", lambda: None)
+    assert claude_setup.connector_status(None)["installed"] is True
+
+
+def test_an_older_claude_is_still_found_where_it_always_was(claude_windows):
+    """A Claude that hasn't moved its data (not updated yet, or moved back) keeps it in the package's private copy or
+    in %APPDATA%\\Claude: the extension counts there even when a Claude-Data folder is there as well."""
+    (claude_windows.local / "Claude-Data/claude_pzs8sxrjxfjjc").mkdir(parents=True)
+    package = claude_windows.local / "Packages/Claude_pzs8sxrjxfjjc/LocalCache/Roaming/Claude"
+    ext = _stenny_extension(package, "0.5.20")
+    assert claude_setup.installed_extension()["version"] == "0.5.20"
+    ext.rename(ext.parent / "elsewhere")
+    _stenny_extension(claude_windows.roaming / "Claude", "0.5.19")
+    assert claude_setup.installed_extension()["version"] == "0.5.19"
+
+
+def test_claude_from_the_microsoft_store(claude_windows, monkeypatch):
+    """The Store's Claude is the package AnthropicPBC.Claude_…, not Claude_…: installed, the paste-the-path way, and
+    its running program counts as the desktop app."""
+    assert not claude_setup.claude_desktop_installed()
+    (claude_windows.local / "Packages/AnthropicPBC.Claude_fnn82j28hfe8t").mkdir(parents=True)
+    assert claude_setup.claude_desktop_installed() and claude_setup.claude_desktop_store()
+    exe = r"C:\Program Files\WindowsApps\AnthropicPBC.Claude_6.28899.6.0_x64__fnn82j28hfe8t\app\claude.exe"
+    assert claude_setup._is_claude_desktop(exe)
+    monkeypatch.setattr(claude_setup, "_windows_process_paths", lambda image: [exe])
+    assert claude_setup.claude_desktop_version() == "store 6.28899.6.0"
+    monkeypatch.setattr(claude_setup, "_windows_process_paths",
+                        lambda image: [r"C:\Program Files\WindowsApps\Claude_6.28899.6.0_x64__pzs8sxrjxfjjc\app\claude.exe"])
+    assert claude_setup.claude_desktop_version() == "store 6.28899.6.0"
+
+
+def test_the_report_names_claudes_folders_and_reads_its_newest_log(claude_windows, monkeypatch, tmp_path):
+    old = claude_windows.local / "Packages/Claude_pzs8sxrjxfjjc/LocalCache/Roaming/Claude"
+    moved = claude_windows.local / "Claude-Data/claude_pzs8sxrjxfjjc"
+    for folder, line in ((old, "old: Handling DXT/MCPB file"), (moved, "new: Handling DXT/MCPB file")):
+        (folder / "logs").mkdir(parents=True)
+        (folder / "logs/main.log").write_text(line + "\n", encoding="utf-8")
+    os.utime(old / "logs/main.log", (1_700_000_000, 1_700_000_000))
+    _stenny_extension(moved)
+    file = tmp_path / "Stenny.mcpb"
+    file.write_bytes(b"zip")
+    monkeypatch.setattr(claude_setup, "connector_file", lambda: file)
+    monkeypatch.setattr(claude_setup, "_windows_process_paths", lambda image: [])
+    report = claude_setup.connector_report("store")
+    assert "Claude has Stenny: 0.5.21" in report
+    assert f"Claude's folders: {moved}, {old}" in report
+    assert "new: Handling DXT/MCPB file" in report and "old:" not in report

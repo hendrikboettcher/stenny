@@ -301,3 +301,14 @@ def test_installing_when_claude_code_is_there_starts_nothing(installer, monkeypa
     monkeypatch.setattr(claude_setup, "claude_code_status", lambda: {"state": "signed_out"})
     assert claude_setup.install_claude_code(None) == {"state": "signed_out"}
     assert installer.started == []
+
+
+def test_open_claude_on_a_mac_goes_to_the_extensions_page_on_request(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(claude_setup, "claude_desktop_installed", lambda: True)
+    ran = []
+    monkeypatch.setattr(claude_setup.subprocess, "run",
+                        lambda args, **kw: ran.append(args) or subprocess.CompletedProcess(args, 0, "", ""))
+    assert claude_setup.open_claude(None, "extensions") == {"opened": True}
+    assert claude_setup.open_claude(None) == {"opened": True}
+    assert ran == [["open", claude_setup.EXTENSIONS_PAGE], ["open", "-a", "Claude"]]
