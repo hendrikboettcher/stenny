@@ -16,11 +16,18 @@
   quits: such an entry is still recognised, and can be taken out. Adding it to Claude Code (`claude mcp add`) and
   removing it from Claude Code again.
 
+Where Claude Desktop keeps its data (settings, extensions, logs) on Windows depends on its version and how it was
+installed, so every place is checked (`_claude_windows_dirs`): Claude as an app package (what claude.ai/download
+installs, or the Microsoft Store) moves it to %LOCALAPPDATA%\\Claude-Data\\<package name> in newer versions
+(6.28899.6 does); an older one keeps the package's private copy of %APPDATA%\\Claude; the installer's Claude uses
+%APPDATA%\\Claude itself.
+
 The app shows the states; the words for them are the app's (desktop/src/lib/locales)."""
 
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -164,18 +171,48 @@ def _local_appdata() -> Path:
     return Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData/Local")
 
 
+# Windows: the Claude app package's names, before the publisher id: Claude from claude.ai/download
+# (Claude_pzs8sxrjxfjjc) and from the Microsoft Store (AnthropicPBC.Claude_fnn82j28hfe8t)
+CLAUDE_PACKAGES = ("Claude_*", "AnthropicPBC.Claude_*")
+# Windows: a package's name as Claude writes it for its own data folder (lower case, "<name>_<publisher id>")
+_PACKAGE_FOLDER = re.compile(r"[a-z0-9.-]+_[a-z0-9]+")
+
+
 def _claude_packages() -> list[Path]:
     """Windows: Claude Desktop installed as an app package (MSIX), e.g. %LOCALAPPDATA%\\Packages\\Claude_<id>."""
-    return sorted((_local_appdata() / "Packages").glob("Claude_*"))
+    root = _local_appdata() / "Packages"
+    return sorted({p for pattern in CLAUDE_PACKAGES for p in root.glob(pattern)})
+
+
+def _claude_moved_data() -> list[Path]:
+    """Windows: where Claude as an app package keeps its data once it has moved it out of the package (newer
+    versions do so at their start; 6.28899.6 does): %LOCALAPPDATA%\\Claude-Data\\<package name, lower case>,
+    e.g. claude_pzs8sxrjxfjjc. Only Claude's own folders count, not a copy it is still making ("~copying.<name>")."""
+    try:
+        entries = sorted((_local_appdata() / "Claude-Data").iterdir())
+    except OSError:
+        return []
+    return [p for p in entries if _PACKAGE_FOLDER.fullmatch(p.name.lower()) and p.is_dir()]
+
+
+def _claude_windows_dirs() -> list[Path]:
+    """Windows: every folder a Claude desktop app may keep its data in, the likeliest first: the folder a newer
+    Claude moves its data to (%LOCALAPPDATA%\\Claude-Data\\<package>), the installer's %APPDATA%\\Claude, and
+    an older app package's private copy of it (…\\Packages\\Claude_<id>\\LocalCache\\Roaming\\Claude). An
+    older Claude keeps using the folders it always had, so none of them is ever dropped."""
+    return [*_claude_moved_data(), _roaming_claude(), *(p / "LocalCache/Roaming/Claude" for p in _claude_packages())]
+
+
+def _roaming_claude() -> Path:
+    """Windows: %APPDATA%\\Claude, where the installer's Claude keeps its data."""
+    return Path(os.environ.get("APPDATA") or Path.home() / "AppData/Roaming") / "Claude"
 
 
 def claude_data_dir() -> Path:
-    """Where Claude Desktop keeps its settings and extensions. On Windows %APPDATA%\\Claude; the app package
-    (MSIX) keeps it in its own folder instead (…\\Packages\\Claude_<id>\\LocalCache\\Roaming\\Claude)."""
+    """Where Claude Desktop keeps its settings and extensions: on Windows the first of `_claude_windows_dirs()`
+    that is there (%APPDATA%\\Claude when none is)."""
     if sys.platform == "win32":
-        roaming = Path(os.environ.get("APPDATA") or Path.home() / "AppData/Roaming") / "Claude"
-        packaged = [p / "LocalCache/Roaming/Claude" for p in _claude_packages()]
-        return roaming if roaming.is_dir() else next((p for p in packaged if p.is_dir()), roaming)
+        return next((d for d in _claude_windows_dirs() if d.is_dir()), _roaming_claude())
     return Path.home() / "Library/Application Support/Claude"
 
 
@@ -248,11 +285,23 @@ def _windows_process_paths(image: str) -> list[str]:
 def _is_claude_desktop(path: str) -> bool:
     """Windows: whether a claude.exe is the desktop app's. Claude Code is a claude.exe too (in ~/.local/bin), so only
     the desktop app's own folders count: the installer's (%LOCALAPPDATA%\\AnthropicClaude or …\\Programs\\Claude,
-    where a launcher starts app-<version>\\claude.exe) and the Store app's (…\\WindowsApps\\Claude_…)."""
+    where a launcher starts app-<version>\\claude.exe) and the app package's (…\\WindowsApps\\Claude_… from
+    claude.ai, …\\WindowsApps\\AnthropicPBC.Claude_… from the Microsoft Store)."""
     p = path.lower().replace("/", "\\")
     homes = (str(d).lower().replace("/", "\\").rstrip("\\") + "\\"
              for d in (_local_appdata() / "AnthropicClaude", _local_appdata() / "Programs/Claude"))
-    return "\\windowsapps\\claude_" in p or any(p.startswith(h) for h in homes)
+    return _package_version(p) is not None or any(p.startswith(h) for h in homes)
+
+
+def _package_version(path: str) -> str | None:
+    """Windows: the version in a path inside the Claude app package (…\\WindowsApps\\Claude_6.28899.6.0_x64__…\\
+    app\\claude.exe → "6.28899.6.0"), None for any other path."""
+    p = path.lower().replace("/", "\\")
+    for name in CLAUDE_PACKAGES:
+        marker = "\\windowsapps\\" + name.lower().rstrip("*")
+        if marker in p:
+            return p.split(marker, 1)[1].split("_")[0]
+    return None
 
 
 def claude_desktop_running() -> bool:
@@ -324,12 +373,11 @@ DESKTOP_CONFIG = "claude_desktop_config.json"
 
 
 def _claude_config_dirs() -> list[Path]:
-    """Every folder a Claude desktop app reads claude_desktop_config.json from: on Windows %APPDATA%\\Claude and the
-    app package's own (both, if both are there: which one the installed Claude reads can't be told from outside)."""
+    """Every folder a Claude desktop app keeps its data in (claude_desktop_config.json, its extensions, its logs): on
+    Windows each of `_claude_windows_dirs()` that is there (all of them: which one the installed Claude uses can't be
+    told from outside, and an older Claude may have left the others)."""
     if sys.platform == "win32":
-        roaming = Path(os.environ.get("APPDATA") or Path.home() / "AppData/Roaming") / "Claude"
-        found = [d for d in (roaming, *(p / "LocalCache/Roaming/Claude" for p in _claude_packages())) if d.is_dir()]
-        return found or [claude_data_dir()]
+        return [d for d in _claude_windows_dirs() if d.is_dir()] or [claude_data_dir()]
     return [claude_data_dir()]
 
 
@@ -541,10 +589,9 @@ def claude_desktop_version() -> str:
         for path in _windows_process_paths("claude.exe"):
             if not _is_claude_desktop(path):
                 continue
-            p = path.replace("/", "\\")
-            if "\\windowsapps\\claude_" in p.lower():
-                return "store " + p.lower().split("\\windowsapps\\claude_")[1].split("_")[0]
-            parts = [s for s in p.split("\\") if s.lower().startswith("app-")]
+            if (version := _package_version(path)) is not None:
+                return "store " + version
+            parts = [s for s in path.replace("/", "\\").split("\\") if s.lower().startswith("app-")]
             return "installer " + (parts[0][4:] if parts else "?")
         return "store" if _claude_packages() and not claude_desktop_exe() else "installer" if claude_desktop_exe() else ""
     import plistlib
@@ -557,12 +604,30 @@ def claude_desktop_version() -> str:
     return ""
 
 
+def _claude_log() -> Path | None:
+    """Windows: Claude Desktop's own log (logs\\main.log in its data folder); the one written last when more than
+    one of Claude's folders has one (an older Claude's log stays behind after Claude moved its data)."""
+    logs = []
+    for folder in _claude_config_dirs():
+        try:
+            logs.append(((folder / "logs/main.log").stat().st_mtime, folder / "logs/main.log"))
+        except OSError:
+            continue
+    return max(logs)[1] if logs else None
+
+
+def _shown(path: Path) -> str:
+    """A path for a report, the home folder (it holds the user's name) as ~."""
+    return str(path).replace(str(Path.home()), "~")
+
+
 def _claude_log_lines(count: int = 15) -> list[str]:
     """The last lines of Claude Desktop's own log about installing extensions ("Handling DXT/MCPB file" …), web
     addresses (they name the account's organization) and the home folder (the user's name) left out."""
-    import re
     if sys.platform == "win32":
-        log = claude_data_dir() / "logs/main.log"
+        log = _claude_log()
+        if log is None:
+            return []
     else:
         log = Path.home() / "Library/Logs/Claude/main.log"
     try:
@@ -577,7 +642,8 @@ def _claude_log_lines(count: int = 15) -> list[str]:
 
 def connector_report(reason: str) -> str:
     """What a "Connect to Claude didn't work" report says, besides Stenny's own details: the system, the Claude app
-    (kind and version), whether it runs, whether Claude has Stenny now, and Claude's log lines about extensions."""
+    (kind and version), whether it runs, whether Claude has Stenny now, on Windows the folders Stenny looked in for
+    Claude's data, and Claude's log lines about extensions."""
     ext = None
     try:
         ext = installed_extension()
@@ -596,6 +662,8 @@ def connector_report(reason: str) -> str:
         f"System: {sys.platform}",
         f"Claude app: {claude_desktop_version() or 'not found'}" + (f", running: {running}" if running else ""),
         f"Claude has Stenny: {ext['version'] if ext else 'no'}",
+        *([f"Claude's folders: {', '.join(_shown(d) for d in _claude_config_dirs()) or 'none'}"]
+          if sys.platform == "win32" else []),
         f"Stenny.mcpb: {file.stat().st_size if file else 'missing'} bytes",
         "Claude's log (extensions):",
         *(_claude_log_lines() or ["(none)"]),
