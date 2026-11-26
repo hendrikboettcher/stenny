@@ -315,9 +315,10 @@ def add_to_claude_code(cfg, params: dict) -> dict:
 
 
 def open_claude(cfg, params: dict) -> dict:
-    """The Claude desktop app, where the connector is removed again."""
+    """The Claude desktop app, where the connector is removed again; `page` "extensions": on its Extensions page,
+    where the connector is added by hand."""
     from . import claude_setup
-    return _setup(claude_setup.open_claude, cfg)
+    return _setup(claude_setup.open_claude, cfg, str(params.get("page") or ""))
 
 
 def remove_from_claude_desktop(cfg, params: dict) -> dict:

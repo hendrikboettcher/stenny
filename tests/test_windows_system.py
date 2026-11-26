@@ -13,7 +13,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from stenny import app_live, claude_setup, cli, i18n, jobs, resources, winsys
+from stenny import app_live, app_server, claude_setup, cli, i18n, jobs, resources, winsys
 
 windows = pytest.mark.skipif(sys.platform != "win32", reason="calls Windows itself")
 NS = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
@@ -458,6 +458,16 @@ def test_claude_from_the_store_used_the_connector(claude_windows, monkeypatch):
     assert claude_setup.connector_used() == "2026-11-22T10:00:00"
     (data / claude_setup.CONNECTOR_USED).write_text('{"at": "2026-11-22T11:00:00"}', encoding="utf-8")
     assert claude_setup.connector_used() == "2026-11-22T11:00:00"
+
+
+def test_open_claude_on_its_extensions_page(claude_windows):
+    """Adding Stenny by hand starts on Claude's Extensions page (a claude:// link, the app package's way in too);
+    removing it opens Claude as before."""
+    (claude_windows.local / "Packages/Claude_pzs8sxrjxfjjc").mkdir(parents=True)
+    assert app_server.open_claude(None, {"page": "extensions"}) == {"opened": True}
+    assert claude_windows.opened == ["claude://claude.ai/settings/desktop/extensions"]
+    app_server.open_claude(None, {})
+    assert claude_windows.opened[-1] == "claude://"
 
 
 def _stenny_extension(folder, version="0.5.21"):

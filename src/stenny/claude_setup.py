@@ -554,19 +554,29 @@ def add_to_claude_code(cfg) -> dict:
     return connector_status(cfg)
 
 
-def open_claude(cfg) -> dict:
-    """Opens the Claude desktop app. Its connectors are removed there (Settings ▸ Customize ▸ Connectors): Claude
-    keeps the list of extensions in memory, so Stenny can't take one out from outside while Claude runs."""
+# Claude's Extensions page (Settings ▸ Desktop app ▸ Extensions), where a .mcpb is dragged in or installed with
+# Advanced settings ▸ Install extension. Opens there on a Mac with Claude 6.28899.6; a Claude that doesn't know the
+# page just opens.
+EXTENSIONS_PAGE = "claude://claude.ai/settings/desktop/extensions"
+
+
+def open_claude(cfg, page: str = "") -> dict:
+    """Opens the Claude desktop app; with `page` "extensions" on its Extensions page, where the user adds Stenny by
+    hand when Claude can't be handed the file (Windows). Its connectors are removed in Claude too (Settings ▸
+    Customize ▸ Connectors): Claude keeps the list of extensions in memory, so Stenny can't take one out from outside
+    while Claude runs."""
     if not claude_desktop_installed():
         raise SetupError(tr("The Claude desktop app isn't installed. Get it at claude.ai/download, then try again."))
+    extensions = page == "extensions"
     if sys.platform == "win32":
         # its launcher if it's there, else claude://, which the app registers (also the app package's way in)
         try:
-            os.startfile(claude_desktop_exe() or "claude://")  # noqa: S606
+            os.startfile(EXTENSIONS_PAGE if extensions else str(claude_desktop_exe() or "claude://"))  # noqa: S606
         except OSError as e:
             raise SetupError(tr("Couldn't open Claude: {error}", error=e)) from None
         return {"opened": True}
-    p = subprocess.run(["open", "-a", "Claude"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15)
+    p = subprocess.run(["open", EXTENSIONS_PAGE] if extensions else ["open", "-a", "Claude"], capture_output=True,
+                       text=True, encoding="utf-8", errors="replace", timeout=15)
     if p.returncode != 0:
         raise SetupError(tr("Couldn't open Claude: {error}", error=p.stderr.strip()))
     return {"opened": True}
