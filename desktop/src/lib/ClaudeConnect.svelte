@@ -3,14 +3,16 @@
   // Every state says what happens and what to do next. Connect hands Stenny.mcpb to Claude, which shows its own Install
   // window (claude_setup.install_connector); the parent sees Stenny in Claude at its next check and stops showing this.
   // Windows: Claude takes the file only when it starts, so while Claude runs the engine answers "waiting" and this asks
-  // the user to quit Claude, then Stenny opens it. Claude from the Microsoft Store (`store`, or the engine's "manual")
-  // can't be handed a file at all: there this shows at once how to paste the path into Claude's Install extension
-  // dialog, with Copy path. On Windows that way is also offered whenever Claude's Install
-  // window doesn't come up. Whatever doesn't end with Stenny in Claude (an error, nothing after a while) shows
+  // the user to quit Claude, then Stenny opens it. Claude as an app package (`store`, or the engine's "manual"; what
+  // claude.ai/download installs, or the Microsoft Store) can't be handed a file at all: there this shows at once how to
+  // add it by hand, in steps that name as few of Claude's menus as possible (they change): Open Claude goes straight to
+  // its Extensions page (a claude:// link), Show in Explorer shows Stenny.mcpb to drag in, and Copy path is for Claude's
+  // own Install extension button. On Windows those steps are also offered whenever Claude's Install window doesn't
+  // come up. Whatever doesn't end with Stenny in Claude (an error, nothing after a while) shows
   // "Didn't work?" with Try again and Tell us: one click sends a report (report_connector), so we learn about it.
   import { onDestroy } from "svelte";
-  import { copyText, engine } from "$lib/engine";
-  import { t, onWindows } from "$lib/i18n.svelte";
+  import { copyText, engine, reveal } from "$lib/engine";
+  import { t, onWindows, revealLabel } from "$lib/i18n.svelte";
 
   let { file, store = false }: { file: string; store?: boolean } = $props();
 
@@ -87,7 +89,7 @@
   async function openClaude() {
     error = null;
     try {
-      await engine("open_claude");
+      await engine("open_claude", { page: "extensions" });
     } catch (e) {
       error = String(e);
     }
@@ -118,14 +120,25 @@
   {/if}
 {/snippet}
 
+{#snippet byHand(intro: string, first: boolean)}
+  <!-- Windows: the way that needs no Install window from Claude: its Extensions page, Stenny.mcpb dragged in -->
+  <p class={first ? "how" : "pick"}>{intro}</p>
+  <ol class="steps" class:muted={!first}>
+    <li>{t("claude.connect.hand.open")}</li>
+    <li>{t("claude.connect.hand.drag", { reveal: revealLabel() })}</li>
+  </ol>
+  <div class="do">
+    <button class={first ? "pill primary" : "pill"} onclick={openClaude}>{t("settings.claude.openClaude")}</button>
+    <button class="pill" onclick={() => reveal(file)}>{revealLabel()}</button>
+  </div>
+  <p class="pick">
+    {t("claude.connect.hand.paste")}
+    <button class="link" onclick={copy}>{copied ? t("claude.connect.copied") : t("claude.connect.copy")}</button>
+  </p>
+{/snippet}
+
 {#snippet pick()}
-  <!-- Windows: the way that needs no Install window from Claude -->
-  {#if onWindows}
-    <p class="pick">
-      {t("claude.connect.pick")}
-      <button class="link" onclick={copy}>{copied ? t("claude.connect.copied") : t("claude.connect.copy")}</button>
-    </p>
-  {/if}
+  {#if onWindows}{@render byHand(t("claude.connect.pick"), false)}{/if}
 {/snippet}
 
 {#if shown === "waiting"}
@@ -135,11 +148,7 @@
     <button class="pill" onclick={cancel}>{t("common.cancel")}</button>
   </div>
 {:else if shown === "manual"}
-  <p class="how">{t("claude.connect.store")}</p>
-  <div class="do">
-    <button class="pill primary" onclick={copy}>{copied ? t("claude.connect.copied") : t("claude.connect.copy")}</button>
-    <button class="pill" onclick={openClaude}>{t("settings.claude.openClaude")}</button>
-  </div>
+  {@render byHand(t("claude.connect.store"), true)}
   <div class="do">
     <span class="line muted">{t("claude.connect.failed")}</span>
     {@render tell()}
@@ -168,6 +177,9 @@
   .line { color: var(--ink-2); }
   .muted { color: var(--muted); }
   .pick { margin: 10px 0 0; color: var(--muted); font-size: 12.5px; }
+  .steps { margin: 6px 0 0; padding-left: 20px; color: var(--ink-2); }
+  .steps li + li { margin-top: 4px; }
+  .steps.muted { color: var(--muted); font-size: 12.5px; }
   .link {
     border: 0; background: none; padding: 0; color: var(--accent); font-size: inherit; text-decoration: underline;
     text-decoration-color: color-mix(in srgb, var(--accent) 35%, transparent); text-underline-offset: 3px;
