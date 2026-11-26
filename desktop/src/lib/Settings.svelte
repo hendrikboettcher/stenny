@@ -334,6 +334,26 @@
     }
   }
 
+  // Claude Code installed by Stenny (Anthropic's installer, in the background); asked again every few seconds
+  // until it's there or the installer has given up
+  let ccInstalling = $state(false);
+  async function installClaudeCode() {
+    ccInstalling = true;
+    try {
+      const st = await engine<Partial<AiStatus>>("install_claude_code");
+      if (ai) ai = { ...ai, ...st };
+    } catch (e) {
+      error = String(e);
+    } finally {
+      ccInstalling = false;
+    }
+  }
+  $effect(() => {
+    if (ai?.install !== "running") return;
+    const again = setTimeout(checkAi, 3000);
+    return () => clearTimeout(again);
+  });
+
   async function addToClaudeCode() {
     connBusy = "code";
     connError = null;
@@ -603,10 +623,19 @@
     </div>
   {:else if v === "claude-code"}
     <div class="status warn">
-      {#if st.state === "missing"}
-        <p>{t("settings.ai.cc.missing")} {t("settings.ai.cc.missing.after")}</p>
+      {#if st.state === "missing" && st.install === "running"}
+        <p>{t("settings.ai.cc.installing")}</p>
+      {:else if st.state === "missing"}
+        {#if st.install === "failed"}
+          <p>{t("settings.ai.cc.installFailed")}{#if st.detail}<span class="detail selectable"> {st.detail}</span>{/if}</p>
+        {:else}
+          <p>{t("settings.ai.cc.missing")} {t("settings.ai.cc.missing.after")}</p>
+        {/if}
         <div class="do">
-          <button class="pill" onclick={() => openLink(URLS.claudeCode)}>{t("settings.ai.cc.get")}</button>
+          <button class="pill primary" disabled={ccInstalling} onclick={installClaudeCode}>{t("settings.ai.cc.install")}</button>
+          {#if st.install === "failed"}
+            <button class="link" onclick={() => openLink(URLS.claudeCode)}>{t("settings.ai.cc.manual")}</button>
+          {/if}
           <button class="link" disabled={aiChecking} onclick={checkAi}>{aiChecking ? t("settings.ai.checking") : t("settings.ai.checkAgain")}</button>
         </div>
       {:else if st.state === "signed_out"}

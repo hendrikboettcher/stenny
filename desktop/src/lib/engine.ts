@@ -79,6 +79,8 @@ export interface AiStatus {
   backend: "claude-code" | "api" | "none";
   state: "ready" | "missing" | "signed_out" | "unknown" | "no_key" | "bad_key" | "unchecked" | "off";
   account?: string | null;
+  // Claude Code missing and Stenny installing it (install_claude_code): running, or failed (its last lines in detail)
+  install?: "running" | "failed";
   source?: "keychain" | "environment";
   hint?: string;
   detail?: string;

@@ -239,6 +239,9 @@ DE = {
     "The key couldn't be saved: {error}": "Der Schlüssel konnte nicht gespeichert werden: {error}",
     "The key couldn't be removed: {error}": "Der Schlüssel konnte nicht entfernt werden: {error}",
     "Claude Code isn't installed yet.": "Claude Code ist noch nicht installiert.",
+    "Couldn't start the installer for Claude Code: {error}":
+        "Das Installationsprogramm für Claude Code ließ sich nicht starten: {error}",
+    "The installer ended without Claude Code.": "Das Installationsprogramm ist ohne Claude Code zu Ende gegangen.",
     "Stenny.mcpb isn't in Stenny's folder. Download Stenny again, or build it with connector/build.sh.":
         "Stenny.mcpb fehlt in Stennys Ordner. Lade Stenny neu herunter oder bau die Datei mit connector/build.sh.",
     "The Claude desktop app isn't installed. Get it at claude.ai/download, then try again.":

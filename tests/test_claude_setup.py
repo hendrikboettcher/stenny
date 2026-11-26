@@ -1,5 +1,7 @@
 import json
+import subprocess
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -225,3 +227,76 @@ def test_stenny_is_started_as_stenny_exe_when_argv_leaves_out_the_exe(tmp_path, 
     (tmp_path / "stenny.exe").write_bytes(b"")
     monkeypatch.setattr(claude_setup.sys, "argv", [str(tmp_path / "stenny"), "app-server"])
     assert claude_setup.stenny_command() == [str((tmp_path / "stenny.exe").resolve())]
+
+
+class FakeInstaller:
+    """An installer that runs until it's told to end: it writes what Anthropic's would and exits with `code`."""
+    def __init__(self, args, stdout=None, **kw):
+        self.args, self.kw, self.code, self.out = args, kw, None, stdout
+        FakeInstaller.started.append(self)
+
+    def poll(self):
+        return self.code
+
+    def wait(self, timeout=None):
+        return self.code
+
+    def kill(self):
+        self.code = -9
+
+    def end(self, code, text):
+        Path(self.out.name).write_text(text, encoding="utf-8")
+        self.code = code
+
+
+@pytest.fixture
+def installer(monkeypatch, tmp_path):
+    FakeInstaller.started = []
+    monkeypatch.setattr(claude_setup.subprocess, "Popen", FakeInstaller)
+    monkeypatch.setattr(claude_setup, "_install", None)
+    monkeypatch.setattr(claude_setup.paths, "LOGS_DIR", tmp_path / "Logs")
+    monkeypatch.setattr(claude_setup, "find_claude", lambda: None)
+    return FakeInstaller
+
+
+def test_installs_claude_code_with_anthropics_installer_in_the_background(installer, monkeypatch):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    assert claude_setup.claude_code_status() == {"state": "missing"}
+    assert app_server.install_claude_code(None, {}) == {"state": "missing", "install": "running"}
+    [run] = installer.started
+    assert run.args == ["/bin/bash", "-c", "set -o pipefail; /usr/bin/curl -fsSL https://claude.ai/install.sh | /bin/bash"]
+    assert run.kw["stdin"] is subprocess.DEVNULL and "/usr/bin" in run.kw["env"]["PATH"].split(":")
+    # asked again while it runs: still running, nothing started twice
+    assert claude_setup.install_claude_code(None) == {"state": "missing", "install": "running"}
+    assert claude_setup.claude_code_status() == {"state": "missing", "install": "running"}
+    assert len(installer.started) == 1
+
+
+def test_an_install_that_ends_without_claude_code_says_why(installer, monkeypatch):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    claude_setup.install_claude_code(None)
+    installer.started[0].end(1, f"Downloading…\ncurl: (6) Could not resolve host: claude.ai\n{Path.home()}/.local/bin\n")
+    status = claude_setup.claude_code_status()
+    assert status["state"] == "missing" and status["install"] == "failed"
+    assert "Could not resolve host" in status["detail"] and str(Path.home()) not in status["detail"]
+    # a second click starts it again
+    assert claude_setup.install_claude_code(None)["install"] == "running" and len(installer.started) == 2
+
+
+def test_installs_claude_code_on_windows_with_powershell_and_no_window(installer, monkeypatch):
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setenv("SystemRoot", r"C:\Windows")
+    monkeypatch.setattr(subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
+    claude_setup.install_claude_code(None)
+    [run] = installer.started
+    assert run.args[0].replace("\\", "/").endswith("System32/WindowsPowerShell/v1.0/powershell.exe")
+    assert run.args[1:] == ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
+                            "irm https://claude.ai/install.ps1 | iex"]
+    assert run.kw["creationflags"] == 0x08000000
+
+
+def test_installing_when_claude_code_is_there_starts_nothing(installer, monkeypatch, fake_claude):
+    monkeypatch.setattr(claude_setup, "find_claude", lambda: str(fake_claude.exe))
+    monkeypatch.setattr(claude_setup, "claude_code_status", lambda: {"state": "signed_out"})
+    assert claude_setup.install_claude_code(None) == {"state": "signed_out"}
+    assert installer.started == []
